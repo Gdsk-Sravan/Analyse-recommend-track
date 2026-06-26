@@ -737,10 +737,11 @@ def _bhavcopy_from_file(filepath: str):
 
 def _bhavcopy_from_bse(date: datetime.datetime):
     """
-    Fetch BSE bhavcopy as fallback — BSE servers are accessible from CI/cloud IPs.
-    BSE full bhavcopy ZIP contains DELIV_PER column.
-    Maps BSE SC_NAME → NSE symbol via nse_all_symbols.csv, then returns a
-    DataFrame shaped like NSE bhavcopy (SYMBOL + DELIV_PER columns).
+    Fetch BSE bhavcopy as fallback — BSE JSON API works from any IP including CI.
+    Strategy:
+      1. BSE India JSON API  — https://api.bseindia.com/BseIndiaAPI/api/BhavCopyDeliverableData/w
+      2. BSE ZIP download    — known URL patterns (fallback if API changes)
+    Maps BSE SC_NAME → NSE symbol via nse_all_symbols.csv.
     """
     import zipfile, io as _io
 
@@ -757,86 +758,105 @@ def _bhavcopy_from_bse(date: datetime.datetime):
                 norm = re.sub(r"(ltd|limited|pvt|private|inc|corp|llp|llc)$", "", norm)
                 name_to_sym[norm] = sym
     except Exception:
-        pass  # proceed without mapping; will just lose some matches
+        pass
 
     bse_headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36",
-        "Accept": "*/*",
-        "Referer": "https://www.bseindia.com/markets/MarketInfo/BhavCopy.aspx",
+        "Accept": "application/json, text/plain, */*",
+        "Referer": "https://www.bseindia.com/",
+        "Origin":  "https://www.bseindia.com",
     }
+
+    def _map_bse_rows(records: list, name_key: str, deliv_key: str):
+        """Map BSE name→NSE symbol and return SYMBOL/DELIV_PER DataFrame."""
+        rows = []
+        for rec in records:
+            raw_name = str(rec.get(name_key, "")).strip()
+            norm = re.sub(r"[^a-z0-9]", "", raw_name.lower())
+            norm = re.sub(r"(ltd|limited|pvt|private|inc|corp|llp|llc)$", "", norm)
+            nse_sym = name_to_sym.get(norm)
+            if nse_sym:
+                try:
+                    deliv_val = float(str(rec.get(deliv_key, "50")).replace(",", "").strip())
+                except (ValueError, TypeError):
+                    deliv_val = 50.0
+                rows.append({"SYMBOL": nse_sym, "DELIV_PER": deliv_val})
+        return pd.DataFrame(rows) if rows else None
 
     for days_back in range(0, 6):
         d = date - datetime.timedelta(days=days_back)
         if d.weekday() >= 5:
             continue
-        ddmmyy   = d.strftime("%d%m%y")    # old BSE format: 260626
-        ddmmyyyy = d.strftime("%d%m%Y")    # mid format:     26062026
-        yyyymmdd = d.strftime("%Y%m%d")    # new BSE format: 20260626
+        ddmmyyyy = d.strftime("%d%m%Y")   # BSE API format: 26062026
+        ddmmyy   = d.strftime("%d%m%y")   # old ZIP format: 260626
+        yyyymmdd = d.strftime("%Y%m%d")   # new ZIP format: 20260626
 
-        # BSE changed URL format several times — try all known patterns
+        # ── Strategy 1: BSE JSON API (works from all IPs) ────────────────
+        api_urls = [
+            f"https://api.bseindia.com/BseIndiaAPI/api/BhavCopyDeliverableData/w?strdate={ddmmyyyy}",
+            f"https://api.bseindia.com/BseIndiaAPI/api/BhavCopyDeliverableData/w?Fdate={ddmmyyyy}&Tdate={ddmmyyyy}",
+        ]
+        for api_url in api_urls:
+            try:
+                resp = requests.get(api_url, headers=bse_headers, timeout=20)
+                if resp.status_code != 200 or len(resp.content) < 100:
+                    continue
+                data = resp.json()
+                # API returns a list directly or wrapped in a key
+                if isinstance(data, list):
+                    records = data
+                elif isinstance(data, dict):
+                    records = data.get("Table") or data.get("data") or data.get("Data") or []
+                else:
+                    continue
+                if not records:
+                    continue
+                # Detect name/delivery keys from first record
+                first = records[0]
+                name_key  = next((k for k in first if "name" in k.lower() or k.upper() in ("SC_NAME","SCRIP_NAME","SCNAME")), None)
+                deliv_key = next((k for k in first if "deliv" in k.lower() and ("per" in k.lower() or "%" in k.lower() or "pct" in k.lower())), None)
+                if not name_key or not deliv_key:
+                    _log(f"[WARN] BSE API response keys: {list(first.keys())[:8]}")
+                    continue
+                result_df = _map_bse_rows(records, name_key, deliv_key)
+                if result_df is not None and len(result_df) > 0:
+                    _log(f"  Bhavcopy from BSE API for {d.strftime('%d-%b-%Y')}: {len(result_df)} symbols mapped")
+                    return result_df
+            except Exception as e:
+                _log(f"[WARN] BSE API error ({ddmmyyyy}): {e}")
+                continue
+
+        # ── Strategy 2: BSE ZIP download (fallback) ──────────────────────
+        zip_headers = {**bse_headers, "Accept": "*/*"}
         bse_urls = [
-            # Newest format (post-2024): same pattern as NSE CM
             f"https://www.bseindia.com/download/BhavCopy/Equity/BhavCopy_BSE_CM_0_0_0_{yyyymmdd}_F_0000.CSV.ZIP",
-            # Mid-era format
             f"https://www.bseindia.com/download/BhavCopy/Equity/EQ{ddmmyyyy}_CSV.ZIP",
-            # Old format (pre-2023)
             f"https://www.bseindia.com/download/BhavCopy/Equity/EQ{ddmmyy}_CSV.ZIP",
         ]
-
         for url in bse_urls:
             try:
-                resp = requests.get(url, headers=bse_headers, timeout=20)
+                resp = requests.get(url, headers=zip_headers, timeout=20)
                 if resp.status_code != 200 or len(resp.content) < 1000:
                     continue
-                # Validate ZIP magic bytes (PK\x03\x04) before attempting to parse
                 if resp.content[:4] != b"PK\x03\x04":
-                    _log(f"[WARN] BSE URL returned non-ZIP content ({url.split('/')[-1]}), skipping")
-                    continue
+                    continue  # not a ZIP — silently skip (BSE returning HTML)
                 with zipfile.ZipFile(_io.BytesIO(resp.content)) as zf:
-                    csv_name = next((n for n in zf.namelist() if n.endswith(".csv")), None)
+                    csv_name = next((n for n in zf.namelist() if n.lower().endswith(".csv")), None)
                     if csv_name is None:
                         continue
                     bse_df = pd.read_csv(zf.open(csv_name))
                 bse_df.columns = [c.strip() for c in bse_df.columns]
-
-                # Detect delivery column
-                deliv_col = next(
-                    (c for c in bse_df.columns if "deliv" in c.lower() and ("per" in c.lower() or "%" in c.lower())),
-                    None
-                )
-                if deliv_col is None:
-                    _log(f"[WARN] BSE bhavcopy missing delivery-% column (cols: {list(bse_df.columns)[:8]})")
+                deliv_col = next((c for c in bse_df.columns if "deliv" in c.lower() and ("per" in c.lower() or "%" in c.lower())), None)
+                name_col  = next((c for c in bse_df.columns if "name" in c.lower() or c.upper() in ("SC_NAME", "SCRIP_NAME")), None)
+                if not deliv_col or not name_col:
                     continue
-
-                # Detect BSE name column
-                name_col = next(
-                    (c for c in bse_df.columns if "name" in c.lower() or c.upper() in ("SC_NAME", "SCRIP_NAME")),
-                    None
-                )
-                if name_col is None:
-                    continue
-
-                # Remap BSE SC_NAME → NSE symbol
-                rows = []
-                for _, row in bse_df.iterrows():
-                    raw_name = str(row.get(name_col, "")).strip()
-                    norm = re.sub(r"[^a-z0-9]", "", raw_name.lower())
-                    norm = re.sub(r"(ltd|limited|pvt|private|inc|corp|llp|llc)$", "", norm)
-                    nse_sym = name_to_sym.get(norm)
-                    if nse_sym:
-                        try:
-                            deliv_val = float(str(row[deliv_col]).replace(",", "").strip())
-                        except (ValueError, TypeError):
-                            deliv_val = 50.0
-                        rows.append({"SYMBOL": nse_sym, "DELIV_PER": deliv_val})
-
-                if rows:
-                    result_df = pd.DataFrame(rows)
-                    _log(f"  Bhavcopy from BSE for {d.strftime('%d-%b-%Y')}: {len(rows)} symbols mapped")
+                records = bse_df.to_dict("records")
+                result_df = _map_bse_rows(records, name_col, deliv_col)
+                if result_df is not None and len(result_df) > 0:
+                    _log(f"  Bhavcopy from BSE ZIP for {d.strftime('%d-%b-%Y')}: {len(result_df)} symbols mapped")
                     return result_df
-
             except Exception as e:
-                _log(f"[WARN] BSE bhavcopy error ({url.split('/')[-1]}): {e}")
+                _log(f"[WARN] BSE ZIP error ({url.split('/')[-1]}): {e}")
                 continue
 
     return None
@@ -2629,10 +2649,23 @@ def compute_all_factors(symbol: str, df, delivery_pct: float,
 
 def load_portfolio() -> list:
     """
-    Load active holdings. Prefers portfolio.json; falls back to portfolio_state.csv
-    (written by the existing daily_pipeline.py system) so no manual migration is needed.
+    Load active holdings. Priority order:
+      1. PORTFOLIO_JSON env var (set as GitHub Actions secret)
+      2. portfolio.json file on disk
+      3. portfolio_state.csv (legacy CSV fallback)
     """
-    # Primary: JSON file (v6.0 format)
+    # Priority 1: env var (GitHub Actions secret — supports both names)
+    env_json = (os.getenv("MANUAL_PORTFOLIO_JSON") or os.getenv("PORTFOLIO_JSON") or "").strip()
+    if env_json and env_json != "[]":
+        try:
+            data = json.loads(env_json)
+            if data:
+                _log(f"[INFO] Loaded {len(data)} holdings from MANUAL_PORTFOLIO_JSON secret")
+                return data
+        except Exception as e:
+            _log(f"[WARN] MANUAL_PORTFOLIO_JSON env var parse failed: {e}")
+
+    # Priority 2: JSON file (v6.0 format)
     try:
         if os.path.exists(PORTFOLIO_FILE):
             with open(PORTFOLIO_FILE, "r") as f:
@@ -2653,14 +2686,15 @@ def load_portfolio() -> list:
                     if status not in ("OPEN", "ACTIVE", ""):
                         continue
                     holdings.append({
-                        "symbol":     row.get("symbol", "").strip(),
-                        "sector":     row.get("sector", "OTHERS").strip(),
+                        "symbol":      row.get("symbol", "").strip(),
+                        "sector":      row.get("sector", "OTHERS").strip(),
                         "entry_price": float(row.get("entry_price", 0) or 0),
                         "stop_loss":   float(row.get("stop_loss", 0) or 0),
                         # CSV uses target_1 / target_2; normalise to target1 / target2
                         "target1":     float(row.get("target1") or row.get("target_1", 0) or 0),
                         "target2":     float(row.get("target2") or row.get("target_2", 0) or 0),
                         "entry_date":  row.get("entry_date", ""),
+                        "quantity":    float(row.get("quantity", 0) or 0),
                     })
             if holdings:
                 _log(f"[INFO] Loaded {len(holdings)} holdings from {csv_path} (CSV fallback)")
@@ -2682,32 +2716,44 @@ def monitor_portfolio(holdings: list, price_data: dict, regime: str) -> list:
     """Bug 1 fix — pure rule-based, zero AI calls, no raw arrays sent anywhere."""
     alerts = []
     for holding in holdings:
-        symbol  = holding.get("symbol", "")
-        entry   = float(holding.get("entry_price", 0) or 0)
-        stop    = float(holding.get("stop_loss",   0) or 0)
+        symbol   = holding.get("symbol", "")
+        entry    = float(holding.get("entry_price", 0) or 0)
+        stop     = float(holding.get("stop_loss",   0) or 0)
+        qty      = float(holding.get("quantity",    0) or 0)
+        sector   = holding.get("sector", "OTHERS")
         # Accept both target1 and target_1 (CSV legacy field names)
-        target1 = float(holding.get("target1") or holding.get("target_1", 0) or 0)
-        target2 = float(holding.get("target2") or holding.get("target_2", 0) or 0)
-        current = float(price_data.get(symbol, entry) or entry)
-        pnl_pct = round((current - entry) / entry * 100, 2) if entry > 0 else 0.0
+        target1  = float(holding.get("target1") or holding.get("target_1", 0) or 0)
+        target2  = float(holding.get("target2") or holding.get("target_2", 0) or 0)
+        current  = float(price_data.get(symbol, entry) or entry)
+        pnl_pct  = round((current - entry) / entry * 100, 2) if entry > 0 else 0.0
+        invested = round(entry   * qty, 2) if qty > 0 else 0.0
+        cur_val  = round(current * qty, 2) if qty > 0 else 0.0
+        pnl_abs  = round(cur_val - invested, 2)
         try:
             entry_dt  = datetime.datetime.strptime(holding.get("entry_date", ""), "%Y-%m-%d")
             days_held = (datetime.datetime.today() - entry_dt).days
         except Exception:
             days_held = 0
 
+        base = {
+            "symbol": symbol, "sector": sector,
+            "pnl_pct": pnl_pct, "current": current,
+            "quantity": qty, "entry": entry,
+            "invested": invested, "cur_val": cur_val, "pnl_abs": pnl_abs,
+            "target1": target1, "target2": target2, "stop": stop,
+        }
         if stop > 0 and current <= stop:
-            alerts.append({"symbol": symbol, "action": "EXIT",       "reason": "HARD_STOP_HIT",    "pnl_pct": pnl_pct, "current": current})
+            alerts.append({**base, "action": "EXIT",       "reason": "HARD_STOP_HIT"})
         elif regime in ("BEAR", "STRONG_BEAR"):
-            alerts.append({"symbol": symbol, "action": "EXIT",       "reason": "REGIME_BEAR",      "pnl_pct": pnl_pct, "current": current})
+            alerts.append({**base, "action": "EXIT",       "reason": "REGIME_BEAR"})
         elif target2 > 0 and current >= target2:
-            alerts.append({"symbol": symbol, "action": "EXIT_FULL",  "reason": "TARGET2_HIT",      "pnl_pct": pnl_pct, "current": current})
+            alerts.append({**base, "action": "EXIT_FULL",  "reason": "TARGET2_HIT"})
         elif target1 > 0 and current >= target1:
-            alerts.append({"symbol": symbol, "action": "TRAIL_STOP", "reason": "TARGET1_TRAIL",    "pnl_pct": pnl_pct, "current": current})
-        elif days_held >= 20 and current < target1:
-            alerts.append({"symbol": symbol, "action": "REVIEW",     "reason": "TIME_STOP_20D",    "pnl_pct": pnl_pct, "current": current, "days_held": days_held})
+            alerts.append({**base, "action": "TRAIL_STOP", "reason": "TARGET1_TRAIL"})
+        elif days_held >= 20 and (target1 == 0 or current < target1):
+            alerts.append({**base, "action": "REVIEW",     "reason": "TIME_STOP_20D", "days_held": days_held})
         else:
-            alerts.append({"symbol": symbol, "action": "HOLD",       "reason": "ON_TRACK",         "pnl_pct": pnl_pct, "current": current, "days_held": days_held})
+            alerts.append({**base, "action": "HOLD",       "reason": "ON_TRACK",      "days_held": days_held})
     return alerts
 
 
@@ -3858,23 +3904,52 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
     reviews = [a for a in portfolio_alerts if a["action"] == "REVIEW"]
     holds   = [a for a in portfolio_alerts if a["action"] == "HOLD"]
     lines.append("📁 PORTFOLIO")
-    if exits:
-        lines.append("  EXIT:")
-        for e in exits:
-            lines.append(f"    {html.escape(str(e['symbol']))} — {html.escape(str(e['reason']))} | PnL: {e['pnl_pct']:+.1f}%")
-    if trails:
-        lines.append("  TRAIL STOP:")
-        for t in trails:
-            lines.append(f"    {html.escape(str(t['symbol']))} — T1 hit | PnL: {t['pnl_pct']:+.1f}%")
-    if reviews:
-        lines.append("  REVIEW:")
-        for r in reviews:
-            lines.append(f"    {html.escape(str(r['symbol']))} — {html.escape(str(r['reason']))} | PnL: {r['pnl_pct']:+.1f}%")
-    if holds:
-        lines.append("  HOLD:")
-        for h in holds[:6]:
-            lines.append(f"    {html.escape(str(h['symbol']))} — PnL: {h['pnl_pct']:+.1f}% | Day {h.get('days_held', 0)}")
-    if not portfolio_alerts:
+    if portfolio_alerts:
+        # ── Summary totals (only when quantity is known) ──
+        qty_known = [a for a in portfolio_alerts if a.get("quantity", 0) > 0]
+        if qty_known:
+            total_invested = sum(a["invested"] for a in qty_known)
+            total_cur_val  = sum(a["cur_val"]  for a in qty_known)
+            total_pnl_abs  = sum(a["pnl_abs"]  for a in qty_known)
+            total_pnl_pct  = round(total_pnl_abs / total_invested * 100, 2) if total_invested > 0 else 0.0
+            pnl_emoji      = "🟢" if total_pnl_abs >= 0 else "🔴"
+            lines.append(
+                f"  {pnl_emoji} Invested Rs{total_invested:,.0f} | "
+                f"Now Rs{total_cur_val:,.0f} | "
+                f"PnL Rs{total_pnl_abs:+,.0f} ({total_pnl_pct:+.2f}%)"
+            )
+            lines.append(f"  Positions: {len(portfolio_alerts)} | Actionable: {len(exits)+len(trails)+len(reviews)}")
+        else:
+            lines.append("  (Add \"quantity\" to portfolio.json to see invested amounts)")
+
+        def _fmt_holding(a: dict) -> str:
+            sym   = html.escape(str(a["symbol"]))
+            qty   = a.get("quantity", 0)
+            entry = a.get("entry", 0)
+            cur   = a.get("current", 0)
+            pnl_p = a["pnl_pct"]
+            if qty > 0:
+                return (f"    {sym} | {qty:.0f}sh @ Rs{entry:.2f} → Rs{cur:.2f} | "
+                        f"PnL Rs{a['pnl_abs']:+,.0f} ({pnl_p:+.1f}%) | Day {a.get('days_held',0)}")
+            return f"    {sym} | Rs{entry:.2f} → Rs{cur:.2f} | PnL {pnl_p:+.1f}% | Day {a.get('days_held',0)}"
+
+        if exits:
+            lines.append("  🚨 EXIT:")
+            for e in exits:
+                lines.append(_fmt_holding(e) + f" | {html.escape(str(e['reason']))}")
+        if trails:
+            lines.append("  ⚡ TRAIL STOP (T1 hit):")
+            for t in trails:
+                lines.append(_fmt_holding(t))
+        if reviews:
+            lines.append("  🔍 REVIEW:")
+            for r in reviews:
+                lines.append(_fmt_holding(r) + f" | {html.escape(str(r['reason']))}")
+        if holds:
+            lines.append("  ✅ HOLD:")
+            for h in holds[:6]:
+                lines.append(_fmt_holding(h))
+    else:
         lines.append("  No active holdings.")
     lines.append("")
 
