@@ -3571,11 +3571,11 @@ def format_watchlist_section(watchlist: list, regime: str) -> list:
             rr      = w.get("rr", 0)
             risk    = w.get("risk_pct", 0)
             cur     = w.get("current", w.get("price", entry))
-            lines.append(f"    {sym} [{sector}] | Conf {conf:.1f} [gap {conf_gap:.1f}] | TQ {tq:.1f}")
-            lines.append(
-                f"    Cur Rs{cur:.1f} | Entry Rs{entry:.1f} | Stop Rs{stop:.1f} | "
-                f"T1 Rs{target1:.1f} | T2 Rs{target2:.1f} | R/R {rr:.1f}x | Risk {risk:.1f}%"
-            )
+            lines.append(f"    <b>{sym}</b> [{sector}] | Conf {conf:.1f} [gap {conf_gap:.1f}] | TQ {tq:.1f}")
+            lines.append(f"    Entry  Rs{entry:.2f}  (Cur Rs{cur:.1f})")
+            lines.append(f"    Stop   Rs{stop:.2f}  ({risk:.1f}%)")
+            lines.append(f"    T1     Rs{target1:.2f}")
+            lines.append(f"    T2     Rs{target2:.2f}  | R/R {rr:.1f}x")
             if w.get("warnings"):
                 lines.append(f"    \u26a0\ufe0f  {html.escape(' | '.join(str(x) for x in w['warnings']))}")
 
@@ -3792,42 +3792,43 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
             pledge   = b.get("promoter_pledge_pct", 0)
             roe      = b.get("roe", 0)
             de       = b.get("de_ratio", 0)
-            lines.append(f"  >> {html.escape(str(sym))} [{html.escape(str(sector))}]")
-            lines.append(f"     Conf {conf:.1f} | TQ {tq:.1f} | R/R {rr:.2f}x")
-            lines.append(
-                f"     Entry Rs{entry:.1f} | Stop Rs{stop_p:.2f} ({stop_pct:.1f}%) | "
-                f"T1 Rs{t1:.2f} | T2 Rs{t2:.1f}"
-            )
+            lines.append(f"  <b>{html.escape(str(sym))}</b> [{html.escape(str(sector))}]")
+            lines.append(f"  Conf {conf:.1f} | TQ {tq:.1f} | R/R {rr:.2f}x")
+            lines.append(f"  Entry  Rs{entry:.2f}")
+            lines.append(f"  Stop   Rs{stop_p:.2f}  ({stop_pct:.1f}%)")
+            lines.append(f"  T1     Rs{t1:.2f}")
+            lines.append(f"  T2     Rs{t2:.2f}")
             gap_check = check_gap_validity(entry, stop_p, t1, rr if rr > 0 else 1.8)
             max_entry = gap_check.get("max_valid_entry", 0)
             if max_entry > 0 and max_entry > entry:
                 gap_max_pct = round((max_entry - entry) / entry * 100, 1)
-                lines.append(f"     ⚡ Max valid entry: Rs{max_entry:.2f} (+{gap_max_pct:.1f}%)")
-                lines.append(f"        If open > Rs{max_entry:.2f} → SKIP. Wait for pullback.")
-            lines.append(f"     Size: Rs{pos_val:,.0f} ({pos_pct:.1f}% capital)")
+                lines.append(f"  ⚡ Max valid entry: Rs{max_entry:.2f} (+{gap_max_pct:.1f}%)")
+                lines.append(f"     If open > Rs{max_entry:.2f} → SKIP. Wait for pullback.")
+            lines.append(f"  Size   Rs{pos_val:,.0f}  ({pos_pct:.1f}% capital)")
             sizing_method = b.get("sizing_method", "")
             if sizing_method:
-                lines.append(f"     Sizing: {html.escape(str(sizing_method))}")
-            lines.append(f"     ROE {roe:.1f}% | D/E {de:.2f} | Pledge {pledge:.0f}%")
+                lines.append(f"  Sizing: {html.escape(str(sizing_method))}")
+            lines.append(f"  ROE {roe:.1f}% | D/E {de:.2f} | Pledge {pledge:.0f}%")
             rs_diff = b.get("rs_diff21", 0)
-            lines.append(f"     RS vs Nifty (21d): {rs_diff:+.1f}%")
+            lines.append(f"  RS vs Nifty (21d): {rs_diff:+.1f}%")
             weekly_ok = b.get("weekly_trend_ok", True)
             if not weekly_ok:
-                lines.append("     ⚠️ Weekly trend: DOWN — reduced conviction")
+                lines.append("  ⚠️ Weekly trend: DOWN — reduced conviction")
             pattern = b.get("price_pattern", "NONE")
             if pattern != "NONE":
-                lines.append(f"     Pattern: {html.escape(str(pattern))}")
+                lines.append(f"  Pattern: {html.escape(str(pattern))}")
             accum = b.get("accum_signal", "NEUTRAL")
             if accum != "NEUTRAL":
-                lines.append(f"     Volume: {html.escape(str(accum))}")
+                lines.append(f"  Volume: {html.escape(str(accum))}")
             if news_sum and news_sum != "—":
-                lines.append(f"     News: {html.escape(str(news_sum))}")
+                lines.append(f"  News: {html.escape(str(news_sum))}")
             if ai_sum and ai_sum != "—":
-                lines.append(f"     AI: {html.escape(str(ai_sum))}")
+                lines.append(f"  AI: {html.escape(str(ai_sum))}")
             if b.get("repeat_tag"):
-                lines.append(f"     [{html.escape(str(b['repeat_tag']))}]")
+                lines.append(f"  [{html.escape(str(b['repeat_tag']))}]")
             if b.get("warnings"):
-                lines.append(f"     WARN: {html.escape(', '.join(b['warnings'][:3]))}")
+                lines.append(f"  WARN: {html.escape(', '.join(b['warnings'][:3]))}")
+            lines.append("  " + "─" * 36)
     else:
         # Patch 6: detailed no-buy explanation
         no_buy_lines = format_no_buy_explanation(rejected_stocks or [], regime)
