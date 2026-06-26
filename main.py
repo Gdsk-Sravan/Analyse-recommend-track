@@ -13,6 +13,7 @@ import os
 import re
 import json
 import csv
+import html
 import datetime
 import time
 import random
@@ -360,7 +361,7 @@ def send_buy_telegram(buys: list, regime: str, timestamp: str) -> None:
             de       = b.get("de_ratio", 0)
             repeat   = b.get("repeat_tag", "")
 
-            lines.append(f"\n<b>{sym}</b> [{sector}]")
+            lines.append(f"\n<b>{html.escape(str(sym))}</b> [{html.escape(str(sector))}]")
             lines.append(f"Conf {conf:.1f} | TQ {tq:.1f} | R/R {rr:.2f}x")
             lines.append(f"Entry  Rs{entry:.2f}")
             lines.append(f"Stop   Rs{stop_p:.2f}  ({stop_pct:.1f}%)")
@@ -376,11 +377,11 @@ def send_buy_telegram(buys: list, regime: str, timestamp: str) -> None:
             lines.append(f"Size   Rs{pos_val:,.0f}  ({pos_pct:.1f}% capital)")
             lines.append(f"ROE {roe:.1f}% | D/E {de:.2f} | Pledge {pledge:.0f}%")
             if news_sum and news_sum != "—":
-                lines.append(f"News: {news_sum}")
+                lines.append(f"News: {html.escape(str(news_sum))}")
             if repeat:
-                lines.append(f"⚠️ {repeat}")
+                lines.append(f"⚠️ {html.escape(str(repeat))}")
             if b.get("warnings"):
-                lines.append(f"WARN: {', '.join(b['warnings'][:3])}")
+                lines.append(f"WARN: {html.escape(', '.join(b['warnings'][:3]))}")
             lines.append("─" * 38)
     else:
         lines.append("\nNo BUY signals today — no setup cleared all gates.")
@@ -419,8 +420,16 @@ def save_csv(data: list, base_filename: str) -> None:
                           if isinstance(v, (str, int, float, bool, type(None)))})
         if not clean:
             return
+        # Union all keys across every row so no row's extra fields cause a crash
+        all_keys: list = []
+        seen_keys: set = set()
+        for row in clean:
+            for k in row.keys():
+                if k not in seen_keys:
+                    all_keys.append(k)
+                    seen_keys.add(k)
         with open(filename, "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=clean[0].keys())
+            writer = csv.DictWriter(f, fieldnames=all_keys, extrasaction="ignore")
             writer.writeheader()
             writer.writerows(clean)
         _log(f"Saved {len(clean)} rows to {filename}")
@@ -671,41 +680,63 @@ def _nse_session() -> requests.Session:
 
 def fetch_nse_bhavcopy(date=None):
     """
-    Tries 3 URL patterns for NSE bhavcopy, going back up to 5 trading days.
+    Tries multiple URL patterns for NSE bhavcopy, going back up to 5 trading days.
     Returns a DataFrame on success, None if all sources fail.
-    NSE archives.nseindia.com frequently blocks CI/cloud IPs — fallback URLs help.
+    Uses a pre-warmed session with NSE cookies to avoid 403s on CI/cloud IPs.
     """
+    import zipfile, io as _io
+
     if date is None:
         date = datetime.datetime.today()
 
-    for days_back in range(0, 5):
-        d        = date - datetime.timedelta(days=days_back)
+    # Pre-warm session — NSE requires the homepage cookie to serve archive files
+    session = _nse_session()
+    session.headers.update({
+        "Referer": "https://www.nseindia.com/all-reports",
+        "X-Requested-With": "XMLHttpRequest",
+    })
+
+    for days_back in range(0, 6):
+        d = date - datetime.timedelta(days=days_back)
         # Skip weekends — bhavcopy never exists for Sat/Sun
         if d.weekday() >= 5:
             continue
-        date_str   = d.strftime("%d%b%Y").upper()   # e.g. 26JUN2026
-        date_ymd   = d.strftime("%Y%m%d")            # e.g. 20260626
-        date_ddmmyy = d.strftime("%d-%m-%Y")         # e.g. 26-06-2026
+        date_str = d.strftime("%d%b%Y").upper()   # e.g. 26JUN2026
+        date_ymd = d.strftime("%Y%m%d")            # e.g. 20260626
 
         urls_to_try = [
-            # Pattern 1 — original archives URL
-            f"https://archives.nseindia.com/products/content/sec_bhavdata_full_{date_str}.csv",
-            # Pattern 2 — NSE newer CDN (works when archives is blocked)
-            f"https://nsearchives.nseindia.com/products/content/sec_bhavdata_full_{date_str}.csv",
-            # Pattern 3 — NSE data API (JSON, different structure)
-            f"https://www.nseindia.com/api/historical/securityArchives?from={date_ddmmyy}&to={date_ddmmyy}&symbol=NIFTY&dataType=priceVolumeDeliverable&series=EQ",
+            # Pattern 1 — original archives URL (has DELIV_PER column)
+            (f"https://archives.nseindia.com/products/content/sec_bhavdata_full_{date_str}.csv", "csv"),
+            # Pattern 2 — NSE CDN mirror (same file, often unblocked when archives is not)
+            (f"https://nsearchives.nseindia.com/products/content/sec_bhavdata_full_{date_str}.csv", "csv"),
+            # Pattern 3 — Newer NSE CM BhavCopy ZIP (post-2024 format; column: DeliveryPercentage)
+            (f"https://nsearchives.nseindia.com/content/equities/BhavCopy_NSE_CM_0_0_0_{date_ymd}_F_0000.csv.zip", "zip"),
         ]
 
-        for url in urls_to_try[:2]:  # only CSV URLs for bhavcopy parsing
+        for url, fmt in urls_to_try:
             try:
-                resp = requests.get(url, headers=_NSE_BROWSER_HEADERS, timeout=15)
+                resp = session.get(url, timeout=20)
                 if resp.status_code == 200 and len(resp.content) > 1000:
-                    df = pd.read_csv(StringIO(resp.text))
+                    if fmt == "zip":
+                        with zipfile.ZipFile(_io.BytesIO(resp.content)) as zf:
+                            csv_name = next((n for n in zf.namelist() if n.endswith(".csv")), None)
+                            if csv_name is None:
+                                continue
+                            df = pd.read_csv(zf.open(csv_name))
+                    else:
+                        df = pd.read_csv(StringIO(resp.text))
                     df.columns = [c.strip() for c in df.columns]
                     _log(f"  Bhavcopy loaded for {d.strftime('%d-%b-%Y')} via {url.split('/')[2]}")
                     return df
+                elif resp.status_code == 404:
+                    continue  # file doesn't exist for this date/source, try next
                 elif resp.status_code in (403, 429):
                     _log(f"[WARN] Bhavcopy blocked ({resp.status_code}) at {url.split('/')[2]} — trying next source")
+                    # Re-warm session on 403 and retry remaining sources
+                    try:
+                        session.get("https://www.nseindia.com", timeout=8)
+                    except Exception:
+                        pass
                     continue
             except Exception as e:
                 _log(f"[WARN] Bhavcopy fetch error ({url.split('/')[2]}): {e}")
@@ -720,11 +751,19 @@ def get_delivery_pct(symbol: str, bhavcopy_df) -> float:
         return 50.0
     try:
         clean_sym = symbol.replace(".NS", "").strip()
-        row = bhavcopy_df[bhavcopy_df["SYMBOL"].str.strip() == clean_sym]
+        cols = bhavcopy_df.columns.tolist()
+        # Detect symbol column — old format uses SYMBOL, new ZIP uses TradingSymbol
+        sym_col = "SYMBOL" if "SYMBOL" in cols else ("TradingSymbol" if "TradingSymbol" in cols else None)
+        if sym_col is None:
+            return 50.0
+        row = bhavcopy_df[bhavcopy_df[sym_col].astype(str).str.strip() == clean_sym]
         if len(row) > 0:
-            deliv = row.iloc[0].get("DELIV_PER", None) or row.iloc[0].get("% Dly Qt to Traded Qty", None)
-            if deliv is not None:
-                return float(str(deliv).replace(",", "").strip())
+            # Check all known delivery-percentage column names in priority order
+            for col in ("DELIV_PER", "DeliveryPercentage", "% Dly Qt to Traded Qty"):
+                if col in cols:
+                    val = row.iloc[0][col]
+                    if pd.notna(val) and str(val).strip() not in ("", "-", "nan"):
+                        return float(str(val).replace(",", "").strip())
     except Exception:
         pass
     return 50.0
@@ -3430,7 +3469,7 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
     fii_flow = macro.get("fii_flow_cr", 0.0)
     dii_flow = macro.get("dii_flow_cr", 0.0)
     reg_why  = regime_explanation(score, regime, vix_in, breadth_20, fii_flow, dii_flow)
-    lines.append(f"  Why: {reg_why}")
+    lines.append(f"  Why: {html.escape(str(reg_why))}")
     lines.append(f"  {REGIME_RATIONALE.get(regime, '')}")
 
     vix_ratio = macro.get("vix_term_ratio", 1.0)
@@ -3527,7 +3566,7 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
             pledge   = b.get("promoter_pledge_pct", 0)
             roe      = b.get("roe", 0)
             de       = b.get("de_ratio", 0)
-            lines.append(f"  >> {sym} [{sector}]")
+            lines.append(f"  >> {html.escape(str(sym))} [{html.escape(str(sector))}]")
             lines.append(f"     Conf {conf:.1f} | TQ {tq:.1f} | R/R {rr:.2f}x")
             lines.append(
                 f"     Entry Rs{entry:.1f} | Stop Rs{stop_p:.2f} ({stop_pct:.1f}%) | "
@@ -3542,7 +3581,7 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
             lines.append(f"     Size: Rs{pos_val:,.0f} ({pos_pct:.1f}% capital)")
             sizing_method = b.get("sizing_method", "")
             if sizing_method:
-                lines.append(f"     Sizing: {sizing_method}")
+                lines.append(f"     Sizing: {html.escape(str(sizing_method))}")
             lines.append(f"     ROE {roe:.1f}% | D/E {de:.2f} | Pledge {pledge:.0f}%")
             rs_diff = b.get("rs_diff21", 0)
             lines.append(f"     RS vs Nifty (21d): {rs_diff:+.1f}%")
@@ -3551,18 +3590,18 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
                 lines.append("     ⚠️ Weekly trend: DOWN — reduced conviction")
             pattern = b.get("price_pattern", "NONE")
             if pattern != "NONE":
-                lines.append(f"     Pattern: {pattern}")
+                lines.append(f"     Pattern: {html.escape(str(pattern))}")
             accum = b.get("accum_signal", "NEUTRAL")
             if accum != "NEUTRAL":
-                lines.append(f"     Volume: {accum}")
+                lines.append(f"     Volume: {html.escape(str(accum))}")
             if news_sum and news_sum != "—":
-                lines.append(f"     News: {news_sum}")
+                lines.append(f"     News: {html.escape(str(news_sum))}")
             if ai_sum and ai_sum != "—":
-                lines.append(f"     AI: {ai_sum}")
+                lines.append(f"     AI: {html.escape(str(ai_sum))}")
             if b.get("repeat_tag"):
-                lines.append(f"     [{b['repeat_tag']}]")
+                lines.append(f"     [{html.escape(str(b['repeat_tag']))}]")
             if b.get("warnings"):
-                lines.append(f"     WARN: {', '.join(b['warnings'][:3])}")
+                lines.append(f"     WARN: {html.escape(', '.join(b['warnings'][:3]))}")
     else:
         # Patch 6: detailed no-buy explanation
         no_buy_lines = format_no_buy_explanation(rejected_stocks or [], regime)
@@ -3573,12 +3612,12 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
     if shorts:
         lines.append("SHORT SIGNALS")
         for s in shorts:
-            lines.append(f"  >> {s.get('symbol','?')} [SHORT]")
+            lines.append(f"  >> {html.escape(str(s.get('symbol','?')))} [SHORT]")
             lines.append(
                 f"     Entry Rs{s.get('entry',0):.2f} | Stop Rs{s.get('stop',0):.2f} | "
                 f"T1 Rs{s.get('target1',0):.2f} | T2 Rs{s.get('target2',0):.2f}"
             )
-            lines.append(f"     R/R {s.get('rr',0):.2f}x | {s.get('reason','')}")
+            lines.append(f"     R/R {s.get('rr',0):.2f}x | {html.escape(str(s.get('reason','')))}")
         lines.append("")
 
     # ── Watchlist — ALL stocks, all tiers, with levels (Patch 1) ──
@@ -3595,19 +3634,19 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
     if exits:
         lines.append("  EXIT:")
         for e in exits:
-            lines.append(f"    {e['symbol']} — {e['reason']} | PnL: {e['pnl_pct']:+.1f}%")
+            lines.append(f"    {html.escape(str(e['symbol']))} — {html.escape(str(e['reason']))} | PnL: {e['pnl_pct']:+.1f}%")
     if trails:
         lines.append("  TRAIL STOP:")
         for t in trails:
-            lines.append(f"    {t['symbol']} — T1 hit | PnL: {t['pnl_pct']:+.1f}%")
+            lines.append(f"    {html.escape(str(t['symbol']))} — T1 hit | PnL: {t['pnl_pct']:+.1f}%")
     if reviews:
         lines.append("  REVIEW:")
         for r in reviews:
-            lines.append(f"    {r['symbol']} — {r['reason']} | PnL: {r['pnl_pct']:+.1f}%")
+            lines.append(f"    {html.escape(str(r['symbol']))} — {html.escape(str(r['reason']))} | PnL: {r['pnl_pct']:+.1f}%")
     if holds:
         lines.append("  HOLD:")
         for h in holds[:6]:
-            lines.append(f"    {h['symbol']} — PnL: {h['pnl_pct']:+.1f}% | Day {h.get('days_held', 0)}")
+            lines.append(f"    {html.escape(str(h['symbol']))} — PnL: {h['pnl_pct']:+.1f}% | Day {h.get('days_held', 0)}")
     if not portfolio_alerts:
         lines.append("  No active holdings.")
     lines.append("")
@@ -3623,7 +3662,7 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
     if upcoming_events:
         lines.append("UPCOMING EVENTS")
         for ev in upcoming_events:
-            lines.append(f"  {ev}")
+            lines.append(f"  {html.escape(str(ev))}")
         lines.append("")
 
     # ── Footer ──
