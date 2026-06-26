@@ -1819,6 +1819,25 @@ def price_action_score(closes: np.ndarray, highs: np.ndarray,
         return 50, "NONE"
 
 
+def _default_stock_result(symbol: str, sector: str) -> dict:
+    return {
+        "symbol": symbol, "sector": sector,
+        "trend_quality": 50, "momentum_quality": 50, "volume_delivery": 50,
+        "sector_strength": 50, "rs_vs_nifty": 50, "news_risk": 50,
+        "risk_reward": 0, "ownership_quality": 50, "options_sentiment": 60,
+        "macro_alignment": 50, "trade_quality_score": 0,
+        "entry": 0.0, "stop": 0.0, "target1": 0.0, "target2": 0.0,
+        "rr_ratio": 0.0, "avg_volume": 0, "avg_value_lakhs": 0.0,
+        "near_52w_high": False, "sector_status": "NEUTRAL", "accum_signal": "NEUTRAL",
+        "roe": 0.0, "de_ratio": 0.0, "promoter_pledge_pct": 0.0,
+        "news_penalty": 0, "is_black_swan": False, "news_summary": "",
+        "price": 0.0, "ret1d": 0.0, "ret5d": 0.0, "ret21d": 0.0,
+        "high_52w": 0.0, "low_52w": 0.0, "atr14": 0.0, "rsi14": 50.0,
+        "final_confidence": 0.0, "base_confidence": 0.0,
+        "weekly_trend_ok": False, "price_pattern": "NONE", "rs_diff21": 0.0,
+    }
+
+
 def compute_all_factors(symbol: str, df, delivery_pct: float,
                          sector: str, regime_data: dict,
                          sector_rotation: dict = None) -> dict:
