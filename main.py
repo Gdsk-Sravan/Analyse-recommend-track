@@ -112,9 +112,48 @@ OPPORTUNITY_WEIGHTS = {
 }
 
 
+def _update_ownership_quality(stock: dict) -> None:
+    """
+    Updates ownership_quality factor score from real fundamentals.
+    Called after fetch_all_fundamentals_cached() injects ROE/pledge into stock dict.
+    Scale:
+      ROE > 20% = excellent (+20), 12-20% = good (+10), < 5% = poor (-15)
+      Pledge > 30% = bad (-20), 15-30% = caution (-10), < 5% = clean (+10)
+      D/E > 2.0 = leveraged (-10), < 0.5 = clean (+10)
+    Baseline 50; clamped 0-100.
+    """
+    try:
+        roe    = float(stock.get("roe", 0) or 0)
+        pledge = float(stock.get("promoter_pledge_pct", 0) or 0)
+        de     = float(stock.get("de_ratio", 0) or 0)
+
+        score = 50.0
+        # ROE component
+        if roe > 20:    score += 20
+        elif roe > 12:  score += 10
+        elif roe > 5:   score += 0
+        else:           score -= 15
+        # Pledge component
+        if pledge > 30:   score -= 20
+        elif pledge > 15: score -= 10
+        elif pledge < 5:  score += 10
+        # D/E component
+        if de > 2.0:    score -= 10
+        elif de > 1.0:  score -= 5
+        elif de < 0.5:  score += 10
+
+        stock["ownership_quality"] = round(max(0.0, min(100.0, score)), 1)
+        # Keep factor_scores in sync
+        if "factor_scores" in stock:
+            stock["factor_scores"]["ownership_quality"] = stock["ownership_quality"]
+    except Exception:
+        pass
+
+
 def compute_opportunity_score(stock: dict) -> float:
     """
     0-100 composite score — primary ranking metric (ENHANCEMENT 1).
+    Reads directly from stock keys (with factor_scores as supplement).
     Higher = better opportunity quality.
     """
     try:
@@ -125,11 +164,12 @@ def compute_opportunity_score(stock: dict) -> float:
         # Normalize R/R to 0-100 (3.0x = 100, 2.0x = 67, 1.0x = 33)
         rr_score = min(100.0, rr / 3.0 * 100)
 
-        fs    = stock.get("factor_scores", {}) or {}
-        trend  = float(fs.get("trend_quality", 50) or 50)
-        volume = float(fs.get("volume_delivery", 50) or 50)
-        sector = float(fs.get("sector_strength", 50) or 50)
-        macro  = float(fs.get("macro_alignment", 50) or 50)
+        # Read directly from stock — factor_scores is a mirror, either works
+        fs     = stock.get("factor_scores", {}) or {}
+        trend  = float(stock.get("trend_quality",  fs.get("trend_quality",  50)) or 50)
+        volume = float(stock.get("volume_delivery",fs.get("volume_delivery",50)) or 50)
+        sector = float(stock.get("sector_strength",fs.get("sector_strength",50)) or 50)
+        macro  = float(stock.get("macro_alignment",fs.get("macro_alignment",50)) or 50)
 
         opp = (
             conf     * OPPORTUNITY_WEIGHTS["confidence"] +
@@ -1428,6 +1468,8 @@ def fetch_all_fundamentals_cached(top_40: list, max_stocks: int = 20) -> list:
         stock["de_ratio"]            = pdata.get("de_ratio", 0.0)
         stock["roce"]                = pdata.get("roce", 0.0)
         stock["fundamentals_source"] = pdata.get("source", "NEUTRAL_DEFAULT")
+        # Refine ownership_quality with ROE + D/E (screener+YF data now available)
+        _update_ownership_quality(stock)
 
     for stock in top_40[max_stocks:]:
         stock["promoter_data"]       = {**NEUTRAL_FUNDAMENTALS}
@@ -2738,8 +2780,10 @@ def compute_all_factors(symbol: str, df,
         result["rr_ratio"]    = rr_ratio
         result["risk_reward"] = min(100, max(0, rr_ratio * 30))
 
-        # ── Factor 8: Ownership Quality (placeholder) ──
-        result["ownership_quality"] = 50
+        # ── Factor 8: Ownership Quality — driven by promoter pledge + 52W proximity ──
+        # Actual ROE/pledge injected later by fetch_all_fundamentals_cached();
+        # here we seed with a neutral value that improves once fundamentals arrive.
+        result["ownership_quality"] = 50  # updated in _update_ownership_quality()
 
         # ── Factor 9: Options Sentiment (placeholder) ──
         result["options_sentiment"] = 60
@@ -2778,6 +2822,10 @@ def compute_all_factors(symbol: str, df,
         result["low_52w"]         = round(low_52w, 2)
         result["atr14"]           = round(atr14, 2)
         result["rsi14"]           = round(rsi, 1)
+
+        # ── factor_scores mirror dict — used by format_confidence_breakdown() ──
+        result["factor_scores"] = {k: round(float(result.get(k, 50) or 50), 1)
+                                    for k in FACTOR_WEIGHTS}
 
     except Exception as e:
         _log(f"[WARN] compute_all_factors failed for {symbol}: {e}")
