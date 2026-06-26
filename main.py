@@ -100,6 +100,51 @@ FACTOR_WEIGHTS = {
     "macro_alignment":    0.03,
 }
 
+# Opportunity score weights — primary ranking metric (ENHANCEMENT 1)
+OPPORTUNITY_WEIGHTS = {
+    "confidence":     0.30,
+    "trade_quality":  0.25,
+    "risk_reward":    0.20,
+    "trend_strength": 0.10,
+    "volume_quality": 0.05,
+    "sector_strength":0.05,
+    "macro_alignment":0.05,
+}
+
+
+def compute_opportunity_score(stock: dict) -> float:
+    """
+    0-100 composite score — primary ranking metric (ENHANCEMENT 1).
+    Higher = better opportunity quality.
+    """
+    try:
+        conf  = float(stock.get("final_confidence", 0) or 0)
+        tq    = float(stock.get("trade_quality_score", 0) or 0)
+        rr    = float(stock.get("rr_ratio", 0) or 0)
+
+        # Normalize R/R to 0-100 (3.0x = 100, 2.0x = 67, 1.0x = 33)
+        rr_score = min(100.0, rr / 3.0 * 100)
+
+        fs    = stock.get("factor_scores", {}) or {}
+        trend  = float(fs.get("trend_quality", 50) or 50)
+        volume = float(fs.get("volume_delivery", 50) or 50)
+        sector = float(fs.get("sector_strength", 50) or 50)
+        macro  = float(fs.get("macro_alignment", 50) or 50)
+
+        opp = (
+            conf     * OPPORTUNITY_WEIGHTS["confidence"] +
+            tq       * OPPORTUNITY_WEIGHTS["trade_quality"] +
+            rr_score * OPPORTUNITY_WEIGHTS["risk_reward"] +
+            trend    * OPPORTUNITY_WEIGHTS["trend_strength"] +
+            volume   * OPPORTUNITY_WEIGHTS["volume_quality"] +
+            sector   * OPPORTUNITY_WEIGHTS["sector_strength"] +
+            macro    * OPPORTUNITY_WEIGHTS["macro_alignment"]
+        )
+        return round(opp, 1)
+    except Exception:
+        return 0.0
+
+
 # Comprehensive sector map (Bug 3 fix)
 # ─────────────────────────────────────────────────────────────────────────────
 # SECTOR MAP — dynamic, not hardcoded
@@ -132,6 +177,114 @@ _YF_LABEL_NORM = {
 }
 
 _SECTOR_MAP: dict = {}   # loaded at pipeline start via _init_sector_map()
+
+# ── Hardcoded sector map (FIX 1 — normalizes .NS before lookup, never returns OTHERS) ──
+SECTOR_MAP: dict = {
+    # IT
+    "INFY.NS":"IT","TCS.NS":"IT","WIPRO.NS":"IT","HCLTECH.NS":"IT",
+    "TECHM.NS":"IT","LTIM.NS":"IT","PERSISTENT.NS":"IT","COFORGE.NS":"IT",
+    "MPHASIS.NS":"IT","OFSS.NS":"IT","KPITTECH.NS":"IT","TATAELXSI.NS":"IT",
+    "RAMCOSYS.NS":"IT","RPTECH.NS":"IT",
+    # PHARMA
+    "SUNPHARMA.NS":"PHARMA","DRREDDY.NS":"PHARMA","CIPLA.NS":"PHARMA",
+    "DIVISLAB.NS":"PHARMA","AUROPHARMA.NS":"PHARMA","LAURUSLABS.NS":"PHARMA",
+    "ALKEM.NS":"PHARMA","TORNTPHARM.NS":"PHARMA","IPCALAB.NS":"PHARMA",
+    "GLENMARK.NS":"PHARMA","NATCOPHARM.NS":"PHARMA","GRANULES.NS":"PHARMA",
+    "AARTIDRUGS.NS":"PHARMA","INDSWFTLAB.NS":"PHARMA","NARMADA.NS":"PHARMA",
+    "MOREPENLAB.NS":"PHARMA","BLUEJET.NS":"PHARMA","PANACEABIO.NS":"PHARMA",
+    # BANKING
+    "HDFCBANK.NS":"BANKING","ICICIBANK.NS":"BANKING","AXISBANK.NS":"BANKING",
+    "SBIN.NS":"BANKING","KOTAKBANK.NS":"BANKING","INDUSINDBK.NS":"BANKING",
+    "BANDHANBNK.NS":"BANKING","FEDERALBNK.NS":"BANKING","IDFCFIRSTB.NS":"BANKING",
+    "RBLBANK.NS":"BANKING","PNB.NS":"BANKING","BANKBARODA.NS":"BANKING",
+    # FINANCE / NBFC
+    "BAJFINANCE.NS":"FINANCE","BAJAJFINSV.NS":"FINANCE","CHOLAFIN.NS":"FINANCE",
+    "MUTHOOTFIN.NS":"FINANCE","MANAPPURAM.NS":"FINANCE","SHRIRAMFIN.NS":"FINANCE",
+    "LICHSGFIN.NS":"FINANCE","PFC.NS":"FINANCE","RECLTD.NS":"FINANCE",
+    "MANCREDIT.NS":"FINANCE","AAVAS.NS":"FINANCE","63MOONS.NS":"FINANCE",
+    # ENERGY / POWER
+    "RELIANCE.NS":"ENERGY","ONGC.NS":"ENERGY","BPCL.NS":"ENERGY",
+    "IOC.NS":"ENERGY","HINDPETRO.NS":"ENERGY","GAIL.NS":"ENERGY",
+    "TATAPOWER.NS":"ENERGY","ADANIGREEN.NS":"ENERGY","TORNTPOWER.NS":"ENERGY",
+    "NTPC.NS":"ENERGY","POWERGRID.NS":"ENERGY","CESC.NS":"ENERGY",
+    # METALS
+    "TATASTEEL.NS":"METALS","HINDALCO.NS":"METALS","JSWSTEEL.NS":"METALS",
+    "VEDL.NS":"METALS","SAIL.NS":"METALS","NATIONALUM.NS":"METALS",
+    "HINDCOPPER.NS":"METALS","NMDC.NS":"METALS","COALINDIA.NS":"METALS",
+    # AUTO / AUTO ANCILLARY
+    "MARUTI.NS":"AUTO","TATAMOTORS.NS":"AUTO","M&M.NS":"AUTO",
+    "BAJAJ-AUTO.NS":"AUTO","HEROMOTOCO.NS":"AUTO","EICHERMOT.NS":"AUTO",
+    "ASHOKLEY.NS":"AUTO","TVSMOTOR.NS":"AUTO","MOTHERSON.NS":"AUTO",
+    "BOSCHLTD.NS":"AUTO_ANCILLARY","BALKRISIND.NS":"AUTO_ANCILLARY",
+    "SONACOMS.NS":"AUTO_ANCILLARY","SPAL.NS":"AUTO_ANCILLARY",
+    "TALBROAUTO.NS":"AUTO_ANCILLARY","CONFIPET.NS":"AUTO_ANCILLARY",
+    # CAPITAL GOODS / INDUSTRIAL
+    "BHEL.NS":"CAPITAL_GOODS","THERMAX.NS":"CAPITAL_GOODS","KIRLOSENG.NS":"CAPITAL_GOODS",
+    "ABB.NS":"CAPITAL_GOODS","SIEMENS.NS":"CAPITAL_GOODS","HAVELLS.NS":"CAPITAL_GOODS",
+    "CROMPTON.NS":"CAPITAL_GOODS","CUMMINSIND.NS":"CAPITAL_GOODS",
+    "ELGIEQUIP.NS":"CAPITAL_GOODS","GRINDWELL.NS":"CAPITAL_GOODS",
+    "CEIGALL.NS":"CAPITAL_GOODS","GENUSPOWER.NS":"CAPITAL_GOODS",
+    "JASH.NS":"CAPITAL_GOODS","ELECTHERM.NS":"CAPITAL_GOODS",
+    "ROTO.NS":"CAPITAL_GOODS","EMSLIMITED.NS":"CAPITAL_GOODS",
+    "SYRMA.NS":"ELECTRONICS","ACI.NS":"ELECTRONICS",
+    # DEFENCE
+    "HAL.NS":"DEFENCE","BEL.NS":"DEFENCE","MAZDOCK.NS":"DEFENCE",
+    "COCHINSHIP.NS":"DEFENCE","PARAS.NS":"DEFENCE","MIDHANI.NS":"DEFENCE",
+    "GRSE.NS":"DEFENCE","PRIVISCL.NS":"DEFENCE",
+    # FMCG
+    "HINDUNILVR.NS":"FMCG","ITC.NS":"FMCG","NESTLEIND.NS":"FMCG",
+    "BRITANNIA.NS":"FMCG","DABUR.NS":"FMCG","MARICO.NS":"FMCG",
+    "COLPAL.NS":"FMCG","GODREJCP.NS":"FMCG","EMAMILTD.NS":"FMCG",
+    "RELAXO.NS":"FMCG","BATAINDIA.NS":"FMCG","PAGEIND.NS":"FMCG",
+    # CHEMICALS
+    "PIDILITIND.NS":"CHEMICALS","DEEPAKNI.NS":"CHEMICALS","AARTI.NS":"CHEMICALS",
+    "NAVINFLUOR.NS":"CHEMICALS","ALKYLAMINE.NS":"CHEMICALS","FINEORG.NS":"CHEMICALS",
+    "TATACHEM.NS":"CHEMICALS","NACLIND.NS":"CHEMICALS","GINNIFILA.NS":"CHEMICALS",
+    "20MICRONS.NS":"CHEMICALS","INDOBORAX.NS":"CHEMICALS",
+    # REALTY
+    "DLF.NS":"REALTY","GODREJPROP.NS":"REALTY","OBEROIRLTY.NS":"REALTY",
+    "PRESTIGE.NS":"REALTY","BRIGADE.NS":"REALTY","PHOENIXLTD.NS":"REALTY",
+    # LOGISTICS
+    "AEGISLOG.NS":"LOGISTICS","BLUEDART.NS":"LOGISTICS","CONCOR.NS":"LOGISTICS",
+    "GATI.NS":"LOGISTICS","DELHIVERY.NS":"LOGISTICS","TCI.NS":"LOGISTICS",
+    "NAVKARCORP.NS":"LOGISTICS","JSWINFRA.NS":"INFRA",
+    # TELECOM
+    "BHARTIARTL.NS":"TELECOM","IDEA.NS":"TELECOM","TATACOMM.NS":"TELECOM",
+    "ONMOBILE.NS":"TELECOM",
+    # INFRA / CONSTRUCTION
+    "LT.NS":"INFRA","ULTRACEMCO.NS":"INFRA","AMBUJACEMENT.NS":"INFRA",
+    "ACC.NS":"INFRA","SHREECEM.NS":"INFRA","KNRCON.NS":"INFRA",
+    "PNCINFRA.NS":"INFRA","IRB.NS":"INFRA","ASHOKA.NS":"INFRA","PATELENG.NS":"INFRA",
+    # TEXTILES
+    "SIYSIL.NS":"TEXTILES","RAYMOND.NS":"TEXTILES","WELSPUN.NS":"TEXTILES",
+    "TRIDENT.NS":"TEXTILES","VARDHMAN.NS":"TEXTILES","ARVIND.NS":"TEXTILES",
+    "RUPA.NS":"TEXTILES","PGIL.NS":"TEXTILES","ABCOTS.NS":"TEXTILES",
+    "DIFFNKG.NS":"TEXTILES",
+    # HEALTHCARE / HOSPITALS
+    "MAXHEALTH.NS":"HEALTHCARE","APOLLOHOSP.NS":"HEALTHCARE",
+    "FORTIS.NS":"HEALTHCARE","NARAYANHA.NS":"HEALTHCARE",
+    # INSURANCE / AMC
+    "HDFCLIFE.NS":"INSURANCE","SBILIFE.NS":"INSURANCE","ICICIGI.NS":"INSURANCE",
+    "ICICIPRULI.NS":"INSURANCE","STARHEALTH.NS":"INSURANCE","LICI.NS":"INSURANCE",
+    "ABSLAMC.NS":"ASSET_MGMT",
+    # POWER EQUIPMENT / RENEWABLES
+    "INOXGREEN.NS":"POWER_EQ","SUZLON.NS":"POWER_EQ","KPIGREEN.NS":"POWER_EQ",
+    "WEBSOL.NS":"POWER_EQ","EBGNG.NS":"POWER_EQ",
+    # CONSUMER / RETAIL
+    "TITAN.NS":"CONSUMER","TRENT.NS":"CONSUMER","DMART.NS":"CONSUMER",
+    "ZOMATO.NS":"CONSUMER","NYKAA.NS":"CONSUMER","NAZARA.NS":"CONSUMER",
+    # PIPES / BUILDING MATERIALS
+    "VENUSPIPES.NS":"BUILDING_MAT","RAMCOIND.NS":"BUILDING_MAT",
+    "KRISHANA.NS":"BUILDING_MAT","RATNAVEER.NS":"BUILDING_MAT",
+    # DIVERSIFIED
+    "AURUM.NS":"DIVERSIFIED","AEQUS.NS":"DIVERSIFIED","AVL.NS":"DIVERSIFIED",
+    "AVG.NS":"DIVERSIFIED","KMEW.NS":"DIVERSIFIED","LOTUSDEV.NS":"DIVERSIFIED",
+    "AEROENTER.NS":"DIVERSIFIED","POKARNA.NS":"DIVERSIFIED","SETL.NS":"DIVERSIFIED",
+    "PIXTRANS.NS":"DIVERSIFIED",
+    # AGRI / FOOD
+    "UBL.NS":"AGRI_FOOD","RADICO.NS":"AGRI_FOOD","KRBL.NS":"AGRI_FOOD",
+    "LTFOODS.NS":"AGRI_FOOD",
+}
 
 
 def _load_sector_map() -> dict:
@@ -168,11 +321,33 @@ def _init_sector_map() -> None:
 
 
 def get_sector(symbol: str) -> str:
-    """Handles both 'RELIANCE' and 'RELIANCE.NS'. Unknown symbols → 'OTHERS'."""
+    """Normalizes symbol format before lookup. Never returns OTHERS — falls back to pattern inference."""
     sym = symbol.strip()
     if not sym.endswith(".NS"):
-        sym += ".NS"
-    return _SECTOR_MAP.get(sym, "OTHERS")
+        sym = sym + ".NS"
+    # 1. Check hardcoded SECTOR_MAP first (FIX 1)
+    sector = SECTOR_MAP.get(sym)
+    if sector:
+        return sector
+    # 2. Fallback to dynamic _SECTOR_MAP (loaded from CSV + yfinance cache)
+    sector = _SECTOR_MAP.get(sym)
+    if sector and sector != "OTHERS":
+        return sector
+    # 3. Name-pattern inference — never display OTHERS
+    s = sym.upper()
+    if any(x in s for x in ["PHARMA", "DRUG", "LAB", "MED", "BIO"]):
+        return "PHARMA"
+    if any(x in s for x in ["BANK", "FIN", "CRED", "LOAN"]):
+        return "FINANCE"
+    if any(x in s for x in ["TECH", "SOFT", "INFO", "DIGIT", "SYST"]):
+        return "IT"
+    if any(x in s for x in ["STEEL", "METAL", "ALUM", "COPP"]):
+        return "METALS"
+    if any(x in s for x in ["POWER", "SOLAR", "WIND", "ENERG"]):
+        return "POWER_EQ"
+    if any(x in s for x in ["INFRA", "CONST", "BUILD", "CEMENT"]):
+        return "INFRA"
+    return "DIVERSIFIED"  # never show OTHERS
 
 
 def enrich_sectors_from_yfinance(symbols: list, max_fetch: int = 500) -> None:
@@ -185,7 +360,8 @@ def enrich_sectors_from_yfinance(symbols: list, max_fetch: int = 500) -> None:
     global _SECTOR_MAP
     unknown = [
         s for s in symbols
-        if _SECTOR_MAP.get(s if s.endswith(".NS") else s + ".NS", "OTHERS") == "OTHERS"
+        if not SECTOR_MAP.get(s if s.endswith(".NS") else s + ".NS")
+        and _SECTOR_MAP.get(s if s.endswith(".NS") else s + ".NS", "OTHERS") == "OTHERS"
     ]
     if not unknown:
         _log(f"  Sector map: {len(_SECTOR_MAP)} symbols — fully covered")
@@ -2363,7 +2539,6 @@ def price_action_score(closes: np.ndarray, highs: np.ndarray,
         tight_consol = (
             tight_range_pct < 2.5
             and closes[-1] > ema20
-            and float(np.mean(volumes := np.array([1]))) >= 0   # placeholder, no vol needed
         )
         if tight_range_pct < 2.5 and closes[-1] > ema20:
             return 80, "TIGHT_CONSOLIDATION"
@@ -2939,32 +3114,91 @@ def correlation_check(symbol: str, holdings: list, returns_cache: dict,
 
 def calculate_watchlist_levels(stock: dict) -> dict:
     """
-    Extract or recompute entry/stop/target/rr/risk_pct from a scored stock dict.
-    Always returns valid floats — never crashes.
+    ATR-based entry/stop/target levels (FIX 2).
+    Uses existing scored values when present; recomputes via yfinance ATR when missing.
+    Returns valid floats — never crashes.
     """
+    symbol  = stock.get("symbol", "")
     entry   = float(stock.get("entry",   0) or 0)
     stop    = float(stock.get("stop",    0) or 0)
     target1 = float(stock.get("target1", 0) or 0)
     target2 = float(stock.get("target2", 0) or 0)
     current = float(stock.get("price",   0) or entry)
 
-    rr = 0.0
-    if entry > 0 and stop > 0 and entry > stop and target1 > entry:
-        rr = round((target1 - entry) / (entry - stop), 2)
-
-    risk_pct = 0.0
-    if entry > 0 and stop > 0:
+    # If levels already computed and valid, just compute rr/risk_pct
+    if entry > 0 and stop > 0 and target1 > entry:
         risk_pct = round((entry - stop) / entry * 100, 1)
+        rr = round((target1 - entry) / (entry - stop), 2) if entry > stop else 0.0
+        return {
+            "entry": entry, "stop": stop, "target1": target1, "target2": target2,
+            "rr": rr, "risk_pct": risk_pct, "current": current,
+        }
 
-    return {
-        "entry":    entry,
-        "stop":     stop,
-        "target1":  target1,
-        "target2":  target2,
-        "rr":       rr,
-        "risk_pct": risk_pct,
-        "current":  current,
-    }
+    # Fetch via yfinance and compute ATR-based levels (FIX 2 — swing-low stop, ATR targets)
+    try:
+        df = yf.download(symbol, period="3mo", interval="1d",
+                         progress=False, auto_adjust=True)
+        if df is None or len(df) < 20:
+            return {"entry": entry, "stop": stop, "target1": target1,
+                    "target2": target2, "rr": 0.0, "risk_pct": 0.0, "current": current}
+
+        close = df["Close"].values.flatten().astype(float)
+        high  = df["High"].values.flatten().astype(float)
+        low   = df["Low"].values.flatten().astype(float)
+        vol   = df["Volume"].values.flatten().astype(float)
+
+        current = round(float(close[-1]), 2)
+        entry   = round(current * 1.003, 2)
+
+        # True ATR over last 14 days
+        tr_list = []
+        for i in range(1, min(15, len(close))):
+            tr = max(
+                float(high[-i]) - float(low[-i]),
+                abs(float(high[-i]) - float(close[-i-1])),
+                abs(float(low[-i])  - float(close[-i-1]))
+            )
+            tr_list.append(tr)
+        atr = float(np.mean(tr_list)) if tr_list else current * 0.03
+
+        # STOP: 10-day swing low with 0.5% buffer
+        swing_low = float(np.min(low[-10:]))
+        stop = round(swing_low * 0.995, 2)
+
+        # Enforce bounds: 2% min, 10% max
+        risk_raw = (entry - stop) / entry * 100
+        if risk_raw < 2.0:
+            stop = round(entry * 0.97, 2)
+        elif risk_raw > 10.0:
+            stop = round(entry * 0.90, 2)
+
+        risk     = entry - stop
+        risk_pct = round(risk / entry * 100, 1)
+
+        # TARGETS: 2.5x and 4.5x ATR — better R/R than hardcoded 8-12%
+        target1 = round(entry + atr * 2.5, 2)
+        target2 = round(entry + atr * 4.5, 2)
+
+        # Ensure minimum 1.5x R/R
+        if (target2 - entry) < (risk * 1.5):
+            target2 = round(entry + risk * 1.5, 2)
+        target1 = round((entry + target2) / 2, 2)
+
+        reward = target2 - entry
+        rr     = round(reward / risk, 2) if risk > 0 else 0.0
+
+        return {
+            "entry": entry, "stop": stop, "target1": target1, "target2": target2,
+            "rr": rr, "risk_pct": risk_pct, "current": current,
+        }
+    except Exception:
+        # Graceful fallback to whatever values exist
+        risk_pct = round((entry - stop) / entry * 100, 1) if entry > stop > 0 else 0.0
+        rr = round((target1 - entry) / (entry - stop), 2) if entry > stop > 0 and target1 > entry else 0.0
+        return {
+            "entry": entry, "stop": stop, "target1": target1, "target2": target2,
+            "rr": rr, "risk_pct": risk_pct, "current": current,
+        }
 
 
 def classify_watchlist(stock: dict, regime: str, thresholds: dict) -> dict:
@@ -3410,60 +3644,118 @@ def initialize_tracker_if_new() -> dict:
 
 def update_tracker_v2_pnl(tracker: dict) -> dict:
     """
-    Updates pnl_history and days_tracked for each active buy position.
-    Updates days_watching for each watchlist entry. Does not close positions.
+    Full daily update for tracker v2 (FIX 3):
+    - Fetches live prices for every active position
+    - Handles STOP_HIT, T1_HIT, T2_HIT, EXPIRED closings
+    - Updates watchlist direction arrows and fills missing levels
+    - Recalculates performance stats block
     """
     today_str = datetime.date.today().isoformat()
+
+    def _get_price(sym: str) -> float:
+        try:
+            df = fetch_price_data(sym, period="2d")
+            if df is not None and len(df) > 0:
+                return round(float(df["Close"].squeeze().iloc[-1]), 2)
+        except Exception:
+            pass
+        return 0.0
+
+    # ── Update active buy positions ──
+    still_active = []
     for pos in tracker.get("buys", []):
-        if pos.get("status") != "ACTIVE":
+        if pos.get("status") not in ("ACTIVE", "T1_HIT"):
+            tracker.setdefault("completed", []).append(pos)
             continue
         try:
-            df = fetch_price_data(pos["symbol"], period="1d")
-            if df is None or len(df) == 0:
-                continue
-            cur_px = round(float(df["Close"].squeeze().iloc[-1]), 2)
+            cur_px = _get_price(pos["symbol"]) or float(pos.get("entry", 0) or 0)
             entry  = float(pos.get("entry", cur_px) or cur_px)
             pnl    = round((cur_px - entry) / entry * 100, 2) if entry > 0 else 0.0
-            hist   = pos.setdefault("pnl_history", [])
-            if not hist or hist[-1].get("date") != today_str:
-                hist.append({"date": today_str, "price": cur_px, "pnl": pnl})
             pos["days_tracked"] = (
                 datetime.date.today() -
                 datetime.date.fromisoformat(pos.get("rec_date", today_str))
             ).days + 1
-        except Exception as e:
-            _log(f"[WARN] update_tracker_v2_pnl failed for {pos.get('symbol')}: {e}")
+            hist = pos.setdefault("pnl_history", [])
+            if not hist or hist[-1].get("date") != today_str:
+                hist.append({"date": today_str, "price": cur_px, "pnl": pnl})
 
+            stop = float(pos.get("stop", 0) or 0)
+            t1   = float(pos.get("target1", 0) or 0)
+            t2   = float(pos.get("target2", 0) or 0)
+            days = pos.get("days_tracked", 0)
+
+            if stop > 0 and cur_px <= stop:
+                pos.update({"status": "STOPPED_OUT", "stop_hit_date": today_str, "final_pnl": pnl})
+                tracker["completed"].append(pos)
+            elif t2 > 0 and cur_px >= t2:
+                pos.update({"status": "T2_HIT", "t2_hit_date": today_str, "final_pnl": pnl})
+                tracker["completed"].append(pos)
+            elif t1 > 0 and cur_px >= t1 and pos.get("status") == "ACTIVE":
+                pos["status"] = "T1_HIT"
+                pos["t1_hit_date"] = today_str
+                still_active.append(pos)
+            elif days >= 15 and t1 > 0 and cur_px < t1:
+                pos.update({"status": "EXPIRED", "final_pnl": pnl})
+                tracker["completed"].append(pos)
+            else:
+                still_active.append(pos)
+        except Exception as e:
+            _log(f"[WARN] update_tracker_v2_pnl buy update failed for {pos.get('symbol')}: {e}")
+            still_active.append(pos)
+    tracker["buys"] = still_active
+
+    # ── Update watchlist entries ──
+    still_watching = []
     for w in tracker.get("watchlist", []):
         try:
-            w["days_watching"] = (
+            days = (
                 datetime.date.today() -
                 datetime.date.fromisoformat(w.get("rec_date", today_str))
             ).days + 1
-            # Always fetch current price — even for seeded stocks with no prior price
-            df = fetch_price_data(w["symbol"], period="1d")
-            if df is not None and len(df) > 0:
-                cur = round(float(df["Close"].squeeze().iloc[-1]), 2)
+            w["days_watching"] = days
+            if days > 14:
+                w["status"] = "EXPIRED"
+                continue
+
+            cur = _get_price(w["symbol"])
+            if cur:
                 w["current_price"] = cur
-                # If entry is missing (seeded stock), use current as proxy
+                # Fill missing levels for seeded watchlist stocks
                 entry = float(w.get("entry", 0) or 0)
                 if entry <= 0:
-                    entry = cur
-                    w["entry"] = entry
-                # Calculate direction vs entry
-                if entry > 0 and cur > 0:
-                    move_pct = round((cur - entry) / entry * 100, 1)
-                    if move_pct >= 0:
-                        w["direction"] = f"\u2191 {move_pct:.1f}% above entry"
-                    else:
-                        w["direction"] = f"\u2193 {abs(move_pct):.1f}% below entry"
+                    lvl = calculate_watchlist_levels(w)
+                    for k in ("entry", "stop", "target1", "target2", "rr"):
+                        w[k] = lvl.get(k, 0)
+                    entry = w.get("entry", 0) or cur
+
+                if entry > 0:
+                    move = round((cur - entry) / entry * 100, 1)
+                    w["direction"] = (
+                        f"\u2191 {move:.1f}% above entry" if move >= 0
+                        else f"\u2193 {abs(move):.1f}% below entry"
+                    )
                 else:
-                    w["direction"] = "\u2014"
+                    w.setdefault("direction", "\u2014")
             else:
                 w.setdefault("direction", "\u2014")
+            still_watching.append(w)
         except Exception:
             w.setdefault("direction", "\u2014")
+            still_watching.append(w)
+    tracker["watchlist"] = still_watching
 
+    # ── Recalculate performance stats ──
+    completed = tracker.get("completed", [])
+    wins   = [t for t in completed if float(t.get("final_pnl", 0) or 0) > 0]
+    losses = [t for t in completed if float(t.get("final_pnl", 0) or 0) <= 0]
+    tracker["performance"] = {
+        "completed":  len(completed),
+        "active":     len(tracker["buys"]),
+        "win_rate":   round(len(wins) / len(completed) * 100, 1) if completed else 0,
+        "avg_win":    round(sum(float(t.get("final_pnl", 0) or 0) for t in wins) / len(wins), 2) if wins else 0,
+        "avg_loss":   round(sum(float(t.get("final_pnl", 0) or 0) for t in losses) / len(losses), 2) if losses else 0,
+        "last_updated": today_str,
+    }
     return tracker
 
 
@@ -3542,6 +3834,385 @@ def format_tracker_for_telegram(tracker: dict) -> str:
     return "\n".join(lines)
 
 
+def format_confidence_breakdown(factor_scores: dict, final_conf: float) -> list:
+    """Returns lines showing what drove the confidence score (ENHANCEMENT 2)."""
+    FACTOR_DISPLAY = [
+        ("trend_quality",    "Trend",     18),
+        ("momentum_quality", "Momentum",  14),
+        ("volume_delivery",  "Volume",    10),
+        ("sector_strength",  "Sector",    15),
+        ("rs_vs_nifty",      "Rel Str",   15),
+        ("news_risk",        "News",       8),
+        ("risk_reward",      "R/R",        7),
+        ("ownership_quality","Ownership",  6),
+        ("options_sentiment","Options",    4),
+        ("macro_alignment",  "Macro",      3),
+    ]
+    lines = [f"     Confidence {final_conf:.1f} breakdown:"]
+    fs = factor_scores or {}
+    for key, label, weight in FACTOR_DISPLAY:
+        score  = float(fs.get(key, 50) or 50)
+        contrib = round(score * weight / 100, 1)
+        filled = int(score / 10)
+        bar    = "█" * filled + "░" * (10 - filled)
+        lines.append(f"     {label:<12} {bar} {score:.0f}/100 → {contrib:.1f}pts")
+    return lines
+
+
+def format_near_miss_failures(stock: dict, thresh: dict) -> list:
+    """Shows exactly what passed/failed for each near miss (ENHANCEMENT 3)."""
+    conf = float(stock.get("final_confidence", 0) or 0)
+    tq   = float(stock.get("trade_quality_score", 0) or 0)
+    rr   = float(stock.get("rr_ratio", 0) or stock.get("rr", 0) or 0)
+    opp  = float(stock.get("opportunity_score", 0) or 0)
+    lines = [f"     Opp Score: {opp:.1f} | Failed Checks:"]
+    min_c = thresh.get("min_confidence", 80)
+    min_t = thresh.get("min_tq", 78)
+    min_r = thresh.get("min_rr", 2.0)
+    if conf >= min_c:
+        lines.append(f"     ✓ Confidence {conf:.1f} — PASSED")
+    else:
+        lines.append(f"     ✗ Confidence {conf:.1f} — need +{min_c - conf:.1f}")
+    if tq >= min_t:
+        lines.append(f"     ✓ TQ {tq:.1f} — PASSED")
+    else:
+        lines.append(f"     ✗ TQ {tq:.1f} — need +{min_t - tq:.1f}")
+    if rr >= min_r:
+        lines.append(f"     ✓ R/R {rr:.2f}x — PASSED")
+    else:
+        lines.append(f"     ✗ R/R {rr:.2f}x — need +{min_r - rr:.2f}x")
+    lines.append("     → Improve by: volume surge or price consolidation above entry")
+    return lines
+
+
+def format_conviction_meter(regime_score: float, breadth: float,
+                             fii: float, dii: float) -> list:
+    """Visual conviction bar (ENHANCEMENT 4)."""
+    try:
+        combined_flow = fii + dii
+        conviction = round(
+            regime_score * 0.5 +
+            breadth * 0.3 +
+            min(100, max(0, 50 + combined_flow / 200)) * 0.2
+        , 1)
+        filled = int(conviction / 10)
+        bar    = "█" * filled + "░" * (10 - filled)
+        if conviction >= 75:   label = "🟢 Strong Buying Environment"
+        elif conviction >= 55: label = "🟡 Moderate — Selective Only"
+        elif conviction >= 40: label = "🟠 Weak — Caution Required"
+        else:                  label = "🔴 Poor — Avoid New Positions"
+        return [
+            f"  Market Conviction: [{bar}] {conviction:.0f}%",
+            f"  {label}",
+        ]
+    except Exception:
+        return []
+
+
+def format_risk_meter(nifty_close: float, ema20: float, ema50: float,
+                       ema200: float, vix_in: float, breadth: float) -> list:
+    """Shows current market risk level with reasons (ENHANCEMENT 4)."""
+    try:
+        risk_factors = []
+        risk_score   = 0
+        if nifty_close > 0 and ema20 > 0:
+            if nifty_close < ema20:
+                risk_factors.append("✗ Below EMA20");   risk_score += 25
+            else:
+                risk_factors.append("✓ Above EMA20")
+        if nifty_close > 0 and ema50 > 0:
+            if nifty_close < ema50:
+                risk_factors.append("✗ Below EMA50");   risk_score += 25
+            else:
+                risk_factors.append("✓ Above EMA50")
+        if nifty_close > 0 and ema200 > 0:
+            if nifty_close < ema200:
+                risk_factors.append("✗ Below EMA200");  risk_score += 25
+            else:
+                risk_factors.append("✓ Above EMA200")
+        if vix_in > 20:
+            risk_factors.append(f"✗ VIX elevated {vix_in:.1f}"); risk_score += 15
+        else:
+            risk_factors.append(f"✓ VIX normal {vix_in:.1f}")
+        if breadth < 40:
+            risk_factors.append(f"✗ Weak breadth {breadth:.0f}%"); risk_score += 10
+        else:
+            risk_factors.append(f"✓ Breadth ok {breadth:.0f}%")
+        if risk_score >= 75:   risk_label = "🔴 EXTREME"
+        elif risk_score >= 50: risk_label = "🟠 HIGH"
+        elif risk_score >= 25: risk_label = "🟡 MEDIUM"
+        else:                  risk_label = "🟢 LOW"
+        lines = [f"  Market Risk: {risk_label}"]
+        for f in risk_factors:
+            lines.append(f"    {f}")
+        return lines
+    except Exception:
+        return []
+
+
+def format_breadth_dashboard(total_scanned: int, qualified: int,
+                              near_buy: int, developing: int,
+                              monitor: int, rejected: int,
+                              yesterday: dict = None) -> list:
+    """Universe breadth stats with delta arrows (ENHANCEMENT 5)."""
+    lines = ["  Market Breadth:"]
+    stats = [
+        ("Scanned",    total_scanned),
+        ("Qualified",  qualified),
+        ("Near Buy",   near_buy),
+        ("Developing", developing),
+        ("Monitor",    monitor),
+        ("Rejected",   rejected),
+    ]
+    for label, val in stats:
+        if yesterday:
+            prev  = yesterday.get(label.lower().replace(" ", "_"), val)
+            delta = val - prev
+            arrow = f" ▲+{delta}" if delta > 0 else (f" ▼{delta}" if delta < 0 else " →")
+        else:
+            arrow = ""
+        lines.append(f"    {label:<12} {val:>6}{arrow}")
+    return lines
+
+
+def format_buy_card(stock: dict, sizing: dict, regime: str) -> list:
+    """Enhanced BUY card with thesis, catalysts, and confidence breakdown (ENHANCEMENT 6)."""
+    try:
+        opp    = float(stock.get("opportunity_score", 0) or 0)
+        conf   = float(stock.get("final_confidence", 0) or 0)
+        tq     = float(stock.get("trade_quality_score", 0) or 0)
+        rr     = float(stock.get("rr_ratio", 0) or 0)
+        sector = get_sector(stock.get("symbol", ""))
+        cats   = stock.get("catalysts", []) or []
+
+        # Conviction icon
+        if opp >= 85:   icon = "🔥"
+        elif opp >= 75: icon = "⚡"
+        else:           icon = "📈"
+
+        # One-line thesis
+        fs    = stock.get("factor_scores", {}) or {}
+        trend_s = float(fs.get("trend_quality", 0) or 0)
+        rs_s    = float(fs.get("rs_vs_nifty", 0) or 0)
+        thesis_parts = []
+        if trend_s > 70:              thesis_parts.append("strong uptrend")
+        if rs_s > 70:                 thesis_parts.append("outperforming NIFTY")
+        if "VOL_SURGE" in cats:       thesis_parts.append("volume expansion")
+        if "NEAR_52W_HIGH" in cats:   thesis_parts.append("near 52W high breakout")
+        thesis = ", ".join(thesis_parts) if thesis_parts else "multi-factor confluence"
+
+        sym     = html.escape(str(stock.get("symbol", "")))
+        entry   = stock.get("entry", 0)
+        stop_p  = stock.get("stop", 0)
+        t1      = stock.get("target1", 0)
+        t2      = stock.get("target2", 0)
+        risk_p  = round((entry - stop_p) / entry * 100, 1) if entry > 0 else 0
+        pos_val = sizing.get("position_value", stock.get("position_value", 0))
+        pos_pct = sizing.get("position_pct", stock.get("position_pct", 0))
+        shares  = sizing.get("shares", stock.get("shares", 0))
+        max_loss= sizing.get("max_loss", stock.get("max_loss", 0))
+        news    = truncate_display(stock.get("news_summary", ""), 120)
+
+        lines = [
+            f"  {icon} <b>{sym}</b> [{html.escape(str(sector))}]",
+            f"     Opp Score: {opp:.1f} | Conf: {conf:.1f} | TQ: {tq:.1f} | R/R: {rr:.2f}x",
+            f"     Entry  Rs{entry:.2f} | Stop Rs{stop_p:.2f} ({risk_p:.1f}%)",
+            f"     T1     Rs{t1:.2f} | T2 Rs{t2:.2f}",
+            f"     Size   Rs{pos_val:,.0f} ({pos_pct:.1f}%) | Shares {shares} | MaxLoss Rs{max_loss:,.0f}",
+            f"     ROE {stock.get('roe', 0):.1f}% | D/E {stock.get('de_ratio', 0):.2f} | Pledge {stock.get('promoter_pledge_pct', 0):.0f}%",
+            f"     Thesis: {html.escape(str(thesis))}",
+        ]
+        if cats:
+            lines.append(f"     Catalysts: {html.escape(' | '.join(str(c) for c in cats))}")
+        if news and news != "—":
+            lines.append(f"     News: {html.escape(str(news))}")
+        # Confidence breakdown
+        lines += format_confidence_breakdown(fs, conf)
+        return lines
+    except Exception:
+        return [f"  📈 <b>{html.escape(str(stock.get('symbol', '?')))}</b>"]
+
+
+def format_portfolio_card(alert: dict, current_price: float) -> list:
+    """Enhanced portfolio card with Hold Score, R-multiple, ATR stop (ENHANCEMENT 7)."""
+    try:
+        symbol = str(alert.get("symbol", ""))
+        entry  = float(alert.get("entry", 0) or 0)
+        stop   = float(alert.get("stop_loss", alert.get("stop", 0)) or 0)
+        t1     = float(alert.get("target1", 0) or 0)
+        t2     = float(alert.get("target2", 0) or 0)
+        days   = int(alert.get("days_held", 0) or 0)
+        pnl_p  = float(alert.get("pnl_pct", 0) or 0)
+        action = str(alert.get("action", "HOLD"))
+
+        risk_per_share = entry - stop
+        gain_per_share = current_price - entry
+        r_multiple = round(gain_per_share / risk_per_share, 2) if risk_per_share > 0 else 0.0
+
+        # ATR-based trailing stop
+        try:
+            df = yf.download(symbol, period="1mo", interval="1d",
+                             progress=False, auto_adjust=True)
+            if df is not None and len(df) >= 14:
+                atr = float(np.mean(df["High"].values[-14:] - df["Low"].values[-14:]))
+                atr_stop = round(current_price - atr * 2, 2)
+            else:
+                atr_stop = stop
+        except Exception:
+            atr_stop = stop
+
+        remaining_upside = round((t2 - current_price) / current_price * 100, 1) if t2 > current_price else 0.0
+        dist_stop = round((current_price - max(stop, atr_stop)) / current_price * 100, 1) if current_price > 0 else 0.0
+
+        hold_score = 50
+        if pnl_p > 0:              hold_score += 20
+        if r_multiple > 1:         hold_score += 15
+        if days < 15:              hold_score += 10
+        if remaining_upside > 5:   hold_score += 5
+        hold_score = min(100, hold_score)
+
+        action_icon = {"HOLD": "✅", "EXIT": "🔴", "EXIT_FULL": "🔴",
+                       "TRAIL_STOP": "🟡", "REVIEW": "🟠"}.get(action, "✅")
+
+        return [
+            f"  {action_icon} <b>{html.escape(symbol)}</b> | {action} | Day {days}",
+            f"     Entry Rs{entry:.2f} → Now Rs{current_price:.2f} | PnL {pnl_p:+.1f}% | {r_multiple:+.2f}R",
+            f"     Hold Score: {hold_score}/100 | Remaining Upside: {remaining_upside:.1f}%",
+            f"     Stop Rs{stop:.2f} | ATR Stop Rs{atr_stop:.2f} | Distance: {dist_stop:.1f}%",
+            f"     T1 Rs{t1:.2f} | T2 Rs{t2:.2f} | Review in: {max(0, 15 - days)} days",
+        ]
+    except Exception:
+        return [f"  ✅ <b>{html.escape(str(alert.get('symbol', '?')))}</b>"]
+
+
+def format_portfolio_dashboard(alerts: list, current_prices: dict,
+                                total_capital: float) -> list:
+    """Portfolio health summary with sector allocation (ENHANCEMENT 8)."""
+    try:
+        if not alerts:
+            return ["  No active holdings."]
+        qty_known = [a for a in alerts if a.get("quantity", 0) > 0]
+        total_invested = sum(
+            float(a.get("entry", 0)) * float(a.get("quantity", 0))
+            for a in qty_known
+        )
+        total_current = sum(
+            current_prices.get(a["symbol"], float(a.get("entry", 0))) *
+            float(a.get("quantity", 0))
+            for a in qty_known
+        )
+        total_pnl_pct = round((total_current - total_invested) / total_invested * 100, 2) \
+                        if total_invested > 0 else 0.0
+        exposure_pct  = round(total_invested / total_capital * 100, 1) if total_capital > 0 else 0.0
+        cash_pct      = round(100 - exposure_pct, 1)
+
+        sector_exp: dict = {}
+        for a in qty_known:
+            s   = get_sector(a.get("symbol", ""))
+            val = float(a.get("entry", 0)) * float(a.get("quantity", 0))
+            sector_exp[s] = sector_exp.get(s, 0) + val
+
+        lines = [
+            "  💼 Portfolio Health Dashboard",
+            f"    Invested:  Rs{total_invested:,.0f} ({exposure_pct:.1f}%)",
+            f"    Current:   Rs{total_current:,.0f} | PnL {total_pnl_pct:+.2f}%",
+            f"    Cash:      {cash_pct:.1f}% available",
+            f"    Positions: {len(alerts)}",
+        ]
+        if sector_exp:
+            lines.append("    Sector Allocation:")
+            for sec, val in sorted(sector_exp.items(), key=lambda x: -x[1]):
+                pct = round(val / total_capital * 100, 1) if total_capital > 0 else 0.0
+                lines.append(f"      {html.escape(sec):<16} {pct:.1f}%")
+        return lines
+    except Exception:
+        return ["  💼 Portfolio Health Dashboard (unavailable)"]
+
+
+def format_daily_summary(regime: str, buys: list, watchlist: list,
+                          portfolio_alerts: list, macro: dict,
+                          breadth: float) -> list:
+    """Executive briefing at end of Telegram report (ENHANCEMENT 9)."""
+    try:
+        near_miss_count = len([w for w in watchlist if w.get("tier") == "NEAR_MISS"])
+        exits = [a for a in portfolio_alerts if "EXIT" in str(a.get("action", ""))]
+        lines = ["", "📋 DAILY SUMMARY"]
+
+        if regime in ("STRONG_BULL", "BULL"):
+            lines.append("  Market is in a bullish phase with broad participation.")
+        elif regime == "TRANSITION":
+            lines.append("  Market is in transition — mixed signals, no clear direction.")
+        elif regime == "SIDEWAYS":
+            lines.append("  Market is range-bound. Patience required.")
+        else:
+            lines.append("  Market is in a bearish phase. Preserve capital.")
+
+        if buys:
+            lines.append(f"  {len(buys)} institutional-quality setup(s) identified today.")
+        else:
+            lines.append("  No institutional-quality setup met all required conditions today.")
+            if near_miss_count > 0:
+                lines.append(f"  {near_miss_count} stock(s) within 8 pts of qualifying — watch closely.")
+
+        nifty_below = macro.get("nifty_below_all_emas", False)
+        if nifty_below:
+            lines.append("  NIFTY trading below all major EMAs — risk remains elevated.")
+        else:
+            lines.append("  NIFTY structure supportive of new positions.")
+
+        if exits:
+            lines.append(f"  ⚠️  {len(exits)} position(s) require immediate exit review.")
+        else:
+            lines.append("  Existing positions on track — no exit action required.")
+
+        if not buys and regime not in ("STRONG_BULL", "BULL"):
+            lines.append("  → Avoid forcing new trades. Quality over quantity.")
+        elif buys:
+            lines.append("  → Execute BUY signal(s) with strict position sizing.")
+
+        return lines
+    except Exception:
+        return ["", "📋 DAILY SUMMARY", "  (unavailable)"]
+
+
+def format_system_snapshot(tracker_v2: dict) -> list:
+    """System performance footer (ENHANCEMENT 10)."""
+    try:
+        tracker = tracker_v2 or {}
+        perf    = tracker.get("performance", {}) or {}
+        active  = tracker.get("buys", []) or []
+        watching = tracker.get("watchlist", []) or []
+
+        open_pnls = []
+        for pos in active:
+            hist = pos.get("pnl_history", [])
+            if hist:
+                open_pnls.append(hist[-1].get("pnl", 0))
+        avg_open_pnl = round(sum(open_pnls) / len(open_pnls), 1) if open_pnls else 0.0
+
+        wr = float(perf.get("win_rate", 0) or 0)
+        if wr >= 60:       health = "🟢 Excellent"
+        elif wr >= 45:     health = "🟡 Good"
+        elif wr >= 35:     health = "🟠 Neutral"
+        elif not perf.get("completed"): health = "⚪ No data yet"
+        else:              health = "🔴 Weak"
+
+        return [
+            "",
+            "📊 SYSTEM PERFORMANCE SNAPSHOT",
+            f"  Active Positions:     {len(active)}",
+            f"  Avg Open Return:      {avg_open_pnl:+.1f}%",
+            f"  Watchlist Tracking:   {len(watching)} stocks",
+            f"  Completed Trades:     {perf.get('completed', 0)}",
+            f"  Win Rate (all-time):  {wr:.1f}%",
+            f"  Avg Win:              {perf.get('avg_win', 0):+.1f}%",
+            f"  Avg Loss:             {perf.get('avg_loss', 0):+.1f}%",
+            f"  Strategy Health:      {health}",
+        ]
+    except Exception:
+        return []
+
+
 def format_watchlist_section(watchlist: list, regime: str) -> list:
     """
     NEAR MISS  — full detail, sorted by R/R descending (fully actionable)
@@ -3559,27 +4230,27 @@ def format_watchlist_section(watchlist: list, regime: str) -> list:
 
     lines = [f"\U0001f441 WATCHLIST \u2014 {len(watchlist)} stocks (threshold {min_conf})"]
 
-    # -- NEAR MISS: full 2-line detail per stock, sorted by R/R ---------
+    # -- NEAR MISS: full detail per stock, sorted by opportunity score then R/R ---------
     if near:
         lines.append(f"  \U0001f534 NEAR MISS ({len(near)} \u2014 within 8 pts of BUY, best R/R first):")
         for w in near:
-            sym     = html.escape(str(w["symbol"]))
-            sector  = html.escape(str(w.get("sector", "OTHERS")))
-            conf    = w.get("conf", w.get("final_confidence", 0))
-            conf_gap = w.get("conf_gap", 0)
-            tq      = w.get("tq", w.get("trade_quality_score", 0))
-            entry   = w.get("entry", 0)
-            stop    = w.get("stop", 0)
-            target1 = w.get("target1", 0)
-            target2 = w.get("target2", 0)
-            rr      = w.get("rr", 0)
-            risk    = w.get("risk_pct", 0)
-            cur     = w.get("current", w.get("price", entry))
-            lines.append(f"    <b>{sym}</b> [{sector}] | Conf {conf:.1f} [gap {conf_gap:.1f}] | TQ {tq:.1f}")
-            lines.append(f"    Entry  Rs{entry:.2f}  (Cur Rs{cur:.1f})")
-            lines.append(f"    Stop   Rs{stop:.2f}  ({risk:.1f}%)")
-            lines.append(f"    T1     Rs{target1:.2f}")
-            lines.append(f"    T2     Rs{target2:.2f}  | R/R {rr:.1f}x")
+            sym      = html.escape(str(w["symbol"]))
+            sector   = html.escape(str(w.get("sector", "DIVERSIFIED")))
+            conf     = w.get("conf", w.get("final_confidence", 0))
+            tq       = w.get("tq", w.get("trade_quality_score", 0))
+            entry    = w.get("entry", 0)
+            stop     = w.get("stop", 0)
+            target1  = w.get("target1", 0)
+            target2  = w.get("target2", 0)
+            rr       = w.get("rr", 0)
+            risk     = w.get("risk_pct", 0)
+            cur      = w.get("current", w.get("price", entry))
+            opp      = w.get("opportunity_score", 0)
+            lines.append(f"    <b>{sym}</b> [{sector}] | Opp {opp:.1f} | Conf {conf:.1f} | TQ {tq:.1f}")
+            lines.append(f"    Entry Rs{entry:.2f} | Stop Rs{stop:.2f} ({risk:.1f}%) | T1 Rs{target1:.2f} | T2 Rs{target2:.2f} | R/R {rr:.1f}x")
+            lines.append(f"    (Cur Rs{cur:.1f})")
+            # Near miss failure breakdown (ENHANCEMENT 3)
+            lines.extend(format_near_miss_failures(w, thresh))
             if w.get("warnings"):
                 lines.append(f"    \u26a0\ufe0f  {html.escape(' | '.join(str(x) for x in w['warnings']))}")
 
@@ -3721,6 +4392,18 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
     fii_dii_line = format_fii_dii(fii_flow, dii_flow)
     lines.append(f"  {fii_dii_line}")
 
+    # ── Market Conviction Meter + Risk Meter ──
+    _kl2 = key_levels or {}
+    lines.extend(format_conviction_meter(score, breadth_20, fii_flow, dii_flow))
+    lines.extend(format_risk_meter(
+        float(_kl2.get("last",   0) or 0),
+        float(_kl2.get("ema20",  0) or 0),
+        float(_kl2.get("ema50",  0) or 0),
+        float(_kl2.get("ema200", 0) or 0),
+        vix_in, breadth_20,
+    ))
+    lines.append("")
+
     lines.append(
         f"  Min Conf {thresh['min_confidence']} | "
         f"Min TQ {thresh['min_tq']} | "
@@ -3775,44 +4458,43 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
             pass
         lines.append("")
 
+    # ── Breadth Dashboard ──
+    _near_c = len([w for w in watchlist if w.get("tier") == "NEAR_MISS"])
+    _dev_c  = len([w for w in watchlist if w.get("tier") == "DEVELOPING"])
+    _mon_c  = len([w for w in watchlist if w.get("tier") == "MONITOR"])
+    _rej_c  = len(rejected_stocks or [])
+    _tot_scanned = len(buys) + len(watchlist) + _rej_c + len(shorts)
+    lines.extend(format_breadth_dashboard(
+        _tot_scanned, len(buys) + len(watchlist),
+        _near_c, _dev_c, _mon_c, _rej_c,
+    ))
+    lines.append("")
+
     # ── BUY Signals (Patch 6 for no-buy case) ──
     lines.append("✅ BUY SIGNALS")
     if buys:
         for b in buys:
-            sym      = b.get("symbol", "?")
-            sector   = b.get("sector", "OTHERS")
-            conf     = b.get("final_confidence", 0)
-            tq       = b.get("trade_quality_score", 0)
-            rr       = b.get("rr_ratio", 0)
-            entry    = b.get("entry", 0)
-            stop_p   = b.get("stop", 0)
-            t1       = b.get("target1", 0)
-            t2       = b.get("target2", 0)
-            pos_val  = b.get("position_value", 0)
-            pos_pct  = b.get("position_pct", 0)
-            stop_pct = round((entry - stop_p) / entry * 100, 1) if entry > 0 else 0
-            news_sum = truncate_display(b.get("news_summary", ""), 90)
-            ai_sum   = truncate_display(b.get("ai_commentary", ""), 90)
-            pledge   = b.get("promoter_pledge_pct", 0)
-            roe      = b.get("roe", 0)
-            de       = b.get("de_ratio", 0)
-            lines.append(f"  <b>{html.escape(str(sym))}</b> [{html.escape(str(sector))}]")
-            lines.append(f"  Conf {conf:.1f} | TQ {tq:.1f} | R/R {rr:.2f}x")
-            lines.append(f"  Entry  Rs{entry:.2f}")
-            lines.append(f"  Stop   Rs{stop_p:.2f}  ({stop_pct:.1f}%)")
-            lines.append(f"  T1     Rs{t1:.2f}")
-            lines.append(f"  T2     Rs{t2:.2f}")
-            gap_check = check_gap_validity(entry, stop_p, t1, rr if rr > 0 else 1.8)
+            sizing = {
+                "position_value": b.get("position_value", 0),
+                "position_pct":   b.get("position_pct", 0),
+                "shares":         b.get("shares", 0),
+                "max_loss":       b.get("max_loss", 0),
+            }
+            lines.extend(format_buy_card(b, sizing, regime))
+            # Gap validity (morning price check)
+            entry  = b.get("entry", 0)
+            stop_p = b.get("stop", 0)
+            t1     = b.get("target1", 0)
+            rr_v   = b.get("rr_ratio", 1.8) or 1.8
+            gap_check = check_gap_validity(entry, stop_p, t1, rr_v)
             max_entry = gap_check.get("max_valid_entry", 0)
             if max_entry > 0 and max_entry > entry:
                 gap_max_pct = round((max_entry - entry) / entry * 100, 1)
                 lines.append(f"  ⚡ Max valid entry: Rs{max_entry:.2f} (+{gap_max_pct:.1f}%)")
                 lines.append(f"     If open > Rs{max_entry:.2f} → SKIP. Wait for pullback.")
-            lines.append(f"  Size   Rs{pos_val:,.0f}  ({pos_pct:.1f}% capital)")
             sizing_method = b.get("sizing_method", "")
             if sizing_method:
                 lines.append(f"  Sizing: {html.escape(str(sizing_method))}")
-            lines.append(f"  ROE {roe:.1f}% | D/E {de:.2f} | Pledge {pledge:.0f}%")
             rs_diff = b.get("rs_diff21", 0)
             lines.append(f"  RS vs Nifty (21d): {rs_diff:+.1f}%")
             weekly_ok = b.get("weekly_trend_ok", True)
@@ -3824,8 +4506,7 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
             accum = b.get("accum_signal", "NEUTRAL")
             if accum != "NEUTRAL":
                 lines.append(f"  Volume: {html.escape(str(accum))}")
-            if news_sum and news_sum != "—":
-                lines.append(f"  News: {html.escape(str(news_sum))}")
+            ai_sum = truncate_display(b.get("ai_commentary", ""), 90)
             if ai_sum and ai_sum != "—":
                 lines.append(f"  AI: {html.escape(str(ai_sum))}")
             if b.get("repeat_tag"):
@@ -3863,50 +4544,36 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
     holds   = [a for a in portfolio_alerts if a["action"] == "HOLD"]
     lines.append("📁 PORTFOLIO")
     if portfolio_alerts:
-        # ── Summary totals (only when quantity is known) ──
-        qty_known = [a for a in portfolio_alerts if a.get("quantity", 0) > 0]
-        if qty_known:
-            total_invested = sum(a["invested"] for a in qty_known)
-            total_cur_val  = sum(a["cur_val"]  for a in qty_known)
-            total_pnl_abs  = sum(a["pnl_abs"]  for a in qty_known)
-            total_pnl_pct  = round(total_pnl_abs / total_invested * 100, 2) if total_invested > 0 else 0.0
-            pnl_emoji      = "🟢" if total_pnl_abs >= 0 else "🔴"
-            lines.append(
-                f"  {pnl_emoji} Invested Rs{total_invested:,.0f} | "
-                f"Now Rs{total_cur_val:,.0f} | "
-                f"PnL Rs{total_pnl_abs:+,.0f} ({total_pnl_pct:+.2f}%)"
-            )
-            lines.append(f"  Positions: {len(portfolio_alerts)} | Actionable: {len(exits)+len(trails)+len(reviews)}")
-        else:
-            lines.append("  (Add \"quantity\" to portfolio.json to see invested amounts)")
+        # Portfolio health dashboard (ENHANCEMENT 8)
+        _cur_prices_port = {a["symbol"]: float(a.get("current", a.get("entry", 0)) or 0)
+                            for a in portfolio_alerts}
+        lines.extend(format_portfolio_dashboard(portfolio_alerts, _cur_prices_port, PORTFOLIO_CAPITAL))
+        lines.append("")
 
-        def _fmt_holding(a: dict) -> str:
-            sym   = html.escape(str(a["symbol"]))
-            qty   = a.get("quantity", 0)
-            entry = a.get("entry", 0)
-            cur   = a.get("current", 0)
-            pnl_p = a["pnl_pct"]
-            if qty > 0:
-                return (f"    {sym} | {qty:.0f}sh @ Rs{entry:.2f} → Rs{cur:.2f} | "
-                        f"PnL Rs{a['pnl_abs']:+,.0f} ({pnl_p:+.1f}%) | Day {a.get('days_held',0)}")
-            return f"    {sym} | Rs{entry:.2f} → Rs{cur:.2f} | PnL {pnl_p:+.1f}% | Day {a.get('days_held',0)}"
+        def _fmt_alert_card(a: dict) -> list:
+            cur = float(a.get("current", a.get("entry", 0)) or 0)
+            card = format_portfolio_card(a, cur)
+            # Append exit reason if relevant
+            if a.get("reason") and a["action"] not in ("HOLD",):
+                card.append(f"     Reason: {html.escape(str(a['reason']))}")
+            return card
 
         if exits:
             lines.append("  🚨 EXIT:")
             for e in exits:
-                lines.append(_fmt_holding(e) + f" | {html.escape(str(e['reason']))}")
+                lines.extend(_fmt_alert_card(e))
         if trails:
             lines.append("  ⚡ TRAIL STOP (T1 hit):")
             for t in trails:
-                lines.append(_fmt_holding(t))
+                lines.extend(_fmt_alert_card(t))
         if reviews:
             lines.append("  🔍 REVIEW:")
             for r in reviews:
-                lines.append(_fmt_holding(r) + f" | {html.escape(str(r['reason']))}")
+                lines.extend(_fmt_alert_card(r))
         if holds:
             lines.append("  ✅ HOLD:")
             for h in holds[:6]:
-                lines.append(_fmt_holding(h))
+                lines.extend(_fmt_alert_card(h))
     else:
         lines.append("  No active holdings.")
     lines.append("")
@@ -3918,11 +4585,127 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
             lines.append(f"  {html.escape(str(ev))}")
         lines.append("")
 
+    # ── Trade Tracker V2 ──
+    if tracker_v2:
+        tracker_section = format_tracker_for_telegram(tracker_v2)
+        if tracker_section:
+            lines.append("")
+            lines.append(tracker_section)
+
+    # ── System Performance Snapshot ──
+    lines.extend(format_system_snapshot(tracker_v2))
+
+    # ── Daily Summary (executive briefing) ──
+    lines.extend(format_daily_summary(
+        regime, buys, watchlist, portfolio_alerts, macro, breadth_20
+    ))
+
     # ── Footer ──
+    lines.append("")
     lines.append("─" * 40)
     lines.append("⚠️  Recommendation only. Execute manually.")
     lines.append("═" * 40)
     return "\n".join(lines)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 10b — EXCEL RECOMMENDATION TRACKER (PART C)
+# ─────────────────────────────────────────────────────────────────────────────
+
+TRACKER_XLSX = "recommendation_tracker.xlsx"
+
+
+def _create_excel_workbook():
+    """Create recommendation_tracker.xlsx with all required sheets."""
+    try:
+        import openpyxl
+        from openpyxl.styles import PatternFill, Font
+        wb = openpyxl.Workbook()
+
+        ws1 = wb.active
+        ws1.title = "Recommendations"
+        ws1.append([
+            "Date", "Ticker", "Company", "Category", "Opp Score", "Confidence", "TQ",
+            "R/R", "Entry", "Stop", "T1", "T2", "Sector", "Regime", "Pledge%", "ROE",
+            "D/E", "Catalysts", "Fail Reasons", "Status"
+        ])
+
+        ws2 = wb.create_sheet("Daily Tracking")
+        ws2.append([
+            "Tracking Date", "Ticker", "Rec Date", "Day#", "Close", "High", "Low",
+            "Volume", "Return%", "Max Gain%", "Max DD%", "T1 Hit", "T2 Hit",
+            "Stop Hit", "Remaining Upside%", "Holding Days", "Status"
+        ])
+
+        ws3 = wb.create_sheet("Performance Summary")
+        ws3.append(["Metric", "Value"])
+
+        for name in ["Confidence Analysis", "TQ Analysis", "Opp Score Analysis",
+                     "Sector Analysis", "Regime Analysis", "Monthly Report"]:
+            wb.create_sheet(name)
+
+        return wb
+    except ImportError:
+        return None
+    except Exception:
+        return None
+
+
+def save_recommendations_to_excel(buys: list, watchlist: list,
+                                   regime_data: dict, today_str: str) -> None:
+    """
+    Appends today's recommendations to recommendation_tracker.xlsx.
+    Creates file with all sheets if it doesn't exist. Never overwrites existing rows.
+    """
+    try:
+        import openpyxl
+    except ImportError:
+        _log("[WARN] openpyxl not installed — skipping Excel save. Run: pip install openpyxl")
+        return
+    try:
+        if os.path.exists(TRACKER_XLSX):
+            wb = openpyxl.load_workbook(TRACKER_XLSX)
+        else:
+            wb = _create_excel_workbook()
+            if wb is None:
+                return
+
+        ws = wb["Recommendations"]
+        all_stocks = (
+            [(s, "BUY") for s in buys] +
+            [(s, s.get("tier", "WATCHLIST")) for s in watchlist]
+        )
+
+        for stock, category in all_stocks:
+            symbol = stock.get("symbol", "")
+            ws.append([
+                today_str,
+                symbol,
+                symbol.replace(".NS", ""),
+                category,
+                stock.get("opportunity_score", 0),
+                stock.get("final_confidence", 0),
+                stock.get("trade_quality_score", 0),
+                stock.get("rr_ratio", stock.get("rr", 0)),
+                stock.get("entry", 0),
+                stock.get("stop", 0),
+                stock.get("target1", 0),
+                stock.get("target2", 0),
+                get_sector(symbol),
+                regime_data.get("regime", ""),
+                stock.get("promoter_pledge_pct", 0),
+                stock.get("roe", 0),
+                stock.get("de_ratio", 0),
+                ", ".join(stock.get("catalysts", []) or []),
+                ", ".join(stock.get("fail_reasons", []) or []),
+                "ACTIVE",
+            ])
+
+        wb.save(TRACKER_XLSX)
+        _log(f"[INFO] Saved {len(all_stocks)} recommendations to {TRACKER_XLSX}")
+
+    except Exception as e:
+        _log(f"[WARN] Excel save failed: {e}")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -4124,6 +4907,11 @@ def _run_pipeline_inner():
         )
     top_40.sort(key=lambda x: x["final_confidence"], reverse=True)
 
+    # ── 11b. Opportunity scores (ENHANCEMENT 1) ──
+    for stock in top_40:
+        stock["opportunity_score"] = compute_opportunity_score(stock)
+    top_40.sort(key=lambda x: x["opportunity_score"], reverse=True)
+
     # ── 12. Portfolio monitoring ──
     _log("[12/18] Monitoring portfolio...")
     holdings       = load_portfolio()
@@ -4142,6 +4930,12 @@ def _run_pipeline_inner():
     # ── 13. Load tracker (before gates — needed for deduplication) ──
     _log("[13/18] Loading trade tracker...")
     tracker_entries = load_tracker()
+
+    # ── 13b. Tracker V2 — load, update PnL, close completed positions ──
+    tracker_v2 = initialize_tracker_if_new()
+    tracker_v2 = update_tracker_v2_pnl(tracker_v2)
+    save_tracker_v2(tracker_v2)
+    _log(f"  Tracker V2: {len(tracker_v2.get('buys',[]))} active | {len(tracker_v2.get('watchlist',[]))} watching | {tracker_v2.get('performance',{}).get('completed',0)} completed")
 
     # ── 13b. Upcoming events (needed by Gate 13 before gate system runs) ──
     upcoming_events = get_upcoming_events(lookahead_days=7)
@@ -4201,6 +4995,13 @@ def _run_pipeline_inner():
 
     _log(f"  Gate results: {len(buys)} BUY | {len(watchlist_stocks)} WATCHLIST | {len(rejected)} REJECTED")
 
+    # Sort all lists by opportunity score (ENHANCEMENT 1)
+    for stock in buys + watchlist_stocks:
+        if "opportunity_score" not in stock:
+            stock["opportunity_score"] = compute_opportunity_score(stock)
+    buys.sort(key=lambda x: x.get("opportunity_score", 0), reverse=True)
+    watchlist_stocks.sort(key=lambda x: x.get("opportunity_score", 0), reverse=True)
+
     # Enforce max_buys cap
     max_buys = effective_thresholds[regime]["max_buys"]
     buys = buys[:max_buys]
@@ -4249,7 +5050,17 @@ def _run_pipeline_inner():
     _log("[15/18] Sending main Telegram report...")
     timestamp = datetime.datetime.now().strftime("%b %d, %Y %H:%M IST")
 
-    message   = format_telegram_message(
+    # Compute nifty_below_all_emas for daily summary
+    _kl_pipe = key_levels or {}
+    _nc_close = float(_kl_pipe.get("last", 0) or 0)
+    macro["nifty_below_all_emas"] = (
+        _nc_close > 0 and
+        _nc_close < float(_kl_pipe.get("ema20", 0) or 0) and
+        _nc_close < float(_kl_pipe.get("ema50", 0) or 0) and
+        _nc_close < float(_kl_pipe.get("ema200", 0) or 0)
+    )
+
+    message = format_telegram_message(
         regime_data      = regime_data,
         buys             = buys,
         shorts           = shorts,
@@ -4261,7 +5072,7 @@ def _run_pipeline_inner():
         timestamp        = timestamp,
         heat             = heat,
         platt            = platt,
-        tracker_v2       = None,
+        tracker_v2       = tracker_v2,
         rejected_stocks  = rejected,
         breadth_20       = breadth.get("ema20_pct", 50.0),
     )
@@ -4297,7 +5108,7 @@ def _run_pipeline_inner():
     maybe_send_weekly_stats(tracker_entries)
     save_tracker(tracker_entries)
 
-    # ── 17. Save CSVs ──
+    # ── 17. Save CSVs + Excel ──
     _log("[17/18] Saving output CSVs...")
     for s in top_40:
         s.pop("_df", None)
@@ -4306,6 +5117,14 @@ def _run_pipeline_inner():
     save_csv(top_40,           "analysis_output.csv")
     save_csv(portfolio_alerts, "portfolio_monitor.csv")
     save_csv(buys,             "buys_today.csv")
+
+    # Save recommendations to Excel tracker (PART C)
+    today_str_pipe = datetime.date.today().isoformat()
+    save_recommendations_to_excel(
+        buys, watchlist_stocks,
+        {"regime": regime, "score": regime_data.get("score", 0)},
+        today_str_pipe
+    )
 
     # ── 18. Done ──
     _log("[18/18] Pipeline complete.")
