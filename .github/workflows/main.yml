@@ -1,4 +1,4 @@
-name: Stock analyser
+name: Stock Reviewer
 
 on:
   workflow_dispatch:
@@ -66,6 +66,15 @@ on:
           - "true"
           - "false"
 
+      run_job:
+        description: "Which job to run manually"
+        required: false
+        default: "evening"
+        type: choice
+        options:
+          - "evening"
+          - "morning"
+
   schedule:
     # JOB 1 — Evening signal pipeline: 13:30 UTC = 7:00 PM IST, Mon–Fri
     - cron: "30 13 * * 1-5"
@@ -109,7 +118,7 @@ jobs:
 
     # Run when: manually triggered  OR  it is the 13:30 UTC schedule
     if: >
-      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_dispatch' && (github.event.inputs.run_job == 'evening' || github.event.inputs.run_job == '')) ||
       (github.event_name == 'schedule' && github.event.schedule == '30 13 * * 1-5')
 
     env:
@@ -216,15 +225,16 @@ jobs:
       - name: Preflight
         run: |
           echo "=== EVENING PIPELINE ==="
-          python --version
+          python3 --version
           echo "Capital: ${CAPITAL}"
           echo "Universe: ${UNIVERSE_MODE}"
-          [ -z "${TELEGRAM_BOT_TOKEN}" ] && echo "WARNING: TELEGRAM_BOT_TOKEN missing"
-          [ -z "${BUY_BOT_TOKEN}" ]      && echo "WARNING: BUY_BOT_TOKEN missing (BUY channel will not send)"
-          [ -z "${GROQ_API_KEY_1}" ]     && echo "WARNING: GROQ_API_KEY_1 missing"
+          if [ -z "${TELEGRAM_BOT_TOKEN}" ]; then echo "WARNING: TELEGRAM_BOT_TOKEN missing"; fi
+          if [ -z "${BUY_BOT_TOKEN}" ]; then echo "INFO: BUY_BOT_TOKEN not set — BUY channel disabled"; fi
+          if [ -z "${GROQ_API_KEY_1}" ]; then echo "WARNING: GROQ_API_KEY_1 missing"; fi
+          echo "Preflight complete"
 
       - name: Run evening pipeline
-        run: python main.py
+        run: python3 main.py
 
       - name: Show summary
         if: always()
@@ -284,8 +294,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
-    # Run ONLY on the 03:50 UTC schedule — never on manual dispatch
-    if: github.event_name == 'schedule' && github.event.schedule == '50 3 * * 1-5'
+    # Run when: manually with run_job=morning  OR  it is the 03:50 UTC schedule
+    if: >
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.run_job == 'morning') ||
+      (github.event_name == 'schedule' && github.event.schedule == '50 3 * * 1-5')
 
     steps:
       - name: Checkout repository
@@ -309,11 +321,11 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install requests yfinance python-dotenv
+          python3 -m pip install --upgrade pip
+          pip3 install requests yfinance python-dotenv
 
       - name: Run morning gap-open check
-        run: python morning_check.py
+        run: python3 morning_check.py
 
       - name: Show result
         if: always()
