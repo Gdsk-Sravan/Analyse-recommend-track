@@ -68,7 +68,9 @@ TRACKER_CHAT_ID     = os.getenv("TRACKER_CHAT_ID", "")
 BUY_BOT_TOKEN       = os.getenv("BUY_BOT_TOKEN", "")
 BUY_CHAT_ID         = os.getenv("BUY_CHAT_ID", "")
 TRACKER_FILE        = os.getenv("TRACKER_FILE", "tracker.json")
-PORTFOLIO_FILE      = os.getenv("PORTFOLIO_FILE", "portfolio.json")
+TRADE_TRACKER_V2_FILE   = os.getenv("TRADE_TRACKER_V2_FILE", "trade_tracker.json")
+FUNDAMENTALS_CACHE_FILE = os.getenv("FUNDAMENTALS_CACHE_FILE", "fundamentals_cache.json")
+PORTFOLIO_FILE          = os.getenv("PORTFOLIO_FILE", "portfolio.json")
 WATCHLIST_FILE      = os.getenv("WATCHLIST_FILE", "watchlist_persist.json")
 TELEGRAM_MAX_CHARS  = 4000
 
@@ -767,113 +769,301 @@ def bulk_deal_score(symbol: str, bulk_deals_dict: dict) -> int:
     return 0
 
 
-def fetch_promoter_data(symbol_clean: str) -> dict:
-    neutral = {"promoter_holding_pct": 50.0, "promoter_pledge_pct": 0.0,
-               "fii_pct": 10.0, "dii_pct": 10.0}
+NEUTRAL_FUNDAMENTALS = {
+    "roe": 0.0, "de_ratio": 0.0, "roce": 0.0,
+    "promoter_holding_pct": 50.0, "promoter_pledge_pct": 0.0,
+    "fii_pct": 0.0, "dii_pct": 0.0,
+    "source": "NEUTRAL_DEFAULT",
+}
+
+_SCREENER_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/120.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Referer": "https://www.screener.in",
+}
+
+
+def _parse_screener_html(soup) -> dict:
+    """Parse fundamentals + shareholding from a screener.in BeautifulSoup object."""
+    data = {}
+    # Key ratios section
+    ratio_section = soup.find("section", {"id": "top-ratios"})
+    if ratio_section:
+        for li in ratio_section.find_all("li"):
+            label = li.find("span", class_="name")
+            value = (li.find("span", class_="nowrap number") or
+                     li.find("span", class_="number") or
+                     li.find("span", class_="value"))
+            if label and value:
+                lbl = label.get_text(strip=True).lower()
+                raw = (value.get_text(strip=True)
+                       .replace(",", "").replace("%", "").replace("₹", "").strip())
+                try:
+                    val = float(raw)
+                    if "return on equity" in lbl or lbl == "roe":
+                        data["roe"] = val
+                    elif "debt / equity" in lbl or "d/e" in lbl or "debt to equity" in lbl:
+                        data["de_ratio"] = val
+                    elif "return on capital" in lbl or "roce" in lbl:
+                        data["roce"] = val
+                except ValueError:
+                    pass
+
+    # Shareholding table
+    for table in soup.find_all("table"):
+        text = table.get_text()
+        if "Promoter" in text and ("FII" in text or "FPI" in text):
+            for row in table.find_all("tr"):
+                cells = [td.get_text(strip=True) for td in row.find_all("td")]
+                if len(cells) >= 2:
+                    lbl = cells[0].lower()
+                    try:
+                        val = float(cells[-1].replace("%", "").replace(",", "").strip())
+                        if "promoter" in lbl and "pledge" not in lbl:
+                            data["promoter_holding_pct"] = val
+                        elif "pledge" in lbl or "pledged" in lbl:
+                            data["promoter_pledge_pct"] = val
+                        elif "fii" in lbl or "fpi" in lbl or "foreign" in lbl:
+                            data["fii_pct"] = val
+                        elif "dii" in lbl or "domestic inst" in lbl:
+                            data["dii_pct"] = val
+                    except (ValueError, IndexError):
+                        pass
+            break  # found the right table
+
+    return data
+
+
+def fetch_screener_data(symbol_clean: str) -> dict | None:
+    """
+    Source 1: screener.in — consolidated then standalone.
+    Returns dict on success, None on rate-limit or total failure.
+    """
     if not _BS4_OK:
-        return neutral
-    # Try consolidated first, then standalone if that returns nothing
-    for path_suffix in ("/consolidated/", "/"):
+        return None
+    for url in [
+        f"https://www.screener.in/company/{symbol_clean}/consolidated/",
+        f"https://www.screener.in/company/{symbol_clean}/",
+    ]:
         try:
-            url  = f"https://www.screener.in/company/{symbol_clean}{path_suffix}"
-            resp = requests.get(url, headers={
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                "Accept": "text/html,application/xhtml+xml",
-                "Accept-Language": "en-US,en;q=0.9",
-            }, timeout=12)
+            resp = requests.get(url, headers=_SCREENER_HEADERS, timeout=12)
             if resp.status_code == 429:
-                _log(f"[WARN] screener.in rate-limited for {symbol_clean}, using neutral defaults")
-                return neutral
+                _log(f"[WARN] screener.in rate-limited for {symbol_clean}")
+                return None
             if resp.status_code != 200:
                 continue
-            soup   = BeautifulSoup(resp.text, "html.parser")
-            tables = soup.find_all("table")
-            for table in tables:
-                text = table.get_text()
-                if "Promoter" in text and "FII" in text:
-                    rows = table.find_all("tr")
-                    data = {}
-                    for row in rows:
-                        cells = [td.get_text(strip=True) for td in row.find_all("td")]
-                        if len(cells) >= 2:
-                            label = cells[0].lower()
-                            try:
-                                value = float(cells[-1].replace("%", "").replace(",", "").strip())
-                                if "promoter" in label and "pledge" not in label:
-                                    data["promoter_holding_pct"] = value
-                                elif "pledge" in label:
-                                    data["promoter_pledge_pct"] = value
-                                elif "fii" in label or "foreign" in label:
-                                    data["fii_pct"] = value
-                                elif "dii" in label or "domestic" in label:
-                                    data["dii_pct"] = value
-                            except Exception:
-                                pass
-                    if data:
-                        data.setdefault("promoter_holding_pct", 50.0)
-                        data.setdefault("promoter_pledge_pct", 0.0)
-                        data.setdefault("fii_pct", 0.0)
-                        data.setdefault("dii_pct", 0.0)
-                        return data
+            data = _parse_screener_html(BeautifulSoup(resp.text, "html.parser"))
+            if data:
+                data.setdefault("roe", 0.0)
+                data.setdefault("de_ratio", 0.0)
+                data.setdefault("roce", 0.0)
+                data.setdefault("promoter_holding_pct", 50.0)
+                data.setdefault("promoter_pledge_pct", 0.0)
+                data.setdefault("fii_pct", 0.0)
+                data.setdefault("dii_pct", 0.0)
+                return data
+        except requests.exceptions.Timeout:
+            _log(f"[WARN] screener.in timeout for {symbol_clean}")
         except Exception as e:
-            _log(f"[WARN] fetch_promoter_data failed for {symbol_clean}: {e}")
-    return neutral
+            _log(f"[WARN] screener.in error for {symbol_clean}: {e}")
+    return None
 
 
-def ownership_quality_score(promoter_data: dict) -> int:
-    score = 50
-    pledge   = promoter_data.get("promoter_pledge_pct", 0)
-    promoter = promoter_data.get("promoter_holding_pct", 50)
-    fii      = promoter_data.get("fii_pct", 0)
-    dii      = promoter_data.get("dii_pct", 0)
-    if pledge > 40:   score -= 30
-    elif pledge > 20: score -= 15
-    elif pledge > 10: score -= 5
-    if promoter > 60:   score += 15
-    elif promoter > 50: score += 8
-    elif promoter < 30: score -= 10
-    if fii > 15:   score += 10
-    elif fii > 5:  score += 5
-    if dii > 10:   score += 8
-    elif dii > 3:  score += 4
-    return max(0, min(100, score))
-
-
-def fetch_fundamentals_screener(symbol_clean: str) -> dict:
+def fetch_trendlyne_data(symbol_clean: str) -> dict | None:
+    """
+    Source 2: Trendlyne — less strict rate limiting than screener.
+    Returns dict on success, None on failure.
+    """
     if not _BS4_OK:
-        return {"roe": 0.0, "de_ratio": 0.0}
+        return None
     try:
-        url  = f"https://www.screener.in/company/{symbol_clean}/"
+        url  = f"https://trendlyne.com/equity/fundamental-analysis/{symbol_clean}/NSE/"
         resp = requests.get(url, headers={
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            "Accept": "text/html,application/xhtml+xml",
-            "Accept-Language": "en-US,en;q=0.9",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+            "Accept": "text/html",
         }, timeout=12)
-        if resp.status_code == 429:
-            _log(f"[WARN] screener.in rate-limited for {symbol_clean} (fundamentals)")
-            return {"roe": 0.0, "de_ratio": 0.0}
-        if resp.status_code == 200:
-            soup = BeautifulSoup(resp.text, "html.parser")
-            ratios = {}
-            for li in soup.select("#top-ratios li"):
-                name_tag = li.find("span", class_="name")
-                val_tag  = li.find("span", class_="value") or li.find("span", class_="number")
-                if name_tag and val_tag:
-                    name = name_tag.get_text(strip=True).lower()
+        if resp.status_code != 200:
+            return None
+        soup = BeautifulSoup(resp.text, "html.parser")
+        data = {}
+        for table in soup.find_all("table"):
+            for row in table.find_all("tr"):
+                cells = [td.get_text(strip=True) for td in row.find_all(["td", "th"])]
+                if len(cells) >= 2:
+                    lbl = cells[0].lower()
                     try:
-                        val = float(val_tag.get_text(strip=True).replace(",", "").replace("%", ""))
-                        if "return on equity" in name or "roe" in name:
-                            ratios["roe"] = val
-                        elif "debt" in name and "equity" in name:
-                            ratios["de_ratio"] = val
-                    except Exception:
+                        val = float(cells[1].replace("%", "").replace(",", "").strip())
+                        if "roe" in lbl:
+                            data["roe"] = val
+                        elif "debt" in lbl and "equity" in lbl:
+                            data["de_ratio"] = val
+                        elif "roce" in lbl:
+                            data["roce"] = val
+                        elif "promoter" in lbl and "pledge" not in lbl:
+                            data["promoter_holding_pct"] = val
+                        elif "pledge" in lbl:
+                            data["promoter_pledge_pct"] = val
+                    except (ValueError, IndexError):
                         pass
-            ratios.setdefault("roe", 0.0)
-            ratios.setdefault("de_ratio", 0.0)
-            return ratios
+        return data if data else None
     except Exception as e:
-        _log(f"[WARN] fetch_fundamentals_screener failed for {symbol_clean}: {e}")
-    return {"roe": 0.0, "de_ratio": 0.0}
+        _log(f"[WARN] Trendlyne failed for {symbol_clean}: {e}")
+        return None
+
+
+def fetch_yfinance_fundamentals(symbol: str) -> dict:
+    """
+    Source 3: yfinance — last resort. Always available, never rate-limited.
+    Returns dict with whatever yfinance has; fills missing fields with neutral.
+    """
+    try:
+        ticker = yf.Ticker(symbol)
+        info   = ticker.info or {}
+        data   = {}
+        roe = info.get("returnOnEquity")
+        if roe is not None:
+            data["roe"] = round(float(roe) * 100, 2)  # decimal → %
+        de = info.get("debtToEquity")
+        if de is not None:
+            data["de_ratio"] = round(float(de) / 100, 2)  # % → ratio
+        data.setdefault("roe", 0.0)
+        data.setdefault("de_ratio", 0.0)
+        data.setdefault("roce", 0.0)
+        data.setdefault("promoter_holding_pct", 50.0)
+        data.setdefault("promoter_pledge_pct", 0.0)
+        data.setdefault("fii_pct", 0.0)
+        data.setdefault("dii_pct", 0.0)
+        return data
+    except Exception as e:
+        _log(f"[WARN] yfinance fundamentals failed for {symbol}: {e}")
+        return {**NEUTRAL_FUNDAMENTALS}
+
+
+def fetch_promoter_data(symbol_clean: str, delay_seconds: float = 2.5) -> dict:
+    """
+    3-source fallback chain: screener.in → Trendlyne → yfinance.
+    Sequential with delay to avoid rate limiting.
+    Call this SEQUENTIALLY — never in parallel threads.
+    """
+    time.sleep(delay_seconds)
+
+    data = fetch_screener_data(symbol_clean)
+    if data:
+        data["source"] = "SCREENER"
+        _log(f"[INFO] Fundamentals (screener): {symbol_clean} "
+             f"ROE={data.get('roe',0):.1f}% D/E={data.get('de_ratio',0):.2f} "
+             f"Pledge={data.get('promoter_pledge_pct',0):.1f}%")
+        return data
+
+    _log(f"[WARN] screener.in failed for {symbol_clean} — trying Trendlyne")
+    time.sleep(1.5)
+
+    data = fetch_trendlyne_data(symbol_clean)
+    if data:
+        data.setdefault("promoter_holding_pct", 50.0)
+        data.setdefault("promoter_pledge_pct", 0.0)
+        data.setdefault("fii_pct", 0.0)
+        data.setdefault("dii_pct", 0.0)
+        data.setdefault("roe", 0.0)
+        data.setdefault("de_ratio", 0.0)
+        data.setdefault("roce", 0.0)
+        data["source"] = "TRENDLYNE"
+        _log(f"[INFO] Fundamentals (trendlyne): {symbol_clean}")
+        return data
+
+    _log(f"[WARN] Trendlyne failed for {symbol_clean} — using yfinance")
+    data = fetch_yfinance_fundamentals(symbol_clean + ".NS")
+    data["source"] = "YFINANCE"
+    _log(f"[INFO] Fundamentals (yfinance): {symbol_clean} "
+         f"ROE={data.get('roe',0):.1f}% D/E={data.get('de_ratio',0):.2f}")
+    return data
+
+
+# ---------------------------------------------------------------------------
+# Fundamentals cache — avoid re-fetching same stocks within 24h
+# ---------------------------------------------------------------------------
+
+def load_fundamentals_cache() -> dict:
+    try:
+        if os.path.exists(FUNDAMENTALS_CACHE_FILE):
+            with open(FUNDAMENTALS_CACHE_FILE, "r") as f:
+                return json.load(f)
+    except Exception as e:
+        _log(f"[WARN] load_fundamentals_cache failed: {e}")
+    return {}
+
+
+def save_fundamentals_cache(cache: dict) -> None:
+    try:
+        with open(FUNDAMENTALS_CACHE_FILE, "w") as f:
+            json.dump(cache, f, indent=2, default=str)
+    except Exception as e:
+        _log(f"[WARN] save_fundamentals_cache failed: {e}")
+
+
+def fetch_promoter_data_cached(symbol_clean: str, cache: dict,
+                                cache_ttl_hours: int = 24) -> dict:
+    """Returns cached data if fresher than cache_ttl_hours; otherwise fetches live."""
+    now    = datetime.datetime.now()
+    cached = cache.get(symbol_clean)
+    if cached:
+        try:
+            cached_at = datetime.datetime.fromisoformat(cached.get("cached_at", "2000-01-01"))
+            if (now - cached_at).total_seconds() / 3600 < cache_ttl_hours:
+                _log(f"[INFO] Fundamentals cache hit: {symbol_clean}")
+                return cached["data"]
+        except Exception:
+            pass
+    data = fetch_promoter_data(symbol_clean, delay_seconds=2.5)
+    cache[symbol_clean] = {"data": data, "cached_at": now.isoformat()}
+    return data
+
+
+def fetch_all_fundamentals_cached(top_40: list, max_stocks: int = 20) -> list:
+    """
+    Fetches fundamentals sequentially with 24h cache.
+    Adds ~50s on first run; near-instant on same-day re-runs.
+    """
+    cache = load_fundamentals_cache()
+    _log(f"[INFO] Fundamentals cache: {len(cache)} symbols cached")
+    est_sec = sum(
+        0 if symbol_clean in cache else 2.5
+        for symbol_clean in [s["symbol"].replace(".NS", "") for s in top_40[:max_stocks]]
+    )
+    _log(f"[INFO] Estimated fetch time: ~{est_sec:.0f}s for {max_stocks} stocks")
+
+    for i, stock in enumerate(top_40[:max_stocks]):
+        sym_clean = stock["symbol"].replace(".NS", "")
+        _log(f"  [{i+1}/{max_stocks}] {sym_clean}")
+        pdata = fetch_promoter_data_cached(sym_clean, cache, cache_ttl_hours=24)
+        stock["promoter_data"]       = pdata
+        stock["ownership_quality"]   = ownership_quality_score(pdata)
+        stock["promoter_pledge_pct"] = pdata.get("promoter_pledge_pct", 0.0)
+        stock["roe"]                 = pdata.get("roe", 0.0)
+        stock["de_ratio"]            = pdata.get("de_ratio", 0.0)
+        stock["roce"]                = pdata.get("roce", 0.0)
+        stock["fundamentals_source"] = pdata.get("source", "NEUTRAL_DEFAULT")
+
+    for stock in top_40[max_stocks:]:
+        stock["promoter_data"]       = {**NEUTRAL_FUNDAMENTALS}
+        stock["ownership_quality"]   = 50
+        stock["promoter_pledge_pct"] = 0.0
+        stock["roe"]                 = 0.0
+        stock["de_ratio"]            = 0.0
+        stock["roce"]                = 0.0
+        stock["fundamentals_source"] = "NOT_FETCHED"
+
+    save_fundamentals_cache(cache)
+    fetched_ok = sum(1 for s in top_40[:max_stocks]
+                     if s.get("fundamentals_source") not in ("NEUTRAL_DEFAULT", "NOT_FETCHED"))
+    _log(f"  Fundamentals done: {fetched_ok}/{max_stocks} real data | "
+         f"{max_stocks - fetched_ok} defaults | cache saved")
+    return top_40
 
 
 GLOBAL_TICKERS = {
@@ -954,8 +1144,127 @@ def macro_regime_adjustment(macro: dict) -> int:
     return max(-20, min(10, adj))
 
 
+def fetch_fii_dii_flows() -> dict:
+    """
+    Fetches today's FII/DII provisional flows from NSE.
+    Returns dict with fii_flow_cr and dii_flow_cr. Never crashes.
+    """
+    result = {"fii_flow_cr": 0.0, "dii_flow_cr": 0.0}
+    try:
+        session = requests.Session()
+        session.get("https://www.nseindia.com",
+                    headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
+                    timeout=10)
+        url = "https://www.nseindia.com/api/fiidiiTradeReact"
+        r = session.get(url, headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+            "Referer":    "https://www.nseindia.com",
+            "Accept":     "application/json",
+        }, timeout=12)
+        if r.status_code == 200:
+            data = r.json()
+            if isinstance(data, list) and len(data) > 0:
+                latest   = data[0]
+                fii_buy  = float(str(latest.get("fiiBuy",  "0")).replace(",", ""))
+                fii_sell = float(str(latest.get("fiiSell", "0")).replace(",", ""))
+                dii_buy  = float(str(latest.get("diiBuy",  "0")).replace(",", ""))
+                dii_sell = float(str(latest.get("diiSell", "0")).replace(",", ""))
+                result["fii_flow_cr"] = round(fii_buy - fii_sell, 2)
+                result["dii_flow_cr"] = round(dii_buy - dii_sell, 2)
+                return result
+    except Exception as e:
+        _log(f"[WARN] FII/DII NSE fetch failed: {e}")
+
+    # Fallback: moneycontrol RSS
+    try:
+        if _FEEDPARSER_OK:
+            import re as _re
+            feed = feedparser.parse("https://www.moneycontrol.com/rss/marketstats.xml")
+            for entry in feed.entries[:5]:
+                title = entry.get("title", "").lower()
+                if "fii" in title and "crore" in title:
+                    fii_m = _re.search(r"fii.*?([\d,]+)\s*crore", title)
+                    dii_m = _re.search(r"dii.*?([\d,]+)\s*crore", title)
+                    if fii_m:
+                        val = float(fii_m.group(1).replace(",", ""))
+                        result["fii_flow_cr"] = val if "bought" in title else -val
+                    if dii_m:
+                        val = float(dii_m.group(1).replace(",", ""))
+                        result["dii_flow_cr"] = val if "bought" in title else -val
+                    break
+    except Exception:
+        pass
+
+    return result
+
+
+def format_fii_dii(fii: float, dii: float) -> str:
+    """Format FII/DII for Telegram. Handles zero gracefully."""
+    if fii == 0 and dii == 0:
+        return "FII/DII: Data unavailable (post-market)"
+    fii_lbl = f"Rs{abs(fii):.0f}Cr {'🟢 BUY' if fii > 0 else '🔴 SELL'}"
+    dii_lbl = f"Rs{abs(dii):.0f}Cr {'🟢 BUY' if dii > 0 else '🔴 SELL'}"
+    combined = fii + dii
+    if fii > 500 and dii > 500:
+        sentiment = "💪 Both buying"
+    elif fii * dii < 0:
+        sentiment = "🟡 Mixed flows"
+    elif fii < -500 and dii < -500:
+        sentiment = "⚠️ Both selling"
+    else:
+        sentiment = "➡️ Neutral"
+    return f"FII {fii_lbl} | DII {dii_lbl} | {sentiment}"
+
+
+def interpret_nifty_structure(close: float, ema20: float, ema50: float,
+                               ema200: float, high_52w: float) -> str:
+    """One-line plain English interpretation of NIFTY EMA structure."""
+    above_ema20  = close > ema20
+    above_ema50  = close > ema50
+    above_ema200 = close > ema200
+    dist_52w_high_pct = round((high_52w - close) / high_52w * 100, 1) if high_52w > 0 else 0
+
+    if above_ema20 and above_ema50 and above_ema200:
+        return "✅ Above all EMAs — bull structure intact"
+    elif above_ema50 and above_ema200:
+        return "🟡 Below EMA20 but above EMA50/200 — minor pullback"
+    elif above_ema200 and not above_ema50:
+        return "🟠 Below EMA20 & EMA50 — correction underway, watch EMA200"
+    elif not above_ema200:
+        if dist_52w_high_pct > 10:
+            return "🔴 Below all EMAs — bearish structure. EMA200 is now resistance."
+        else:
+            return "🔴 Below all EMAs — recent breakdown. High caution."
+    return "⚪ Mixed EMA structure — no clear trend"
+
+
+def regime_explanation(score: float, regime: str, vix_in: float,
+                        breadth_20: float, fii_flow: float, dii_flow: float) -> str:
+    """One-line 'why this regime' for the Telegram report."""
+    reasons_bull = []
+    reasons_bear = []
+
+    if vix_in < 15:
+        reasons_bull.append(f"VIX-IN calm {vix_in:.1f}")
+    elif vix_in > 20:
+        reasons_bear.append(f"VIX-IN high {vix_in:.1f}")
+
+    if fii_flow + dii_flow > 2000:
+        reasons_bull.append("institutions buying")
+    elif fii_flow + dii_flow < -2000:
+        reasons_bear.append("institutions selling")
+
+    if breadth_20 > 55:
+        reasons_bull.append(f"breadth {breadth_20:.0f}%")
+    elif breadth_20 < 40:
+        reasons_bear.append(f"weak breadth {breadth_20:.0f}%")
+
+    bull_str = ", ".join(reasons_bull) if reasons_bull else "none"
+    bear_str = ", ".join(reasons_bear) if reasons_bear else "none"
+    return f"Bulls: {bull_str} | Bears: {bear_str}"
+
+
 NEWS_RSS_FEEDS = {
-    "ECONOMIC_TIMES": "https://economictimes.indiatimes.com/markets/rssfeeds/1977021501.cms",
     "MONEYCONTROL":   "https://www.moneycontrol.com/rss/MCtopnews.xml",
     "BUSINESS_STD":   "https://www.business-standard.com/rss/markets-106.rss",
     "LIVEMINT":       "https://www.livemint.com/rss/markets",
@@ -2331,19 +2640,78 @@ def correlation_check(symbol: str, holdings: list, returns_cache: dict,
     return False, round(worst_corr, 2), worst_symbol
 
 
+def calculate_watchlist_levels(stock: dict) -> dict:
+    """
+    Extract or recompute entry/stop/target/rr/risk_pct from a scored stock dict.
+    Always returns valid floats — never crashes.
+    """
+    entry   = float(stock.get("entry",   0) or 0)
+    stop    = float(stock.get("stop",    0) or 0)
+    target1 = float(stock.get("target1", 0) or 0)
+    target2 = float(stock.get("target2", 0) or 0)
+    current = float(stock.get("price",   0) or entry)
+
+    rr = 0.0
+    if entry > 0 and stop > 0 and entry > stop and target1 > entry:
+        rr = round((target1 - entry) / (entry - stop), 2)
+
+    risk_pct = 0.0
+    if entry > 0 and stop > 0:
+        risk_pct = round((entry - stop) / entry * 100, 1)
+
+    return {
+        "entry":    entry,
+        "stop":     stop,
+        "target1":  target1,
+        "target2":  target2,
+        "rr":       rr,
+        "risk_pct": risk_pct,
+        "current":  current,
+    }
+
+
 def classify_watchlist(stock: dict, regime: str, thresholds: dict) -> dict:
     thresh   = (thresholds or REGIME_THRESHOLDS)[regime]
+    min_conf = thresh["min_confidence"]
     conf     = stock.get("final_confidence", 0)
     tq       = stock.get("trade_quality_score", 0)
-    conf_gap = thresh["min_confidence"] - conf
-    vol_score = stock.get("volume_delivery", 60)
-    vol_note  = " Watch volume." if vol_score < 50 else ""
+    conf_gap = round(min_conf - conf, 1)
 
-    if conf_gap <= 5 and tq >= thresh["min_tq"]:
-        return {"tier": "NEAR_MISS",  "note": f"Conf {conf:.1f} needs +{conf_gap:.1f}.{vol_note}", "days_to_watch": 3}
-    elif conf_gap <= 15 and tq >= 75:
-        return {"tier": "DEVELOPING", "note": f"TQ {tq:.1f} solid. Conf gap={conf_gap:.1f}.{vol_note}", "days_to_watch": 7}
-    return {"tier": "MONITOR", "note": f"Early stage. Conf {conf:.1f}. Track 2w.", "days_to_watch": 14}
+    # Always compute price levels — every watchlist entry shows them
+    levels = calculate_watchlist_levels(stock)
+
+    base = {
+        "conf":     conf,
+        "tq":       tq,
+        "conf_gap": conf_gap,
+        "sector":   stock.get("sector", "OTHERS"),
+        "entry":    levels["entry"],
+        "stop":     levels["stop"],
+        "target1":  levels["target1"],
+        "target2":  levels["target2"],
+        "rr":       levels["rr"],
+        "risk_pct": levels["risk_pct"],
+        "current":  levels["current"],
+        "fail_reasons": stock.get("fail_reasons", []),
+        "warnings":     stock.get("warnings", []),
+    }
+
+    # Tier logic: relative to regime gap size (not absolute confidence)
+    # NEAR_MISS  = gap <= 8  (very close — watch daily)
+    # DEVELOPING = gap <= 18 (building — watch weekly)
+    # MONITOR    = gap > 18  (early stage — track loosely)
+    if conf_gap <= 8 and tq >= thresh["min_tq"] - 5:
+        return {**base, "tier": "NEAR_MISS",
+                "note": f"Needs +{conf_gap:.1f} conf. Watch for volume trigger.",
+                "days_to_watch": 3, "watch_days": 3}
+    elif conf_gap <= 18 and tq >= 70:
+        return {**base, "tier": "DEVELOPING",
+                "note": f"TQ {tq:.1f} building. Conf gap {conf_gap:.1f}.",
+                "days_to_watch": 7, "watch_days": 7}
+    else:
+        return {**base, "tier": "MONITOR",
+                "note": "Early stage. Review in 2 weeks.",
+                "days_to_watch": 14, "watch_days": 14}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -2679,6 +3047,303 @@ def maybe_send_weekly_stats(tracker_entries: list) -> None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# SECTION 9b — TRADE TRACKER V2 (new structured format)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def load_tracker_v2() -> dict:
+    try:
+        if os.path.exists(TRADE_TRACKER_V2_FILE):
+            with open(TRADE_TRACKER_V2_FILE, "r") as f:
+                return json.load(f)
+    except Exception as e:
+        _log(f"[WARN] load_tracker_v2 failed: {e}")
+    return {"buys": [], "watchlist": [], "completed": [], "performance": {}}
+
+
+def save_tracker_v2(tracker: dict) -> None:
+    try:
+        with open(TRADE_TRACKER_V2_FILE, "w") as f:
+            json.dump(tracker, f, indent=2, default=str)
+    except Exception as e:
+        _log(f"[WARN] save_tracker_v2 failed: {e}")
+
+
+def initialize_tracker_if_new() -> dict:
+    """
+    Called at pipeline start. Seeds Jun 25 data if no tracker v2 file exists yet.
+    """
+    if os.path.exists(TRADE_TRACKER_V2_FILE):
+        return load_tracker_v2()
+
+    _log("[INFO] No tracker v2 found — initializing with Jun 25, 2026 seed data")
+    tracker = {
+        "buys": [
+            {
+                "symbol": "SIYSIL.NS", "rec_date": "2026-06-25",
+                "entry": 645.30, "stop": 607.93,
+                "target1": 707.58, "target2": 757.40,
+                "confidence": 65.7, "tq": 94.0,
+                "regime": "HIGH_VOLATILITY", "status": "ACTIVE",
+                "t1_hit_date": None, "t2_hit_date": None, "stop_hit_date": None,
+                "days_tracked": 1, "pnl_history": [],
+            }
+        ],
+        "watchlist": [
+            {"symbol": "BOSCHLTD.NS",   "rec_date": "2026-06-25", "tier": "NEAR_MISS",
+             "conf_at_rec": 62.5, "conf_gap_at_rec": 1.5, "status": "WATCHING", "days_watching": 1},
+            {"symbol": "GENUSPOWER.NS", "rec_date": "2026-06-25", "tier": "NEAR_MISS",
+             "conf_at_rec": 62.1, "conf_gap_at_rec": 1.9, "status": "WATCHING", "days_watching": 1},
+            {"symbol": "KRISHANA.NS",   "rec_date": "2026-06-25", "tier": "NEAR_MISS",
+             "conf_at_rec": 60.8, "conf_gap_at_rec": 3.2, "status": "WATCHING", "days_watching": 1},
+            {"symbol": "NAZARA.NS",     "rec_date": "2026-06-25", "tier": "NEAR_MISS",
+             "conf_at_rec": 60.4, "conf_gap_at_rec": 3.6, "status": "WATCHING", "days_watching": 1},
+            {"symbol": "SONACOMS.NS",   "rec_date": "2026-06-25", "tier": "DEVELOPING",
+             "tq_at_rec": 89.4, "conf_gap_at_rec": 5.2, "status": "WATCHING", "days_watching": 1},
+            {"symbol": "CEIGALL.NS",    "rec_date": "2026-06-25", "tier": "DEVELOPING",
+             "tq_at_rec": 97.0, "conf_gap_at_rec": 5.4, "status": "WATCHING", "days_watching": 1},
+            {"symbol": "RATNAVEER.NS",  "rec_date": "2026-06-25", "tier": "DEVELOPING",
+             "tq_at_rec": 99.0, "conf_gap_at_rec": 5.5, "status": "WATCHING", "days_watching": 1},
+        ],
+        "completed": [],
+        "performance": {},
+    }
+    save_tracker_v2(tracker)
+    return tracker
+
+
+def update_tracker_v2_pnl(tracker: dict) -> dict:
+    """
+    Updates pnl_history and days_tracked for each active buy position.
+    Updates days_watching for each watchlist entry. Does not close positions.
+    """
+    today_str = datetime.date.today().isoformat()
+    for pos in tracker.get("buys", []):
+        if pos.get("status") != "ACTIVE":
+            continue
+        try:
+            df = fetch_price_data(pos["symbol"], period="1d")
+            if df is None or len(df) == 0:
+                continue
+            cur_px = round(float(df["Close"].squeeze().iloc[-1]), 2)
+            entry  = float(pos.get("entry", cur_px) or cur_px)
+            pnl    = round((cur_px - entry) / entry * 100, 2) if entry > 0 else 0.0
+            hist   = pos.setdefault("pnl_history", [])
+            if not hist or hist[-1].get("date") != today_str:
+                hist.append({"date": today_str, "price": cur_px, "pnl": pnl})
+            pos["days_tracked"] = (
+                datetime.date.today() -
+                datetime.date.fromisoformat(pos.get("rec_date", today_str))
+            ).days + 1
+        except Exception as e:
+            _log(f"[WARN] update_tracker_v2_pnl failed for {pos.get('symbol')}: {e}")
+
+    for w in tracker.get("watchlist", []):
+        try:
+            w["days_watching"] = (
+                datetime.date.today() -
+                datetime.date.fromisoformat(w.get("rec_date", today_str))
+            ).days + 1
+            # Try to refresh current price
+            df = fetch_price_data(w["symbol"], period="1d")
+            if df is not None and len(df) > 0:
+                w["current_price"] = round(float(df["Close"].squeeze().iloc[-1]), 2)
+        except Exception:
+            pass
+
+    return tracker
+
+
+def format_tracker_for_telegram(tracker: dict) -> str:
+    """Format tracker v2 for embedding in main Telegram message. Empty string if nothing to show."""
+    active   = tracker.get("buys", [])
+    watching = tracker.get("watchlist", [])
+    perf     = tracker.get("performance", {})
+
+    # Don't show section if nothing to track
+    if not active and not watching and not perf.get("completed", 0):
+        return ""
+
+    lines = ["📈 TRADE TRACKER"]
+
+    if active:
+        lines.append("  ACTIVE:")
+        for pos in active:
+            hist    = pos.get("pnl_history", [])
+            cur_pnl = hist[-1]["pnl"]   if hist else 0.0
+            cur_px  = hist[-1]["price"] if hist else pos.get("entry", 0)
+            day_n   = pos.get("days_tracked", 1)
+            status  = pos.get("status", "ACTIVE")
+            entry   = pos.get("entry",   0)
+            stop    = pos.get("stop",    0)
+            t1      = pos.get("target1", 0)
+            t2      = pos.get("target2", 0)
+
+            # Progress bar [====>......] between stop and T2
+            total_range = (t2 - stop) if t2 > stop else 1
+            cur_pos     = (cur_px - stop)
+            fill        = int((cur_pos / total_range) * 10) if total_range > 0 else 0
+            fill        = max(0, min(10, fill))
+            bar         = "=" * fill + ">" + "." * (10 - fill)
+
+            dist_stop = round((cur_px - stop) / cur_px * 100, 1) if cur_px > 0 else 0
+            dist_t1   = round((t1 - cur_px) / cur_px * 100, 1) if cur_px > 0 and t1 > 0 else 0
+
+            lines.append(
+                f"  {pos['symbol']} | Day {day_n}/15 | "
+                f"PnL {cur_pnl:+.1f}% | {status}"
+            )
+            lines.append(f"  [{bar}] Rs{cur_px:.1f}")
+            lines.append(
+                f"  Stop Rs{stop:.1f} ({dist_stop:.1f}% below) | "
+                f"T1 Rs{t1:.1f} ({dist_t1:.1f}% away) | T2 Rs{t2:.1f}"
+            )
+
+    if watching:
+        lines.append("  WATCHING:")
+        for w in watching:
+            cur      = w.get("current_price", w.get("entry", 0))
+            entry    = w.get("entry", 0)
+            day_n    = w.get("days_watching", 1)
+            tier     = w.get("tier", "MONITOR")
+            conf_gap = w.get("conf_gap_at_rec", 0)
+            if entry > 0 and cur > 0:
+                move      = round((cur - entry) / entry * 100, 1)
+                direction = "↑ nearing entry" if move >= 0 else f"↓ {abs(move):.1f}% from entry"
+            else:
+                direction = "—"
+            lines.append(
+                f"  {w['symbol']} [{tier}] Day {day_n}/14 | "
+                f"Gap was {conf_gap:.1f} | {direction}"
+            )
+
+    if perf.get("completed", 0) > 0:
+        lines.append(
+            f"  SCORE: WinRate {perf.get('win_rate', 0):.0f}% | "
+            f"AvgW {perf.get('avg_win', 0):+.1f}% | "
+            f"AvgL {perf.get('avg_loss', 0):+.1f}% | "
+            f"Completed: {perf['completed']}"
+        )
+
+    return "\n".join(lines)
+
+
+def format_watchlist_section(watchlist: list, regime: str) -> list:
+    """Returns list of lines showing ALL watchlist stocks with levels. No cap."""
+    lines  = []
+    thresh = REGIME_THRESHOLDS[regime]
+    min_conf = thresh["min_confidence"]
+
+    near = [w for w in watchlist if w.get("tier") == "NEAR_MISS"]
+    dev  = [w for w in watchlist if w.get("tier") == "DEVELOPING"]
+    mon  = [w for w in watchlist if w.get("tier") == "MONITOR"]
+
+    lines.append(f"👁 WATCHLIST — {len(watchlist)} stocks (threshold {min_conf})")
+
+    if near:
+        lines.append(f"  NEAR MISS ({len(near)} — within 8 pts):")
+        for w in near:
+            lines.append(
+                f"    {w['symbol']} [{w.get('sector','?')}] | "
+                f"Conf {w.get('conf', w.get('final_confidence', 0)):.1f} "
+                f"[gap {w.get('conf_gap', 0):.1f}] | TQ {w.get('tq', w.get('trade_quality_score', 0)):.1f}"
+            )
+            entry   = w.get("entry", 0)
+            stop    = w.get("stop", 0)
+            target1 = w.get("target1", 0)
+            target2 = w.get("target2", 0)
+            rr      = w.get("rr", 0)
+            risk    = w.get("risk_pct", 0)
+            cur     = w.get("current", w.get("price", entry))
+            lines.append(
+                f"    Cur Rs{cur:.1f} | Entry Rs{entry:.1f} | "
+                f"Stop Rs{stop:.1f} | T1 Rs{target1:.1f} | "
+                f"T2 Rs{target2:.1f} | R/R {rr:.1f}x | Risk {risk:.1f}%"
+            )
+            if w.get("warnings"):
+                lines.append(f"    ⚠️  {' | '.join(w['warnings'])}")
+
+    if dev:
+        lines.append(f"  DEVELOPING ({len(dev)} — gap 8-18):")
+        for w in dev:
+            lines.append(
+                f"    {w['symbol']} [{w.get('sector','?')}] | "
+                f"Conf {w.get('conf', w.get('final_confidence', 0)):.1f} "
+                f"[gap {w.get('conf_gap', 0):.1f}] | TQ {w.get('tq', w.get('trade_quality_score', 0)):.1f}"
+            )
+            entry   = w.get("entry", 0)
+            stop    = w.get("stop", 0)
+            target1 = w.get("target1", 0)
+            target2 = w.get("target2", 0)
+            rr      = w.get("rr", 0)
+            risk    = w.get("risk_pct", 0)
+            cur     = w.get("current", w.get("price", entry))
+            lines.append(
+                f"    Cur Rs{cur:.1f} | Entry Rs{entry:.1f} | "
+                f"Stop Rs{stop:.1f} | T1 Rs{target1:.1f} | "
+                f"T2 Rs{target2:.1f} | R/R {rr:.1f}x | Risk {risk:.1f}%"
+            )
+
+    if mon:
+        lines.append(f"  MONITOR ({len(mon)} — early stage):")
+        for w in mon:
+            lines.append(
+                f"    {w['symbol']} [{w.get('sector','?')}] | "
+                f"Conf {w.get('conf', w.get('final_confidence', 0)):.1f} "
+                f"[gap {w.get('conf_gap', 0):.1f}] | TQ {w.get('tq', w.get('trade_quality_score', 0)):.1f}"
+            )
+            entry   = w.get("entry", 0)
+            stop    = w.get("stop", 0)
+            target1 = w.get("target1", 0)
+            target2 = w.get("target2", 0)
+            rr      = w.get("rr", 0)
+            risk    = w.get("risk_pct", 0)
+            cur     = w.get("current", w.get("price", entry))
+            lines.append(
+                f"    Cur Rs{cur:.1f} | Entry Rs{entry:.1f} | "
+                f"Stop Rs{stop:.1f} | T1 Rs{target1:.1f} | "
+                f"T2 Rs{target2:.1f} | R/R {rr:.1f}x | Risk {risk:.1f}%"
+            )
+
+    if not near and not dev and not mon:
+        lines.append("  None today.")
+
+    return lines
+
+
+def format_no_buy_explanation(top_rejected: list, regime: str) -> list:
+    """
+    When buys=0, show top 3 closest rejected stocks with exact gap to passing.
+    """
+    thresh = REGIME_THRESHOLDS[regime]
+    lines  = ["  None — no setup cleared all gates today."]
+    lines.append(
+        f"  (Need: Conf≥{thresh['min_confidence']} | "
+        f"TQ≥{thresh['min_tq']} | R/R≥{thresh['min_rr']})"
+    )
+    if not top_rejected:
+        return lines
+    lines.append("")
+    lines.append("  Closest candidates:")
+    top3 = sorted(top_rejected, key=lambda x: x.get("final_confidence", 0), reverse=True)[:3]
+    for i, s in enumerate(top3):
+        conf     = s.get("final_confidence", 0)
+        tq       = s.get("trade_quality_score", 0)
+        rr       = s.get("rr_ratio", 0)
+        conf_gap = thresh["min_confidence"] - conf
+        tq_gap   = max(0, thresh["min_tq"] - tq)
+        rr_gap   = max(0, thresh["min_rr"] - rr)
+        fails    = s.get("fail_reasons", [])
+        lines.append(f"  #{i+1} {s.get('symbol','?')} [{s.get('sector','?')}]")
+        lines.append(
+            f"     Conf {conf:.1f} (need +{conf_gap:.1f}) | "
+            f"TQ {tq:.1f} (need +{tq_gap:.1f}) | "
+            f"R/R {rr:.2f}x (need +{rr_gap:.2f})"
+        )
+        lines.append(f"     Blockers: {', '.join(fails) if fails else 'none recorded'}")
+    return lines
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # SECTION 10 — TELEGRAM OUTPUT FORMATTER
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -2686,24 +3351,26 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
                               watchlist: list, portfolio_alerts: list,
                               macro: dict, key_levels: dict,
                               upcoming_events: list, timestamp: str,
-                              heat: dict = None, platt: dict = None) -> str:
+                              heat: dict = None, platt: dict = None,
+                              tracker_v2: dict = None,
+                              rejected_stocks: list = None,
+                              breadth_20: float = 50.0) -> str:
     lines  = []
     regime = regime_data["regime"]
     score  = regime_data["score"]
     thresh = regime_data["thresholds"]
 
-    # Header
-    lines.append("─" * 40)
-    lines.append(f"NSE SWING BRIEF - {timestamp}")
-    lines.append("─" * 40)
-    lines.append(f"Signals: {len(buys)} BUY | {len(shorts)} SHORT | {len(watchlist)} WATCHLIST")
+    # ── Header ──
+    lines.append("═" * 40)
+    lines.append(f"NSE SWING BRIEF — {timestamp}")
+    lines.append("═" * 40)
     lines.append("")
 
-    # Market Regime
+    # ── Market Regime ──
     vix_in  = macro.get("vix_in", 15.0)
     vix_us  = macro.get("vix_us", 18.0)
-    vix_in_flag = "HIGH" if vix_in > 20 else ("low" if vix_in < 13 else "ok")
-    vix_us_flag = "HIGH" if vix_us > 25 else ("low" if vix_us < 15 else "ok")
+    vix_in_flag = "HIGH" if vix_in > 20 else ("low" if vix_in < 13 else "NORMAL")
+    vix_us_flag = "HIGH" if vix_us > 25 else ("ok" if vix_us < 22 else "ELEVATED")
     REGIME_RATIONALE = {
         "STRONG_BULL":     "Strong uptrend, broad breadth — full deployment.",
         "BULL":            "Uptrend intact, moderate breadth — standard sizing.",
@@ -2713,38 +3380,91 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
         "BEAR":            "Downtrend — no new longs, manage exits only.",
         "STRONG_BEAR":     "Severe downtrend — cash only, no new positions.",
     }
-    lines.append("MARKET REGIME")
-    lines.append(f"  {regime} | Score: {score:.0f}/100 | MaxBuys: {thresh['max_buys']}")
+    lines.append("📊 MARKET REGIME")
+    lines.append(f"  🟡 {regime} | Score: {score:.0f}/100 | MaxBuys: {thresh['max_buys']}")
+
+    # Regime explanation (Patch 4)
+    fii_flow = macro.get("fii_flow_cr", 0.0)
+    dii_flow = macro.get("dii_flow_cr", 0.0)
+    reg_why  = regime_explanation(score, regime, vix_in, breadth_20, fii_flow, dii_flow)
+    lines.append(f"  Why: {reg_why}")
     lines.append(f"  {REGIME_RATIONALE.get(regime, '')}")
-    # VIX term structure
+
     vix_ratio = macro.get("vix_term_ratio", 1.0)
-    vix_term_label = ("SPIKING" if vix_ratio > 1.3 else
-                      "ELEVATED" if vix_ratio > 1.15 else
-                      "NORMAL" if vix_ratio >= 0.9 else "SUPPRESSED")
-    lines.append(f"  NIFTY {macro.get('nifty_1d_pct', 0):+.2f}% | VIX-IN {vix_in:.1f} ({vix_in_flag}) | VIX-US {vix_us:.1f} ({vix_us_flag})")
-    lines.append(f"  VIX Term: {vix_ratio:.2f}x 20d-avg ({vix_term_label}) | USD/INR {macro.get('usdinr', 0):.2f}")
-    lines.append(f"  Crude ${macro.get('crude_usd', 0):.1f} | US10Y {macro.get('us10y', 0):.2f}% | DXY {macro.get('dxy', 0):.1f} | S&P {macro.get('sp500_1d_pct', 0):+.2f}%")
-    lines.append(f"  Min Conf: {thresh['min_confidence']} | Min TQ: {thresh['min_tq']} | Min R/R: {thresh['min_rr']}")
+    lines.append(
+        f"  VIX-IN {vix_in:.1f} ({vix_in_flag}) | VIX-US {vix_us:.1f} ({vix_us_flag})"
+    )
+    lines.append(
+        f"  NIFTY {macro.get('nifty_1d_pct', 0):+.2f}% | "
+        f"S&P {macro.get('sp500_1d_pct', 0):+.2f}% | "
+        f"DXY {macro.get('dxy', 0):.1f}"
+    )
+    lines.append(
+        f"  USD/INR {macro.get('usdinr', 0):.2f} | "
+        f"Crude ${macro.get('crude_usd', 0):.1f} | "
+        f"US10Y {macro.get('us10y', 0):.2f}%"
+    )
+
+    # FII/DII (Patch 2)
+    fii_dii_line = format_fii_dii(fii_flow, dii_flow)
+    lines.append(f"  {fii_dii_line}")
+
+    lines.append(
+        f"  Min Conf {thresh['min_confidence']} | "
+        f"Min TQ {thresh['min_tq']} | "
+        f"Min R/R {thresh['min_rr']} | "
+        f"Max Buys {thresh['max_buys']}"
+    )
+
     # Portfolio heat
     if heat:
         heat_emoji = "🔴" if not heat["heat_ok"] else ("🟡" if heat["heat_pct"] > heat["max_heat_pct"] * 0.6 else "🟢")
-        lines.append(f"  {heat_emoji} Portfolio Heat: {heat['heat_pct']:.1f}% / {heat['max_heat_pct']:.0f}% | Remaining: {heat['heat_remaining_pct']:.1f}%")
+        lines.append(
+            f"  {heat_emoji} Portfolio Heat: {heat['heat_pct']:.1f}% / {heat['max_heat_pct']:.0f}%"
+        )
+
     # Platt calibration stats
     if platt and platt.get("calibrated"):
-        lines.append(f"  📊 System WR: {platt['win_rate']:.0%} ({platt['total_closed']} trades) | Avg W: +{platt['avg_win_pct']:.1f}% / L: -{platt['avg_loss_pct']:.1f}%")
+        lines.append(
+            f"  📊 System WR: {platt['win_rate']:.0%} ({platt['total_closed']} trades) | "
+            f"Avg W: +{platt['avg_win_pct']:.1f}% / L: -{platt['avg_loss_pct']:.1f}%"
+        )
     lines.append("")
 
-    # Nifty Key Levels
+    # ── NIFTY Key Levels + EMA interpretation (Patch 3) ──
     if key_levels:
         kl = key_levels
         lines.append("NIFTY LEVELS")
-        lines.append(f"  EMA20: {kl.get('ema20', '—')} | EMA50: {kl.get('ema50', '—')} | EMA200: {kl.get('ema200', '—')}")
-        lines.append(f"  52W H: {kl.get('high_52w', '—')} ({kl.get('dist_from_52w_high_pct', 0):.1f}% away) | 52W L: {kl.get('low_52w', '—')}")
-        lines.append(f"  20D Range: {kl.get('recent_low_20d', '—')} — {kl.get('recent_high_20d', '—')}")
+        lines.append(
+            f"  EMA20: {kl.get('ema20', '—')} | "
+            f"EMA50: {kl.get('ema50', '—')} | "
+            f"EMA200: {kl.get('ema200', '—')}"
+        )
+        lines.append(
+            f"  52W H: {kl.get('high_52w', '—')} "
+            f"({kl.get('dist_from_52w_high_pct', 0):.1f}% away) | "
+            f"52W L: {kl.get('low_52w', '—')}"
+        )
+        lines.append(
+            f"  20D Range: {kl.get('recent_low_20d', '—')} — {kl.get('recent_high_20d', '—')}"
+        )
+        # One-line structure interpretation
+        try:
+            nifty_close = float(kl.get("last", 0) or 0)
+            structure   = interpret_nifty_structure(
+                nifty_close,
+                float(kl.get("ema20",  0) or 0),
+                float(kl.get("ema50",  0) or 0),
+                float(kl.get("ema200", 0) or 0),
+                float(kl.get("high_52w", 0) or 0),
+            )
+            lines.append(f"  Structure: {structure}")
+        except Exception:
+            pass
         lines.append("")
 
-    # BUY Signals
-    lines.append("BUY SIGNALS")
+    # ── BUY Signals (Patch 6 for no-buy case) ──
+    lines.append("✅ BUY SIGNALS")
     if buys:
         for b in buys:
             sym      = b.get("symbol", "?")
@@ -2766,8 +3486,10 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
             de       = b.get("de_ratio", 0)
             lines.append(f"  >> {sym} [{sector}]")
             lines.append(f"     Conf {conf:.1f} | TQ {tq:.1f} | R/R {rr:.2f}x")
-            lines.append(f"     Entry Rs{entry:.1f} | Stop Rs{stop_p:.2f} ({stop_pct:.1f}%) | T1 Rs{t1:.2f} | T2 Rs{t2:.1f}")
-            # Max valid entry — highest price at which signal remains valid next morning
+            lines.append(
+                f"     Entry Rs{entry:.1f} | Stop Rs{stop_p:.2f} ({stop_pct:.1f}%) | "
+                f"T1 Rs{t1:.2f} | T2 Rs{t2:.1f}"
+            )
             gap_check = check_gap_validity(entry, stop_p, t1, rr if rr > 0 else 1.8)
             max_entry = gap_check.get("max_valid_entry", 0)
             if max_entry > 0 and max_entry > entry:
@@ -2775,23 +3497,18 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
                 lines.append(f"     ⚡ Max valid entry: Rs{max_entry:.2f} (+{gap_max_pct:.1f}%)")
                 lines.append(f"        If open > Rs{max_entry:.2f} → SKIP. Wait for pullback.")
             lines.append(f"     Size: Rs{pos_val:,.0f} ({pos_pct:.1f}% capital)")
-            # Sizing method (Kelly vs fixed)
             sizing_method = b.get("sizing_method", "")
             if sizing_method:
                 lines.append(f"     Sizing: {sizing_method}")
             lines.append(f"     ROE {roe:.1f}% | D/E {de:.2f} | Pledge {pledge:.0f}%")
-            # RS outperformance vs Nifty (real)
             rs_diff = b.get("rs_diff21", 0)
             lines.append(f"     RS vs Nifty (21d): {rs_diff:+.1f}%")
-            # Weekly trend
             weekly_ok = b.get("weekly_trend_ok", True)
             if not weekly_ok:
-                lines.append(f"     ⚠️ Weekly trend: DOWN — reduced conviction")
-            # Price action pattern
+                lines.append("     ⚠️ Weekly trend: DOWN — reduced conviction")
             pattern = b.get("price_pattern", "NONE")
             if pattern != "NONE":
                 lines.append(f"     Pattern: {pattern}")
-            # Accumulation signal
             accum = b.get("accum_signal", "NEUTRAL")
             if accum != "NEUTRAL":
                 lines.append(f"     Volume: {accum}")
@@ -2804,47 +3521,34 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
             if b.get("warnings"):
                 lines.append(f"     WARN: {', '.join(b['warnings'][:3])}")
     else:
-        lines.append(f"  None — no setup cleared all gates.")
+        # Patch 6: detailed no-buy explanation
+        no_buy_lines = format_no_buy_explanation(rejected_stocks or [], regime)
+        lines.extend(no_buy_lines)
     lines.append("")
 
-    # SHORT Signals
-    lines.append("SHORT SIGNALS")
+    # ── SHORT Signals ──
     if shorts:
+        lines.append("SHORT SIGNALS")
         for s in shorts:
             lines.append(f"  >> {s.get('symbol','?')} [SHORT]")
-            lines.append(f"     Entry Rs{s.get('entry',0):.2f} | Stop Rs{s.get('stop',0):.2f} | T1 Rs{s.get('target1',0):.2f} | T2 Rs{s.get('target2',0):.2f}")
+            lines.append(
+                f"     Entry Rs{s.get('entry',0):.2f} | Stop Rs{s.get('stop',0):.2f} | "
+                f"T1 Rs{s.get('target1',0):.2f} | T2 Rs{s.get('target2',0):.2f}"
+            )
             lines.append(f"     R/R {s.get('rr',0):.2f}x | {s.get('reason','')}")
-    else:
-        lines.append("  None.")
+        lines.append("")
+
+    # ── Watchlist — ALL stocks, all tiers, with levels (Patch 1) ──
+    wl_lines = format_watchlist_section(watchlist, regime)
+    lines.extend(wl_lines)
     lines.append("")
 
-    # Watchlist
-    near_miss  = [w for w in watchlist if w.get("tier") == "NEAR_MISS"]
-    developing = [w for w in watchlist if w.get("tier") == "DEVELOPING"]
-    monitor    = [w for w in watchlist if w.get("tier") == "MONITOR"]
-    lines.append("WATCHLIST")
-    if near_miss:
-        lines.append("  NEAR MISS:")
-        for w in near_miss[:5]:
-            lines.append(f"    {w['symbol']} -- {truncate_display(w.get('note',''), 70)}")
-    if developing:
-        lines.append("  DEVELOPING:")
-        for w in developing[:5]:
-            lines.append(f"    {w['symbol']} -- {truncate_display(w.get('note',''), 70)}")
-    if monitor:
-        lines.append("  MONITOR:")
-        for w in monitor[:5]:
-            lines.append(f"    {w['symbol']} -- {truncate_display(w.get('note',''), 70)}")
-    if not near_miss and not developing and not monitor:
-        lines.append("  None today.")
-    lines.append("")
-
-    # Portfolio
+    # ── Portfolio ──
     exits   = [a for a in portfolio_alerts if a["action"] in ("EXIT", "EXIT_FULL")]
     trails  = [a for a in portfolio_alerts if a["action"] == "TRAIL_STOP"]
     reviews = [a for a in portfolio_alerts if a["action"] == "REVIEW"]
     holds   = [a for a in portfolio_alerts if a["action"] == "HOLD"]
-    lines.append("PORTFOLIO")
+    lines.append("📁 PORTFOLIO")
     if exits:
         lines.append("  EXIT:")
         for e in exits:
@@ -2865,17 +3569,24 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
         lines.append("  No active holdings.")
     lines.append("")
 
-    # Upcoming Events
+    # ── Trade Tracker V2 (Patch 5) ──
+    if tracker_v2:
+        tracker_section = format_tracker_for_telegram(tracker_v2)
+        if tracker_section.strip():
+            lines.append(tracker_section)
+            lines.append("")
+
+    # ── Upcoming Events ──
     if upcoming_events:
         lines.append("UPCOMING EVENTS")
         for ev in upcoming_events:
             lines.append(f"  {ev}")
         lines.append("")
 
-    # Footer
+    # ── Footer ──
     lines.append("─" * 40)
-    lines.append("Recommendation only. Execute manually.")
-    lines.append("─" * 40)
+    lines.append("⚠️  Recommendation only. Execute manually.")
+    lines.append("═" * 40)
     return "\n".join(lines)
 
 
@@ -2944,6 +3655,13 @@ def _run_pipeline_inner():
     _log("[1/18] Fetching global macro...")
     macro = fetch_global_macro()
     _log(f"  NIFTY {macro['nifty_1d_pct']:+.2f}% | VIX-IN {macro['vix_in']:.1f} | USD/INR {macro['usdinr']:.2f}")
+
+    # ── 1b. FII/DII flows from NSE ──
+    _log("[1b] Fetching FII/DII flows from NSE...")
+    fii_dii = fetch_fii_dii_flows()
+    macro["fii_flow_cr"] = fii_dii["fii_flow_cr"]
+    macro["dii_flow_cr"] = fii_dii["dii_flow_cr"]
+    _log(f"  FII: {fii_dii['fii_flow_cr']:+.0f}Cr | DII: {fii_dii['dii_flow_cr']:+.0f}Cr")
 
     # ── 2. NSE Bhavcopy ──
     _log("[2/18] Fetching NSE bhavcopy (delivery %)...")
@@ -3031,40 +3749,9 @@ def _run_pipeline_inner():
         stock["news_summary"]  = truncate_display(ai_result.get("summary", ""), 100)
         stock["news_risk"]     = max(0, 100 - int(penalty * 2))
 
-    # ── 9. Promoter data + fundamentals for top 20 (parallel — was 30-40s, now ~4s) ──
-    _log("[9/18] Fetching promoter/fundamentals for top 20 (parallel)...")
-
-    def _fetch_stock_enrichment(stock: dict) -> dict:
-        sym_clean     = stock["symbol"].replace(".NS", "")
-        promoter_data = fetch_promoter_data(sym_clean)
-        fund_data     = fetch_fundamentals_screener(sym_clean)
-        return {
-            "symbol":               stock["symbol"],
-            "promoter_data":        promoter_data,
-            "ownership_quality":    ownership_quality_score(promoter_data),
-            "promoter_pledge_pct":  promoter_data.get("promoter_pledge_pct", 0),
-            "roe":                  fund_data.get("roe", 0.0),
-            "de_ratio":             fund_data.get("de_ratio", 0.0),
-        }
-
-    enrichment_map = {}
-    with ThreadPoolExecutor(max_workers=5) as ex:
-        futs = {ex.submit(_fetch_stock_enrichment, s): s["symbol"] for s in top_40[:20]}
-        for fut in as_completed(futs):
-            try:
-                result = fut.result(timeout=20)
-                enrichment_map[result["symbol"]] = result
-            except Exception as e:
-                _log(f"[WARN] enrichment failed for {futs[fut]}: {e}")
-
-    for stock in top_40[:20]:
-        enriched = enrichment_map.get(stock["symbol"], {})
-        stock["promoter_data"]       = enriched.get("promoter_data", {"promoter_pledge_pct": 0})
-        stock["ownership_quality"]   = enriched.get("ownership_quality", 50)
-        stock["promoter_pledge_pct"] = enriched.get("promoter_pledge_pct", 0)
-        stock["roe"]                 = enriched.get("roe", 0.0)
-        stock["de_ratio"]            = enriched.get("de_ratio", 0.0)
-    _log(f"  Enrichment done: {len(enrichment_map)}/20 stocks fetched")
+    # ── 9. Promoter data + fundamentals — sequential with 24h cache (no rate limiting) ──
+    _log("[9/18] Fetching promoter/fundamentals for top 20 (sequential + cached)...")
+    top_40 = fetch_all_fundamentals_cached(top_40, max_stocks=20)
 
     # ── 10. Options PCR for top 20 (parallel) ──
     _log("[10/18] Options PCR for top 20 (parallel)...")
@@ -3117,6 +3804,7 @@ def _run_pipeline_inner():
     # ── 13. Load tracker (before gates — needed for deduplication) ──
     _log("[13/18] Loading trade tracker...")
     tracker_entries = load_tracker()
+    tracker_v2      = initialize_tracker_if_new()
 
     # ── 13b. Upcoming events (needed by Gate 13 before gate system runs) ──
     upcoming_events = get_upcoming_events(lookahead_days=7)
@@ -3223,6 +3911,10 @@ def _run_pipeline_inner():
     # ── 15. Format and send main Telegram message ──
     _log("[15/18] Sending main Telegram report...")
     timestamp = datetime.datetime.now().strftime("%b %d, %Y %H:%M IST")
+
+    # Update tracker v2 PnL before embedding in message
+    tracker_v2 = update_tracker_v2_pnl(tracker_v2)
+
     message   = format_telegram_message(
         regime_data      = regime_data,
         buys             = buys,
@@ -3235,6 +3927,9 @@ def _run_pipeline_inner():
         timestamp        = timestamp,
         heat             = heat,
         platt            = platt,
+        tracker_v2       = tracker_v2,
+        rejected_stocks  = rejected,
+        breadth_20       = breadth.get("ema20_pct", 50.0),
     )
     _log("--- TELEGRAM PREVIEW (first 1500 chars) ---")
     _log(message[:1500])
@@ -3267,6 +3962,9 @@ def _run_pipeline_inner():
 
     maybe_send_weekly_stats(tracker_entries)
     save_tracker(tracker_entries)
+
+    # Save tracker v2 (new structured format)
+    save_tracker_v2(tracker_v2)
 
     # ── 17. Save CSVs ──
     _log("[17/18] Saving output CSVs...")
