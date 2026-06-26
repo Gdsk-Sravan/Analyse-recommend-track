@@ -19,13 +19,15 @@ jobs:
       - name: Install dependencies
         run: pip install yfinance openpyxl pandas numpy python-dotenv
 
-      - name: Download existing tracker from artifacts (if any)
+      - name: Download recommendation tracker Excel from scanner
         continue-on-error: true
         uses: dawidd6/action-download-artifact@v3
         with:
+          workflow: main.yml
           name: recommendation-tracker
           path: .
           if_no_artifact_found: ignore
+          workflow_conclusion: success
 
       - name: Run research analytics job
         env:
