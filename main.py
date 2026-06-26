@@ -287,6 +287,37 @@ def _save_failed_telegram(message: str) -> None:
         pass
 
 
+_VALID_TG_TAGS = re.compile(
+    r"<(/?(b|i|u|s|code|pre|a)(\s[^>]*)?)>",
+    re.IGNORECASE,
+)
+
+def _sanitize_telegram_html(text: str) -> str:
+    """
+    Escape any < that does NOT start a valid Telegram HTML tag.
+    Telegram supports: <b> <i> <u> <s> <code> <pre> <a href="...">
+    Any other < (e.g. from fail_reasons like "Conf < 83)") causes HTTP 400.
+    """
+    result = []
+    i = 0
+    while i < len(text):
+        if text[i] == "<":
+            m = _VALID_TG_TAGS.match(text, i)
+            if m:
+                result.append(m.group(0))
+                i = m.end()
+            else:
+                result.append("&lt;")
+                i += 1
+        elif text[i] == "&" and not re.match(r"&(?:lt|gt|amp|quot|#\d+);", text[i:]):
+            result.append("&amp;")
+            i += 1
+        else:
+            result.append(text[i])
+            i += 1
+    return "".join(result)
+
+
 def send_telegram(message: str) -> None:
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         _log("[WARN] Main Telegram not configured — skipping send")
@@ -297,7 +328,7 @@ def send_telegram(message: str) -> None:
             url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
             resp = requests.post(url, json={
                 "chat_id": TELEGRAM_CHAT_ID,
-                "text": chunk,
+                "text": _sanitize_telegram_html(chunk),
                 "parse_mode": "HTML",
             }, timeout=15)
             if resp.status_code != 200:
@@ -317,7 +348,7 @@ def send_tracker_telegram(message: str) -> None:
             url = f"https://api.telegram.org/bot{TRACKER_BOT_TOKEN}/sendMessage"
             resp = requests.post(url, json={
                 "chat_id": TRACKER_CHAT_ID,
-                "text": chunk,
+                "text": _sanitize_telegram_html(chunk),
                 "parse_mode": "HTML",
             }, timeout=12)
             if resp.status_code != 200:
@@ -396,7 +427,7 @@ def send_buy_telegram(buys: list, regime: str, timestamp: str) -> None:
             url = f"https://api.telegram.org/bot{BUY_BOT_TOKEN}/sendMessage"
             resp = requests.post(url, json={
                 "chat_id":    BUY_CHAT_ID,
-                "text":       chunk,
+                "text":       _sanitize_telegram_html(chunk),
                 "parse_mode": "HTML",
             }, timeout=15)
             if resp.status_code != 200:
@@ -678,42 +709,160 @@ def _nse_session() -> requests.Session:
     return session
 
 
+def _bhavcopy_from_file(filepath: str):
+    """Load a pre-downloaded bhavcopy CSV or ZIP from disk. Returns DataFrame or None."""
+    import zipfile, io as _io
+    try:
+        if not os.path.exists(filepath) or os.path.getsize(filepath) < 500:
+            return None
+        if filepath.endswith(".zip"):
+            with zipfile.ZipFile(filepath) as zf:
+                csv_name = next((n for n in zf.namelist() if n.endswith(".csv")), None)
+                if csv_name is None:
+                    return None
+                df = pd.read_csv(zf.open(csv_name))
+        else:
+            df = pd.read_csv(filepath)
+        df.columns = [c.strip() for c in df.columns]
+        _log(f"  Bhavcopy loaded from local file: {filepath}")
+        return df
+    except Exception as e:
+        _log(f"[WARN] Could not read local bhavcopy file {filepath}: {e}")
+        return None
+
+
+def _bhavcopy_from_bse(date: datetime.datetime):
+    """
+    Fetch BSE bhavcopy as fallback — BSE servers are accessible from CI/cloud IPs.
+    BSE full bhavcopy ZIP contains DELIV_PER column.
+    Maps BSE SC_NAME → NSE symbol via nse_all_symbols.csv, then returns a
+    DataFrame shaped like NSE bhavcopy (SYMBOL + DELIV_PER columns).
+    """
+    import zipfile, io as _io
+
+    # Build NSE name→symbol map from nse_all_symbols.csv
+    name_to_sym: dict = {}
+    try:
+        csv_path = os.path.join(os.path.dirname(__file__) or ".", "nse_all_symbols.csv")
+        ns_df = pd.read_csv(csv_path)
+        for _, row in ns_df.iterrows():
+            raw_name = str(row.get("COMPANY_NAME", "")).strip()
+            sym = str(row.get("SYMBOL", "")).replace(".NS", "").strip()
+            if raw_name and sym:
+                norm = re.sub(r"[^a-z0-9]", "", raw_name.lower())
+                norm = re.sub(r"(ltd|limited|pvt|private|inc|corp|llp|llc)$", "", norm)
+                name_to_sym[norm] = sym
+    except Exception:
+        pass  # proceed without mapping; will just lose some matches
+
+    bse_headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36",
+        "Accept": "*/*",
+        "Referer": "https://www.bseindia.com/markets/MarketInfo/BhavCopy.aspx",
+    }
+
+    for days_back in range(0, 6):
+        d = date - datetime.timedelta(days=days_back)
+        if d.weekday() >= 5:
+            continue
+        ddmmyy = d.strftime("%d%m%y")   # BSE format: 260626
+
+        # BSE full bhavcopy with delivery data
+        url = f"https://www.bseindia.com/download/BhavCopy/Equity/EQ{ddmmyy}_CSV.ZIP"
+        try:
+            resp = requests.get(url, headers=bse_headers, timeout=20)
+            if resp.status_code != 200 or len(resp.content) < 1000:
+                continue
+            with zipfile.ZipFile(_io.BytesIO(resp.content)) as zf:
+                csv_name = next((n for n in zf.namelist() if n.endswith(".csv")), None)
+                if csv_name is None:
+                    continue
+                bse_df = pd.read_csv(zf.open(csv_name))
+            bse_df.columns = [c.strip() for c in bse_df.columns]
+
+            # Detect delivery column
+            deliv_col = next(
+                (c for c in bse_df.columns if "deliv" in c.lower() and ("per" in c.lower() or "%" in c.lower())),
+                None
+            )
+            if deliv_col is None:
+                _log(f"[WARN] BSE bhavcopy missing delivery-% column (cols: {list(bse_df.columns)[:8]})")
+                continue
+
+            # Detect BSE name column
+            name_col = next(
+                (c for c in bse_df.columns if "name" in c.lower() or c.upper() in ("SC_NAME", "SCRIP_NAME")),
+                None
+            )
+            if name_col is None:
+                continue
+
+            # Remap BSE SC_NAME → NSE symbol
+            rows = []
+            for _, row in bse_df.iterrows():
+                raw_name = str(row.get(name_col, "")).strip()
+                norm = re.sub(r"[^a-z0-9]", "", raw_name.lower())
+                norm = re.sub(r"(ltd|limited|pvt|private|inc|corp|llp|llc)$", "", norm)
+                nse_sym = name_to_sym.get(norm)
+                if nse_sym:
+                    try:
+                        deliv_val = float(str(row[deliv_col]).replace(",", "").strip())
+                    except (ValueError, TypeError):
+                        deliv_val = 50.0
+                    rows.append({"SYMBOL": nse_sym, "DELIV_PER": deliv_val})
+
+            if rows:
+                result_df = pd.DataFrame(rows)
+                _log(f"  Bhavcopy from BSE for {d.strftime('%d-%b-%Y')}: {len(rows)} symbols mapped")
+                return result_df
+
+        except Exception as e:
+            _log(f"[WARN] BSE bhavcopy error ({d.strftime('%d-%b-%Y')}): {e}")
+            continue
+
+    return None
+
+
 def fetch_nse_bhavcopy(date=None):
     """
-    Tries multiple URL patterns for NSE bhavcopy, going back up to 5 trading days.
-    Returns a DataFrame on success, None if all sources fail.
-    Uses a pre-warmed session with NSE cookies to avoid 403s on CI/cloud IPs.
+    Delivery % data — tried in this priority order:
+    1. Local pre-downloaded file (bhavcopy_today.csv / .zip) written by workflow step
+    2. NSE archive URLs with pre-warmed session (blocked on CI IPs, works locally)
+    3. BSE bhavcopy fallback — BSE servers are accessible from GitHub Actions
+    Returns a DataFrame with at minimum SYMBOL and DELIV_PER columns, or None.
     """
     import zipfile, io as _io
 
     if date is None:
         date = datetime.datetime.today()
 
-    # Pre-warm session — NSE requires the homepage cookie to serve archive files
+    # ── 1. Local pre-downloaded file ──────────────────────────────────────────
+    for local_path in ("bhavcopy_today.csv", "bhavcopy_today.zip"):
+        df = _bhavcopy_from_file(local_path)
+        if df is not None:
+            return df
+
+    # ── 2. NSE live fetch (works locally / non-blocked IPs) ──────────────────
     session = _nse_session()
     session.headers.update({
         "Referer": "https://www.nseindia.com/all-reports",
         "X-Requested-With": "XMLHttpRequest",
     })
 
+    nse_ok = False
     for days_back in range(0, 6):
         d = date - datetime.timedelta(days=days_back)
-        # Skip weekends — bhavcopy never exists for Sat/Sun
         if d.weekday() >= 5:
             continue
-        date_str = d.strftime("%d%b%Y").upper()   # e.g. 26JUN2026
-        date_ymd = d.strftime("%Y%m%d")            # e.g. 20260626
+        date_str = d.strftime("%d%b%Y").upper()
+        date_ymd = d.strftime("%Y%m%d")
 
-        urls_to_try = [
-            # Pattern 1 — original archives URL (has DELIV_PER column)
+        nse_urls = [
             (f"https://archives.nseindia.com/products/content/sec_bhavdata_full_{date_str}.csv", "csv"),
-            # Pattern 2 — NSE CDN mirror (same file, often unblocked when archives is not)
             (f"https://nsearchives.nseindia.com/products/content/sec_bhavdata_full_{date_str}.csv", "csv"),
-            # Pattern 3 — Newer NSE CM BhavCopy ZIP (post-2024 format; column: DeliveryPercentage)
             (f"https://nsearchives.nseindia.com/content/equities/BhavCopy_NSE_CM_0_0_0_{date_ymd}_F_0000.csv.zip", "zip"),
         ]
-
-        for url, fmt in urls_to_try:
+        for url, fmt in nse_urls:
             try:
                 resp = session.get(url, timeout=20)
                 if resp.status_code == 200 and len(resp.content) > 1000:
@@ -729,18 +878,22 @@ def fetch_nse_bhavcopy(date=None):
                     _log(f"  Bhavcopy loaded for {d.strftime('%d-%b-%Y')} via {url.split('/')[2]}")
                     return df
                 elif resp.status_code == 404:
-                    continue  # file doesn't exist for this date/source, try next
-                elif resp.status_code in (403, 429):
-                    _log(f"[WARN] Bhavcopy blocked ({resp.status_code}) at {url.split('/')[2]} — trying next source")
-                    # Re-warm session on 403 and retry remaining sources
-                    try:
-                        session.get("https://www.nseindia.com", timeout=8)
-                    except Exception:
-                        pass
                     continue
+                elif resp.status_code in (403, 429):
+                    _log(f"[WARN] NSE bhavcopy blocked ({resp.status_code}) — likely CI IP block")
+                    nse_ok = False
+                    break   # all NSE sources will be blocked; skip to BSE
             except Exception as e:
-                _log(f"[WARN] Bhavcopy fetch error ({url.split('/')[2]}): {e}")
+                _log(f"[WARN] NSE bhavcopy fetch error: {e}")
                 continue
+        if not nse_ok:
+            break  # don't retry other dates if NSE is blocking us
+
+    # ── 3. BSE fallback ───────────────────────────────────────────────────────
+    _log("  Trying BSE bhavcopy as fallback...")
+    bse_df = _bhavcopy_from_bse(date)
+    if bse_df is not None:
+        return bse_df
 
     _log("[WARN] All bhavcopy sources failed — delivery % will use 50% default for all stocks")
     return None
@@ -2224,7 +2377,10 @@ def _default_stock_result(symbol: str, sector: str) -> dict:
         "news_penalty": 0, "is_black_swan": False, "news_summary": "",
         "price": 0.0, "ret1d": 0.0, "ret5d": 0.0, "ret21d": 0.0,
         "high_52w": 0.0, "low_52w": 0.0, "atr14": 0.0, "rsi14": 50.0,
-        "final_confidence": 0.0, "base_confidence": 0.0,
+        "final_confidence": 0.0,
+        # base_confidence intentionally absent — computed externally by
+        # compute_base_confidence() and inserted after **scores in scored.append()
+        # so it is never overwritten by a stale 0.0 placeholder.
         "weekly_trend_ok": False, "price_pattern": "NONE", "rs_diff21": 0.0,
     }
 
@@ -2586,17 +2742,17 @@ def run_gates(stock: dict, regime: str, thresholds: dict,
     # Gate 6: Confidence (HARD)
     conf = stock.get("final_confidence", 0)
     if conf < thresh["min_confidence"]:
-        fail_reasons.append(f"CONFIDENCE_FAIL({conf:.1f}<{thresh['min_confidence']})")
+        fail_reasons.append(f"CONF_FAIL(got {conf:.1f}, need {thresh['min_confidence']})")
 
     # Gate 7: Trade Quality (HARD)
     tq = stock.get("trade_quality_score", 0)
     if tq < thresh["min_tq"]:
-        fail_reasons.append(f"TQ_FAIL({tq:.1f}<{thresh['min_tq']})")
+        fail_reasons.append(f"TQ_FAIL(got {tq:.1f}, need {thresh['min_tq']})")
 
     # Gate 8: Risk/Reward (HARD)
     rr = stock.get("rr_ratio", 0)
     if rr < thresh["min_rr"]:
-        fail_reasons.append(f"RR_FAIL({rr:.2f}<{thresh['min_rr']})")
+        fail_reasons.append(f"RR_FAIL(got {rr:.2f}, need {thresh['min_rr']})")
 
     # Gate 9: Sector Health (SOFT / HARD if LAGGING)
     sector_status = stock.get("sector_status", "NEUTRAL")
@@ -3254,7 +3410,7 @@ def format_tracker_for_telegram(tracker: dict) -> str:
             cur_pnl = hist[-1]["pnl"]   if hist else 0.0
             cur_px  = hist[-1]["price"] if hist else pos.get("entry", 0)
             day_n   = pos.get("days_tracked", 1)
-            status  = pos.get("status", "ACTIVE")
+            status  = html.escape(str(pos.get("status", "ACTIVE")))
             entry   = pos.get("entry",   0)
             stop    = pos.get("stop",    0)
             t1      = pos.get("target1", 0)
@@ -3271,7 +3427,7 @@ def format_tracker_for_telegram(tracker: dict) -> str:
             dist_t1   = round((t1 - cur_px) / cur_px * 100, 1) if cur_px > 0 and t1 > 0 else 0
 
             lines.append(
-                f"  {pos['symbol']} | Day {day_n}/15 | "
+                f"  {html.escape(str(pos['symbol']))} | Day {day_n}/15 | "
                 f"PnL {cur_pnl:+.1f}% | {status}"
             )
             lines.append(f"  [{bar}] Rs{cur_px:.1f}")
@@ -3286,7 +3442,7 @@ def format_tracker_for_telegram(tracker: dict) -> str:
             cur      = w.get("current_price", w.get("entry", 0))
             entry    = w.get("entry", 0)
             day_n    = w.get("days_watching", 1)
-            tier     = w.get("tier", "MONITOR")
+            tier     = html.escape(str(w.get("tier", "MONITOR")))
             conf_gap = w.get("conf_gap_at_rec", 0)
             if entry > 0 and cur > 0:
                 move      = round((cur - entry) / entry * 100, 1)
@@ -3294,7 +3450,7 @@ def format_tracker_for_telegram(tracker: dict) -> str:
             else:
                 direction = "—"
             lines.append(
-                f"  {w['symbol']} [{tier}] Day {day_n}/14 | "
+                f"  {html.escape(str(w['symbol']))} [{tier}] Day {day_n}/14 | "
                 f"Gap was {conf_gap:.1f} | {direction}"
             )
 
@@ -3325,7 +3481,7 @@ def format_watchlist_section(watchlist: list, regime: str) -> list:
         lines.append(f"  NEAR MISS ({len(near)} — within 8 pts):")
         for w in near:
             lines.append(
-                f"    {w['symbol']} [{w.get('sector','?')}] | "
+                f"    {html.escape(str(w['symbol']))} [{html.escape(str(w.get('sector','?')))}] | "
                 f"Conf {w.get('conf', w.get('final_confidence', 0)):.1f} "
                 f"[gap {w.get('conf_gap', 0):.1f}] | TQ {w.get('tq', w.get('trade_quality_score', 0)):.1f}"
             )
@@ -3342,13 +3498,13 @@ def format_watchlist_section(watchlist: list, regime: str) -> list:
                 f"T2 Rs{target2:.1f} | R/R {rr:.1f}x | Risk {risk:.1f}%"
             )
             if w.get("warnings"):
-                lines.append(f"    ⚠️  {' | '.join(w['warnings'])}")
+                lines.append(f"    ⚠️  {html.escape(' | '.join(str(x) for x in w['warnings']))}")
 
     if dev:
         lines.append(f"  DEVELOPING ({len(dev)} — gap 8-18):")
         for w in dev:
             lines.append(
-                f"    {w['symbol']} [{w.get('sector','?')}] | "
+                f"    {html.escape(str(w['symbol']))} [{html.escape(str(w.get('sector','?')))}] | "
                 f"Conf {w.get('conf', w.get('final_confidence', 0)):.1f} "
                 f"[gap {w.get('conf_gap', 0):.1f}] | TQ {w.get('tq', w.get('trade_quality_score', 0)):.1f}"
             )
@@ -3369,7 +3525,7 @@ def format_watchlist_section(watchlist: list, regime: str) -> list:
         lines.append(f"  MONITOR ({len(mon)} — early stage):")
         for w in mon:
             lines.append(
-                f"    {w['symbol']} [{w.get('sector','?')}] | "
+                f"    {html.escape(str(w['symbol']))} [{html.escape(str(w.get('sector','?')))}] | "
                 f"Conf {w.get('conf', w.get('final_confidence', 0)):.1f} "
                 f"[gap {w.get('conf_gap', 0):.1f}] | TQ {w.get('tq', w.get('trade_quality_score', 0)):.1f}"
             )
@@ -3415,13 +3571,13 @@ def format_no_buy_explanation(top_rejected: list, regime: str) -> list:
         tq_gap   = max(0, thresh["min_tq"] - tq)
         rr_gap   = max(0, thresh["min_rr"] - rr)
         fails    = s.get("fail_reasons", [])
-        lines.append(f"  #{i+1} {s.get('symbol','?')} [{s.get('sector','?')}]")
+        lines.append(f"  #{i+1} {html.escape(str(s.get('symbol','?')))} [{html.escape(str(s.get('sector','?')))}]")
         lines.append(
             f"     Conf {conf:.1f} (need +{conf_gap:.1f}) | "
             f"TQ {tq:.1f} (need +{tq_gap:.1f}) | "
             f"R/R {rr:.2f}x (need +{rr_gap:.2f})"
         )
-        lines.append(f"     Blockers: {', '.join(fails) if fails else 'none recorded'}")
+        lines.append(f"     Blockers: {html.escape(', '.join(str(f) for f in fails) if fails else 'none recorded')}")
     return lines
 
 
@@ -3808,7 +3964,9 @@ def _run_pipeline_inner():
         sector       = get_sector(symbol)
         scores       = compute_all_factors(symbol, df, delivery_pct, sector, regime_data, sector_rotation)
         base_conf    = compute_base_confidence(scores)
-        scored.append({"symbol": symbol, "base_confidence": base_conf, "sector": sector, "_df": df, **scores})
+        # NOTE: **scores must come BEFORE base_confidence so our computed value wins
+        # (scores dict contains base_confidence: 0.0 as a default placeholder)
+        scored.append({"symbol": symbol, "sector": sector, "_df": df, **scores, "base_confidence": base_conf})
 
     scored.sort(key=lambda x: x["base_confidence"], reverse=True)
     top_40 = scored[:40]
