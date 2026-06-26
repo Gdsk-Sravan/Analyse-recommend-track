@@ -1,0 +1,39 @@
+name: Research Analytics
+
+on:
+  schedule:
+    - cron: '0 4 * * 6'  # Saturdays 9:30 AM IST (4:00 UTC)
+  workflow_dispatch:
+
+jobs:
+  research:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install yfinance openpyxl pandas numpy python-dotenv
+
+      - name: Download existing tracker from artifacts (if any)
+        continue-on-error: true
+        uses: dawidd6/action-download-artifact@v3
+        with:
+          name: recommendation-tracker
+          path: .
+          if_no_artifact_found: ignore
+
+      - name: Run research analytics job
+        env:
+          TRACKER_XLSX: recommendation_tracker.xlsx
+        run: python research_job.py
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: research-report
+          path: recommendation_tracker.xlsx
+          retention-days: 90
