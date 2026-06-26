@@ -1,0 +1,320 @@
+name: Stock analyser
+
+on:
+  workflow_dispatch:
+    inputs:
+      force_price_refresh:
+        description: "Force re-download latest prices (use after 4:30 PM IST for fresh EOD data)"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+      universe_mode:
+        description: "Universe to scan"
+        required: false
+        default: "NSE_ALL"
+        type: choice
+        options:
+          - "NSE_ALL"
+          - "NIFTY_500"
+          - "CUSTOM_LIST"
+
+      force_universe_refresh:
+        description: "Force NSE stock list refresh"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "true"
+          - "false"
+
+      force_full_cache_refresh:
+        description: "Force full OHLCV cache rebuild"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "true"
+          - "false"
+
+      enable_ai_second_pass:
+        description: "Use AI second pass if key is available"
+        required: false
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
+
+      persist_state_to_repo:
+        description: "Commit portfolio state back to repo. Keep false for public repos."
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "true"
+          - "false"
+
+      upload_private_reports:
+        description: "Upload generated reports as artifact. Keep false for public repos."
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "true"
+          - "false"
+
+  schedule:
+    # JOB 1 — Evening signal pipeline: 13:30 UTC = 7:00 PM IST, Mon–Fri
+    - cron: "30 13 * * 1-5"
+    # JOB 2 — Morning gap-open check: 03:50 UTC = 9:20 AM IST, Mon–Fri
+    - cron: "50 3 * * 1-5"
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: stock-reviewer-${{ github.ref }}-${{ github.event.schedule || 'manual' }}
+  cancel-in-progress: false
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SHARED env — used by BOTH jobs
+# ═══════════════════════════════════════════════════════════════════════════════
+env:
+  PYTHONUNBUFFERED: "1"
+  TZ: "Asia/Kolkata"
+
+  TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+  TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+  BUY_BOT_TOKEN:      ${{ secrets.BUY_BOT_TOKEN || '' }}
+  BUY_CHAT_ID:        ${{ secrets.BUY_CHAT_ID || vars.BUY_CHAT_ID || '' }}
+  TRACKER_BOT_TOKEN:  ${{ secrets.TRACKER_BOT_TOKEN || '' }}
+  TRACKER_CHAT_ID:    ${{ secrets.TRACKER_CHAT_ID || vars.TRACKER_CHAT_ID || '' }}
+  CAPITAL:            ${{ vars.CAPITAL || vars.TOTAL_CAPITAL || '500000' }}
+  TRACKER_FILE:       tracker.json
+
+jobs:
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # JOB 1 — EVENING PIPELINE (7 PM IST) — full analysis, Telegram BUY signals
+  # Triggered by: schedule "30 13" OR workflow_dispatch (manual run)
+  # ─────────────────────────────────────────────────────────────────────────────
+  evening-pipeline:
+    name: "Evening Pipeline — Full Analysis (7 PM IST)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+
+    # Run when: manually triggered  OR  it is the 13:30 UTC schedule
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'schedule' && github.event.schedule == '30 13 * * 1-5')
+
+    env:
+      UNIVERSE_MODE:                ${{ github.event.inputs.universe_mode || vars.UNIVERSE_MODE || 'NSE_ALL' }}
+      ENABLE_AI_SECOND_PASS:        ${{ github.event.inputs.enable_ai_second_pass || vars.ENABLE_AI_SECOND_PASS || 'true' }}
+      PERSIST_STATE_TO_REPO:        ${{ github.event.inputs.persist_state_to_repo || vars.PERSIST_STATE_TO_REPO || 'false' }}
+      UPLOAD_PRIVATE_REPORTS:       ${{ github.event.inputs.upload_private_reports || vars.UPLOAD_PRIVATE_REPORTS || 'false' }}
+      SHOW_VERBOSE_LOGS:            ${{ vars.SHOW_VERBOSE_LOGS || 'false' }}
+
+      PORTFOLIO_SOURCE:             ${{ vars.PORTFOLIO_SOURCE || 'MANUAL_ENV' }}
+      AUTO_TRACK_RECOMMENDED_BUYS:  ${{ vars.AUTO_TRACK_RECOMMENDED_BUYS || 'false' }}
+      AUTO_CLOSE_EXIT_SIGNALS:      ${{ vars.AUTO_CLOSE_EXIT_SIGNALS || 'false' }}
+      MANUAL_PORTFOLIO_JSON:        ${{ secrets.MANUAL_PORTFOLIO_JSON || vars.MANUAL_PORTFOLIO_JSON || '[]' }}
+
+      FORCE_UNIVERSE_REFRESH:       ${{ github.event.inputs.force_universe_refresh || 'false' }}
+      FORCE_FULL_CACHE_REFRESH:     ${{ github.event.inputs.force_full_cache_refresh || 'false' }}
+      FORCE_PRICE_REFRESH:          ${{ github.event.inputs.force_price_refresh || vars.FORCE_PRICE_REFRESH || 'false' }}
+
+      FULL_CACHE_REFRESH_WEEKDAY:   ${{ vars.FULL_CACHE_REFRESH_WEEKDAY || '0' }}
+      UNIVERSE_REFRESH_DAYS:        ${{ vars.UNIVERSE_REFRESH_DAYS || '7' }}
+      FULL_CACHE_REFRESH_DAYS:      ${{ vars.FULL_CACHE_REFRESH_DAYS || '7' }}
+      PRICE_CACHE_MAX_AGE_HOURS:    ${{ vars.PRICE_CACHE_MAX_AGE_HOURS || '18' }}
+      INDEX_CACHE_MAX_AGE_HOURS:    ${{ vars.INDEX_CACHE_MAX_AGE_HOURS || '4' }}
+      ACTIVE_HOLDING_CACHE_MAX_AGE_HOURS: ${{ vars.ACTIVE_HOLDING_CACHE_MAX_AGE_HOURS || '8' }}
+      CANDIDATE_CACHE_MAX_AGE_HOURS: ${{ vars.CANDIDATE_CACHE_MAX_AGE_HOURS || '18' }}
+      CACHE_DAILY_TRADABLE_LIMIT:   ${{ vars.CACHE_DAILY_TRADABLE_LIMIT || '1500' }}
+      CACHE_HIGH_QUALITY_LIMIT:     ${{ vars.CACHE_HIGH_QUALITY_LIMIT || '250' }}
+      CACHE_SMART_SKIP_ENABLED:     ${{ vars.CACHE_SMART_SKIP_ENABLED || 'true' }}
+      CACHE_REQUIRE_CURRENT_DAILY_CANDLE: ${{ vars.CACHE_REQUIRE_CURRENT_DAILY_CANDLE || 'true' }}
+      MARKET_DATA_READY_TIME_IST:   ${{ vars.MARKET_DATA_READY_TIME_IST || '18:15' }}
+      NO_NEW_CANDLE_RETRY_HOURS:    ${{ vars.NO_NEW_CANDLE_RETRY_HOURS || '6' }}
+      CACHE_SHOW_TOP_SKIPS:         ${{ vars.CACHE_SHOW_TOP_SKIPS || '12' }}
+
+      NEWS_FETCH_TOP_N:             ${{ vars.NEWS_FETCH_TOP_N || '40' }}
+      AI_NEWS_SYMBOL_LIMIT:         ${{ vars.AI_NEWS_SYMBOL_LIMIT || '15' }}
+      NEWS_FETCH_MAX_WORKERS:       ${{ vars.NEWS_FETCH_MAX_WORKERS || '10' }}
+      NEWS_FETCH_TIMEOUT_SECONDS:   ${{ vars.NEWS_FETCH_TIMEOUT_SECONDS || '8' }}
+      NEWS_CACHE_TTL_HOURS:         ${{ vars.NEWS_CACHE_TTL_HOURS || '12' }}
+      NEWS_MAX_HEADLINES_PER_SYMBOL: ${{ vars.NEWS_MAX_HEADLINES_PER_SYMBOL || '8' }}
+
+      TOTAL_CAPITAL:                ${{ vars.TOTAL_CAPITAL || '200000' }}
+      RISK_PER_TRADE_PCT:           ${{ vars.RISK_PER_TRADE_PCT || '1.0' }}
+      MAX_PORTFOLIO_HEAT:           ${{ vars.MAX_PORTFOLIO_HEAT || '6.0' }}
+      MAX_ACTIVE_POSITIONS:         ${{ vars.MAX_ACTIVE_POSITIONS || '8' }}
+      MAX_POSITION_PCT:             ${{ vars.MAX_POSITION_PCT || '20' }}
+      MAX_SECTOR_EXPOSURE_PCT:      ${{ vars.MAX_SECTOR_EXPOSURE_PCT || '30.0' }}
+      MAX_SAME_SECTOR_POSITIONS:    ${{ vars.MAX_SAME_SECTOR_POSITIONS || '2' }}
+      MAX_SAME_SECTOR_NEW_BUYS_PER_DAY: ${{ vars.MAX_SAME_SECTOR_NEW_BUYS_PER_DAY || '2' }}
+      MIN_AVG_TRADED_VALUE:         ${{ vars.MIN_AVG_TRADED_VALUE || '5000000' }}
+      MIN_AVG_VOLUME:               ${{ vars.MIN_AVG_VOLUME || '100000' }}
+      MIN_REWARD_RISK:              ${{ vars.MIN_REWARD_RISK || '1.8' }}
+      CORRELATION_LIMIT:            ${{ vars.CORRELATION_LIMIT || '0.78' }}
+      TIME_EXIT_DAYS:               ${{ vars.TIME_EXIT_DAYS || '10' }}
+
+      AI_PROVIDER:                  ${{ vars.AI_PROVIDER || 'groq' }}
+      AI_ENABLED:                   ${{ vars.AI_ENABLED || 'true' }}
+      AI_TIMEOUT_SECONDS:           ${{ vars.AI_TIMEOUT_SECONDS || '30' }}
+      AI_MAX_RETRIES:               ${{ vars.AI_MAX_RETRIES || '2' }}
+      AI_TOP_CANDIDATE_LIMIT:       ${{ vars.AI_TOP_CANDIDATE_LIMIT || '20' }}
+      LOG_AI_IO:                    ${{ vars.LOG_AI_IO || 'true' }}
+
+      GROQ_API_KEY:   ${{ secrets.GROQ_API_KEY }}
+      GROQ_MODEL:     ${{ vars.GROQ_MODEL || 'llama-3.1-8b-instant' }}
+      GROQ_API_KEY_1: ${{ secrets.GROQ_API_KEY_1 || secrets.GROQ_API_KEY }}
+      GROQ_API_KEY_2: ${{ secrets.GROQ_API_KEY_2 || '' }}
+      GROQ_API_KEY_3: ${{ secrets.GROQ_API_KEY_3 || '' }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Restore cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            cache
+            news_cache
+            nse_all_symbols.csv
+            universe_cache_meta.json
+            weekly_job_meta.json
+            tradable_universe.csv
+            qualified_stocks.csv
+            low_volatility_stocks.txt
+            tracker.json
+          key: stock-reviewer-data-${{ runner.os }}-${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            stock-reviewer-data-${{ runner.os }}-${{ github.ref_name }}-
+            stock-reviewer-data-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Preflight
+        run: |
+          echo "=== EVENING PIPELINE ==="
+          python --version
+          echo "Capital: ${CAPITAL}"
+          echo "Universe: ${UNIVERSE_MODE}"
+          [ -z "${TELEGRAM_BOT_TOKEN}" ] && echo "WARNING: TELEGRAM_BOT_TOKEN missing"
+          [ -z "${BUY_BOT_TOKEN}" ]      && echo "WARNING: BUY_BOT_TOKEN missing (BUY channel will not send)"
+          [ -z "${GROQ_API_KEY_1}" ]     && echo "WARNING: GROQ_API_KEY_1 missing"
+
+      - name: Run evening pipeline
+        run: python main.py
+
+      - name: Show summary
+        if: always()
+        run: |
+          echo "Generated files:"
+          ls -1 *.txt *.csv *.json 2>/dev/null || true
+          if [ -f error_log.txt ]; then head -20 error_log.txt; fi
+
+      - name: Save cache (includes tracker.json for morning job)
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            cache
+            news_cache
+            nse_all_symbols.csv
+            universe_cache_meta.json
+            weekly_job_meta.json
+            tradable_universe.csv
+            qualified_stocks.csv
+            low_volatility_stocks.txt
+            tracker.json
+          key: stock-reviewer-data-${{ runner.os }}-${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Upload reports (if enabled)
+        if: ${{ always() && env.UPLOAD_PRIVATE_REPORTS == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: evening-pipeline-output
+          retention-days: 14
+          if-no-files-found: ignore
+          path: |
+            *.csv
+            *.txt
+            *.json
+
+      - name: Persist portfolio state (if enabled)
+        if: ${{ always() && env.PERSIST_STATE_TO_REPO == 'true' }}
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          files=(portfolio_state.csv portfolio_status.csv trade_journal.csv tracker.json)
+          existing=()
+          for f in "${files[@]}"; do [ -e "$f" ] && existing+=("$f"); done
+          [ ${#existing[@]} -eq 0 ] && exit 0
+          git add "${existing[@]}"
+          git diff --cached --quiet || git commit -m "chore: update portfolio state + tracker [skip ci]" && git push
+
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # JOB 2 — MORNING CHECK (9:20 AM IST) — gap-open verdict for today's signals
+  # Triggered by: schedule "50 3" ONLY — never by manual dispatch
+  # ─────────────────────────────────────────────────────────────────────────────
+  morning-check:
+    name: "Morning Check — Gap-Open Verdict (9:20 AM IST)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    # Run ONLY on the 03:50 UTC schedule — never on manual dispatch
+    if: github.event_name == 'schedule' && github.event.schedule == '50 3 * * 1-5'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Restore cache (to get last night's tracker.json)
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            tracker.json
+          key: stock-reviewer-data-${{ runner.os }}-${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            stock-reviewer-data-${{ runner.os }}-${{ github.ref_name }}-
+            stock-reviewer-data-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests yfinance python-dotenv
+
+      - name: Run morning gap-open check
+        run: python morning_check.py
+
+      - name: Show result
+        if: always()
+        run: echo "Morning check complete at $(date)"
