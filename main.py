@@ -3282,6 +3282,7 @@ def classify_watchlist(stock: dict, regime: str, thresholds: dict) -> dict:
         "target1":  levels["target1"],
         "target2":  levels["target2"],
         "rr":       levels["rr"],
+        "rr_ratio": stock.get("rr_ratio", levels["rr"]),
         "risk_pct": levels["risk_pct"],
         "current":  levels["current"],
         "fail_reasons": stock.get("fail_reasons", []),
@@ -4109,8 +4110,7 @@ def format_portfolio_card(alert: dict, current_price: float) -> list:
 
         # ATR-based trailing stop
         try:
-            df = yf.download(symbol, period="1mo", interval="1d",
-                             progress=False, auto_adjust=True)
+            df = fetch_price_data(symbol, period="1mo")
             if df is not None and len(df) >= 14:
                 atr = float(np.mean(df["High"].values[-14:] - df["Low"].values[-14:]))
                 atr_stop = round(current_price - atr * 2, 2)
@@ -4233,7 +4233,7 @@ def format_daily_summary(regime: str, buys: list, watchlist: list,
         return ["", "📋 DAILY SUMMARY", "  (unavailable)"]
 
 
-def format_system_snapshot(tracker_v2: dict) -> list:
+def format_system_snapshot(tracker_v2: dict, portfolio_count: int = 0) -> list:
     """System performance footer (ENHANCEMENT 10)."""
     try:
         tracker = tracker_v2 or {}
@@ -4258,7 +4258,8 @@ def format_system_snapshot(tracker_v2: dict) -> list:
         return [
             "",
             "📊 SYSTEM PERFORMANCE SNAPSHOT",
-            f"  Active Positions:     {len(active)}",
+            f"  Portfolio Holdings:   {portfolio_count}",
+            f"  Signal Tracked Pos:   {len(active)}",
             f"  Avg Open Return:      {avg_open_pnl:+.1f}%",
             f"  Watchlist Tracking:   {len(watching)} stocks",
             f"  Completed Trades:     {perf.get('completed', 0)}",
@@ -4300,7 +4301,7 @@ def format_watchlist_section(watchlist: list, regime: str) -> list:
             stop     = w.get("stop", 0)
             target1  = w.get("target1", 0)
             target2  = w.get("target2", 0)
-            rr       = w.get("rr", 0)
+            rr       = w.get("rr_ratio", w.get("rr", 0))
             risk     = w.get("risk_pct", 0)
             cur      = w.get("current", w.get("price", entry))
             opp      = w.get("opportunity_score", 0)
@@ -4321,7 +4322,7 @@ def format_watchlist_section(watchlist: list, regime: str) -> list:
             sym    = html.escape(str(w["symbol"]))
             sector = html.escape(str(w.get("sector", "OTHERS")))
             conf   = w.get("conf", w.get("final_confidence", 0))
-            rr     = w.get("rr", 0)
+            rr     = w.get("rr_ratio", w.get("rr", 0))
             risk   = w.get("risk_pct", 0)
             lines.append(f"    {sym} [{sector}] Conf {conf:.0f} | R/R {rr:.1f}x | Risk {risk:.1f}%")
         if rest:
@@ -4644,7 +4645,7 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
         lines.append("")
 
     # ── System Performance Snapshot ──
-    lines.extend(format_system_snapshot(tracker_v2))
+    lines.extend(format_system_snapshot(tracker_v2, portfolio_count=len(portfolio_alerts)))
 
     # ── Daily Summary (executive briefing) ──
     lines.extend(format_daily_summary(
@@ -4971,7 +4972,7 @@ def _run_pipeline_inner():
         sym = h.get("symbol", "")
         if sym:
             try:
-                df_tmp = fetch_price_data(sym, period="5d")
+                df_tmp = fetch_price_data(sym, period="1mo")
                 if df_tmp is not None and len(df_tmp) > 0:
                     current_prices[sym] = float(df_tmp["Close"].squeeze().iloc[-1])
             except Exception:
