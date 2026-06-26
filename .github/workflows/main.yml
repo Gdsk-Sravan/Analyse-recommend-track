@@ -233,6 +233,13 @@ jobs:
           if [ -z "${GROQ_API_KEY_1}" ]; then echo "WARNING: GROQ_API_KEY_1 missing"; fi
           echo "Preflight complete"
 
+      - name: Write portfolio from secret
+        if: env.MANUAL_PORTFOLIO_JSON != '' && env.MANUAL_PORTFOLIO_JSON != '[]'
+        run: |
+          echo "Writing portfolio.json from MANUAL_PORTFOLIO_JSON secret..."
+          echo "$MANUAL_PORTFOLIO_JSON" > portfolio.json
+          echo "Portfolio loaded: $(python3 -c "import json; d=json.load(open('portfolio.json')); print(len(d), 'holdings')" 2>/dev/null || echo 'parse error')"
+
       - name: Pre-download bhavcopy
         continue-on-error: true
         run: |
