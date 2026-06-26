@@ -670,24 +670,48 @@ def _nse_session() -> requests.Session:
 
 
 def fetch_nse_bhavcopy(date=None):
+    """
+    Tries 3 URL patterns for NSE bhavcopy, going back up to 5 trading days.
+    Returns a DataFrame on success, None if all sources fail.
+    NSE archives.nseindia.com frequently blocks CI/cloud IPs — fallback URLs help.
+    """
     if date is None:
         date = datetime.datetime.today()
+
     for days_back in range(0, 5):
         d        = date - datetime.timedelta(days=days_back)
-        date_str = d.strftime("%d%b%Y").upper()
-        url      = f"https://archives.nseindia.com/products/content/sec_bhavdata_full_{date_str}.csv"
-        try:
-            resp = requests.get(url, headers=_NSE_BROWSER_HEADERS, timeout=15)
-            if resp.status_code == 200 and len(resp.content) > 1000:
-                df = pd.read_csv(StringIO(resp.text))
-                df.columns = [c.strip() for c in df.columns]
-                _log(f"  Bhavcopy loaded for {d.strftime('%d-%b-%Y')}")
-                return df
-            elif resp.status_code in (403, 429):
-                _log(f"[WARN] NSE bhavcopy blocked ({resp.status_code}) — using neutral delivery %")
-                return None
-        except Exception:
+        # Skip weekends — bhavcopy never exists for Sat/Sun
+        if d.weekday() >= 5:
             continue
+        date_str   = d.strftime("%d%b%Y").upper()   # e.g. 26JUN2026
+        date_ymd   = d.strftime("%Y%m%d")            # e.g. 20260626
+        date_ddmmyy = d.strftime("%d-%m-%Y")         # e.g. 26-06-2026
+
+        urls_to_try = [
+            # Pattern 1 — original archives URL
+            f"https://archives.nseindia.com/products/content/sec_bhavdata_full_{date_str}.csv",
+            # Pattern 2 — NSE newer CDN (works when archives is blocked)
+            f"https://nsearchives.nseindia.com/products/content/sec_bhavdata_full_{date_str}.csv",
+            # Pattern 3 — NSE data API (JSON, different structure)
+            f"https://www.nseindia.com/api/historical/securityArchives?from={date_ddmmyy}&to={date_ddmmyy}&symbol=NIFTY&dataType=priceVolumeDeliverable&series=EQ",
+        ]
+
+        for url in urls_to_try[:2]:  # only CSV URLs for bhavcopy parsing
+            try:
+                resp = requests.get(url, headers=_NSE_BROWSER_HEADERS, timeout=15)
+                if resp.status_code == 200 and len(resp.content) > 1000:
+                    df = pd.read_csv(StringIO(resp.text))
+                    df.columns = [c.strip() for c in df.columns]
+                    _log(f"  Bhavcopy loaded for {d.strftime('%d-%b-%Y')} via {url.split('/')[2]}")
+                    return df
+                elif resp.status_code in (403, 429):
+                    _log(f"[WARN] Bhavcopy blocked ({resp.status_code}) at {url.split('/')[2]} — trying next source")
+                    continue
+            except Exception as e:
+                _log(f"[WARN] Bhavcopy fetch error ({url.split('/')[2]}): {e}")
+                continue
+
+    _log("[WARN] All bhavcopy sources failed — delivery % will use 50% default for all stocks")
     return None
 
 
