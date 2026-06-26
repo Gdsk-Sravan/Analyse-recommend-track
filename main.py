@@ -881,7 +881,7 @@ GLOBAL_TICKERS = {
     "SENSEX":  "^BSESN",
     "VIX_IN":  "^INDIAVIX",
     "VIX_US":  "^VIX",
-    "USDINR":  "USDINR=X",
+    "USDINR":  "INR=X",
     "CRUDE":   "CL=F",
     "GOLD":    "GC=F",
     "US10Y":   "^TNX",
@@ -2821,6 +2821,7 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
     # Watchlist
     near_miss  = [w for w in watchlist if w.get("tier") == "NEAR_MISS"]
     developing = [w for w in watchlist if w.get("tier") == "DEVELOPING"]
+    monitor    = [w for w in watchlist if w.get("tier") == "MONITOR"]
     lines.append("WATCHLIST")
     if near_miss:
         lines.append("  NEAR MISS:")
@@ -2830,7 +2831,11 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
         lines.append("  DEVELOPING:")
         for w in developing[:5]:
             lines.append(f"    {w['symbol']} -- {truncate_display(w.get('note',''), 70)}")
-    if not near_miss and not developing:
+    if monitor:
+        lines.append("  MONITOR:")
+        for w in monitor[:5]:
+            lines.append(f"    {w['symbol']} -- {truncate_display(w.get('note',''), 70)}")
+    if not near_miss and not developing and not monitor:
         lines.append("  None today.")
     lines.append("")
 
