@@ -182,7 +182,11 @@ COMPREHENSIVE_SECTOR_MAP = {
 
 
 def get_sector(symbol: str) -> str:
-    return COMPREHENSIVE_SECTOR_MAP.get(symbol, "OTHERS")
+    """Handles both 'RELIANCE' and 'RELIANCE.NS'. Unknown symbols → 'OTHERS'."""
+    sym = symbol.strip()
+    if not sym.endswith(".NS"):
+        sym = sym + ".NS"
+    return COMPREHENSIVE_SECTOR_MAP.get(sym, "OTHERS")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -765,60 +769,75 @@ def _bhavcopy_from_bse(date: datetime.datetime):
         d = date - datetime.timedelta(days=days_back)
         if d.weekday() >= 5:
             continue
-        ddmmyy = d.strftime("%d%m%y")   # BSE format: 260626
+        ddmmyy   = d.strftime("%d%m%y")    # old BSE format: 260626
+        ddmmyyyy = d.strftime("%d%m%Y")    # mid format:     26062026
+        yyyymmdd = d.strftime("%Y%m%d")    # new BSE format: 20260626
 
-        # BSE full bhavcopy with delivery data
-        url = f"https://www.bseindia.com/download/BhavCopy/Equity/EQ{ddmmyy}_CSV.ZIP"
-        try:
-            resp = requests.get(url, headers=bse_headers, timeout=20)
-            if resp.status_code != 200 or len(resp.content) < 1000:
-                continue
-            with zipfile.ZipFile(_io.BytesIO(resp.content)) as zf:
-                csv_name = next((n for n in zf.namelist() if n.endswith(".csv")), None)
-                if csv_name is None:
+        # BSE changed URL format several times — try all known patterns
+        bse_urls = [
+            # Newest format (post-2024): same pattern as NSE CM
+            f"https://www.bseindia.com/download/BhavCopy/Equity/BhavCopy_BSE_CM_0_0_0_{yyyymmdd}_F_0000.CSV.ZIP",
+            # Mid-era format
+            f"https://www.bseindia.com/download/BhavCopy/Equity/EQ{ddmmyyyy}_CSV.ZIP",
+            # Old format (pre-2023)
+            f"https://www.bseindia.com/download/BhavCopy/Equity/EQ{ddmmyy}_CSV.ZIP",
+        ]
+
+        for url in bse_urls:
+            try:
+                resp = requests.get(url, headers=bse_headers, timeout=20)
+                if resp.status_code != 200 or len(resp.content) < 1000:
                     continue
-                bse_df = pd.read_csv(zf.open(csv_name))
-            bse_df.columns = [c.strip() for c in bse_df.columns]
+                # Validate ZIP magic bytes (PK\x03\x04) before attempting to parse
+                if resp.content[:4] != b"PK\x03\x04":
+                    _log(f"[WARN] BSE URL returned non-ZIP content ({url.split('/')[-1]}), skipping")
+                    continue
+                with zipfile.ZipFile(_io.BytesIO(resp.content)) as zf:
+                    csv_name = next((n for n in zf.namelist() if n.endswith(".csv")), None)
+                    if csv_name is None:
+                        continue
+                    bse_df = pd.read_csv(zf.open(csv_name))
+                bse_df.columns = [c.strip() for c in bse_df.columns]
 
-            # Detect delivery column
-            deliv_col = next(
-                (c for c in bse_df.columns if "deliv" in c.lower() and ("per" in c.lower() or "%" in c.lower())),
-                None
-            )
-            if deliv_col is None:
-                _log(f"[WARN] BSE bhavcopy missing delivery-% column (cols: {list(bse_df.columns)[:8]})")
+                # Detect delivery column
+                deliv_col = next(
+                    (c for c in bse_df.columns if "deliv" in c.lower() and ("per" in c.lower() or "%" in c.lower())),
+                    None
+                )
+                if deliv_col is None:
+                    _log(f"[WARN] BSE bhavcopy missing delivery-% column (cols: {list(bse_df.columns)[:8]})")
+                    continue
+
+                # Detect BSE name column
+                name_col = next(
+                    (c for c in bse_df.columns if "name" in c.lower() or c.upper() in ("SC_NAME", "SCRIP_NAME")),
+                    None
+                )
+                if name_col is None:
+                    continue
+
+                # Remap BSE SC_NAME → NSE symbol
+                rows = []
+                for _, row in bse_df.iterrows():
+                    raw_name = str(row.get(name_col, "")).strip()
+                    norm = re.sub(r"[^a-z0-9]", "", raw_name.lower())
+                    norm = re.sub(r"(ltd|limited|pvt|private|inc|corp|llp|llc)$", "", norm)
+                    nse_sym = name_to_sym.get(norm)
+                    if nse_sym:
+                        try:
+                            deliv_val = float(str(row[deliv_col]).replace(",", "").strip())
+                        except (ValueError, TypeError):
+                            deliv_val = 50.0
+                        rows.append({"SYMBOL": nse_sym, "DELIV_PER": deliv_val})
+
+                if rows:
+                    result_df = pd.DataFrame(rows)
+                    _log(f"  Bhavcopy from BSE for {d.strftime('%d-%b-%Y')}: {len(rows)} symbols mapped")
+                    return result_df
+
+            except Exception as e:
+                _log(f"[WARN] BSE bhavcopy error ({url.split('/')[-1]}): {e}")
                 continue
-
-            # Detect BSE name column
-            name_col = next(
-                (c for c in bse_df.columns if "name" in c.lower() or c.upper() in ("SC_NAME", "SCRIP_NAME")),
-                None
-            )
-            if name_col is None:
-                continue
-
-            # Remap BSE SC_NAME → NSE symbol
-            rows = []
-            for _, row in bse_df.iterrows():
-                raw_name = str(row.get(name_col, "")).strip()
-                norm = re.sub(r"[^a-z0-9]", "", raw_name.lower())
-                norm = re.sub(r"(ltd|limited|pvt|private|inc|corp|llp|llc)$", "", norm)
-                nse_sym = name_to_sym.get(norm)
-                if nse_sym:
-                    try:
-                        deliv_val = float(str(row[deliv_col]).replace(",", "").strip())
-                    except (ValueError, TypeError):
-                        deliv_val = 50.0
-                    rows.append({"SYMBOL": nse_sym, "DELIV_PER": deliv_val})
-
-            if rows:
-                result_df = pd.DataFrame(rows)
-                _log(f"  Bhavcopy from BSE for {d.strftime('%d-%b-%Y')}: {len(rows)} symbols mapped")
-                return result_df
-
-        except Exception as e:
-            _log(f"[WARN] BSE bhavcopy error ({d.strftime('%d-%b-%Y')}): {e}")
-            continue
 
     return None
 
@@ -1474,8 +1493,10 @@ def interpret_nifty_structure(close: float, ema20: float, ema50: float,
 
 
 def regime_explanation(score: float, regime: str, vix_in: float,
-                        breadth_20: float, fii_flow: float, dii_flow: float) -> str:
-    """One-line 'why this regime' for the Telegram report."""
+                        breadth_20: float, fii_flow: float, dii_flow: float,
+                        nifty_close: float = 0, ema20: float = 0,
+                        ema50: float = 0, ema200: float = 0) -> str:
+    """One-line 'why this regime' — checks VIX, breadth, flows AND EMA positioning."""
     reasons_bull = []
     reasons_bear = []
 
@@ -1484,15 +1505,31 @@ def regime_explanation(score: float, regime: str, vix_in: float,
     elif vix_in > 20:
         reasons_bear.append(f"VIX-IN high {vix_in:.1f}")
 
-    if fii_flow + dii_flow > 2000:
+    combined = fii_flow + dii_flow
+    if combined > 3000:
         reasons_bull.append("institutions buying")
-    elif fii_flow + dii_flow < -2000:
+    elif combined < -2000:
         reasons_bear.append("institutions selling")
 
-    if breadth_20 > 55:
+    if breadth_20 > 60:
         reasons_bull.append(f"breadth {breadth_20:.0f}%")
     elif breadth_20 < 40:
         reasons_bear.append(f"weak breadth {breadth_20:.0f}%")
+
+    # EMA positioning — most important structural signal
+    if nifty_close > 0 and ema20 > 0 and ema50 > 0 and ema200 > 0:
+        above20  = nifty_close > ema20
+        above50  = nifty_close > ema50
+        above200 = nifty_close > ema200
+        if above20 and above50 and above200:
+            reasons_bull.append("above all EMAs")
+        elif above50 and above200:
+            reasons_bull.append("above EMA50/200")
+            reasons_bear.append("below EMA20")
+        elif above200:
+            reasons_bear.append("below EMA20 & EMA50")
+        else:
+            reasons_bear.append("below all EMAs")  # strongest bear signal
 
     bull_str = ", ".join(reasons_bull) if reasons_bull else "none"
     bear_str = ", ".join(reasons_bear) if reasons_bear else "none"
@@ -2505,15 +2542,33 @@ def compute_all_factors(symbol: str, df, delivery_pct: float,
         result["news_risk"] = 50
 
         # ── Factor 7: Risk / Reward ──
-        entry     = round(last, 2)
-        stop_raw  = round(ema20 - 0.5 * atr14, 2)
-        stop      = max(stop_raw, round(last * 0.92, 2))
-        stop      = min(stop, last - atr14 * 0.3)
+        entry = round(last, 2)
+
+        # Stop: actual 10-day swing low — NOT a hardcoded % of entry
+        recent_lows    = lows[-10:] if len(lows) >= 10 else lows
+        swing_low      = float(np.min(recent_lows))
+        stop_candidate = round(swing_low * 0.995, 2)   # 0.5% buffer below swing low
+        risk_raw_pct   = (entry - stop_candidate) / entry * 100 if entry > 0 else 8.0
+        if risk_raw_pct < 2.0:
+            stop_candidate = round(entry * 0.97, 2)    # 3% floor — stop too tight
+        elif risk_raw_pct > 15.0:
+            stop_candidate = round(entry * 0.88, 2)    # 12% cap  — stop too wide
+        stop = stop_candidate
         if stop >= entry:
-            stop  = round(entry * 0.94, 2)
-        target1   = round(entry + 2.0 * atr14, 2)
-        target2   = round(entry + 4.0 * atr14, 2)
-        rr_ratio  = round((target1 - entry) / (entry - stop), 2) if entry > stop else 0.0
+            stop = round(entry * 0.94, 2)
+
+        risk_amt = entry - stop
+
+        # Targets: wider ATR multiples for better R/R (2.5x & 4.5x vs old 2x/4x)
+        target1 = round(entry + 2.5 * atr14, 2)
+        target2 = round(entry + 4.5 * atr14, 2)
+        # Guarantee minimum 1.5x R/R on T2 even with a wide stop
+        min_t2  = round(entry + risk_amt * 1.5, 2)
+        target2 = max(target2, min_t2)
+        # Keep T1 between entry and midpoint of T2
+        target1 = min(target1, round((entry + target2) / 2, 2))
+
+        rr_ratio  = round((target2 - entry) / risk_amt, 2) if risk_amt > 0 else 0.0
         result["entry"]       = entry
         result["stop"]        = stop
         result["target1"]     = target1
@@ -2922,7 +2977,7 @@ def classify_watchlist(stock: dict, regime: str, thresholds: dict) -> dict:
         "conf":     conf,
         "tq":       tq,
         "conf_gap": conf_gap,
-        "sector":   stock.get("sector", "OTHERS"),
+        "sector":   stock.get("sector") or get_sector(stock.get("symbol", "")),
         "entry":    levels["entry"],
         "stop":     levels["stop"],
         "target1":  levels["target1"],
@@ -3381,12 +3436,29 @@ def update_tracker_v2_pnl(tracker: dict) -> dict:
                 datetime.date.today() -
                 datetime.date.fromisoformat(w.get("rec_date", today_str))
             ).days + 1
-            # Try to refresh current price
+            # Always fetch current price — even for seeded stocks with no prior price
             df = fetch_price_data(w["symbol"], period="1d")
             if df is not None and len(df) > 0:
-                w["current_price"] = round(float(df["Close"].squeeze().iloc[-1]), 2)
+                cur = round(float(df["Close"].squeeze().iloc[-1]), 2)
+                w["current_price"] = cur
+                # If entry is missing (seeded stock), use current as proxy
+                entry = float(w.get("entry", 0) or 0)
+                if entry <= 0:
+                    entry = cur
+                    w["entry"] = entry
+                # Calculate direction vs entry
+                if entry > 0 and cur > 0:
+                    move_pct = round((cur - entry) / entry * 100, 1)
+                    if move_pct >= 0:
+                        w["direction"] = f"\u2191 {move_pct:.1f}% above entry"
+                    else:
+                        w["direction"] = f"\u2193 {abs(move_pct):.1f}% below entry"
+                else:
+                    w["direction"] = "\u2014"
+            else:
+                w.setdefault("direction", "\u2014")
         except Exception:
-            pass
+            w.setdefault("direction", "\u2014")
 
     return tracker
 
@@ -3439,20 +3511,21 @@ def format_tracker_for_telegram(tracker: dict) -> str:
     if watching:
         lines.append("  WATCHING:")
         for w in watching:
-            cur      = w.get("current_price", w.get("entry", 0))
-            entry    = w.get("entry", 0)
-            day_n    = w.get("days_watching", 1)
-            tier     = html.escape(str(w.get("tier", "MONITOR")))
-            conf_gap = w.get("conf_gap_at_rec", 0)
-            if entry > 0 and cur > 0:
-                move      = round((cur - entry) / entry * 100, 1)
-                direction = "↑ nearing entry" if move >= 0 else f"↓ {abs(move):.1f}% from entry"
-            else:
-                direction = "—"
+            tier      = html.escape(str(w.get("tier", "MONITOR")))
+            day_n     = w.get("days_watching", 1)
+            conf_gap  = w.get("conf_gap_at_rec", w.get("conf_gap", 0))
+            direction = w.get("direction", "\u2014")  # populated by update_tracker_v2_pnl
+            cur_px    = w.get("current_price", 0)
+            entry     = w.get("entry", 0)
             lines.append(
                 f"  {html.escape(str(w['symbol']))} [{tier}] Day {day_n}/14 | "
                 f"Gap was {conf_gap:.1f} | {direction}"
             )
+            if entry > 0 and cur_px > 0:
+                lines.append(
+                    f"    Cur Rs{cur_px:.1f} | Entry Rs{entry:.1f} | "
+                    f"Stop Rs{w.get('stop', 0):.1f} | T1 Rs{w.get('target1', 0):.1f}"
+                )
 
     if perf.get("completed", 0) > 0:
         lines.append(
@@ -3466,25 +3539,31 @@ def format_tracker_for_telegram(tracker: dict) -> str:
 
 
 def format_watchlist_section(watchlist: list, regime: str) -> list:
-    """Returns list of lines showing ALL watchlist stocks with levels. No cap."""
-    lines  = []
-    thresh = REGIME_THRESHOLDS[regime]
+    """
+    NEAR MISS  — full detail, sorted by R/R descending (fully actionable)
+    DEVELOPING — compact 1-liner each, top 5 by confidence, rest collapsed
+    MONITOR    — single collapsed count line only (not actionable today)
+    """
+    thresh   = REGIME_THRESHOLDS[regime]
     min_conf = thresh["min_confidence"]
 
-    near = [w for w in watchlist if w.get("tier") == "NEAR_MISS"]
-    dev  = [w for w in watchlist if w.get("tier") == "DEVELOPING"]
+    near = sorted([w for w in watchlist if w.get("tier") == "NEAR_MISS"],
+                  key=lambda x: x.get("rr", 0), reverse=True)
+    dev  = sorted([w for w in watchlist if w.get("tier") == "DEVELOPING"],
+                  key=lambda x: x.get("conf", x.get("final_confidence", 0)), reverse=True)
     mon  = [w for w in watchlist if w.get("tier") == "MONITOR"]
 
-    lines.append(f"👁 WATCHLIST — {len(watchlist)} stocks (threshold {min_conf})")
+    lines = [f"\U0001f441 WATCHLIST \u2014 {len(watchlist)} stocks (threshold {min_conf})"]
 
+    # -- NEAR MISS: full 2-line detail per stock, sorted by R/R ---------
     if near:
-        lines.append(f"  NEAR MISS ({len(near)} — within 8 pts):")
+        lines.append(f"  \U0001f534 NEAR MISS ({len(near)} \u2014 within 8 pts of BUY, best R/R first):")
         for w in near:
-            lines.append(
-                f"    {html.escape(str(w['symbol']))} [{html.escape(str(w.get('sector','?')))}] | "
-                f"Conf {w.get('conf', w.get('final_confidence', 0)):.1f} "
-                f"[gap {w.get('conf_gap', 0):.1f}] | TQ {w.get('tq', w.get('trade_quality_score', 0)):.1f}"
-            )
+            sym     = html.escape(str(w["symbol"]))
+            sector  = html.escape(str(w.get("sector", "OTHERS")))
+            conf    = w.get("conf", w.get("final_confidence", 0))
+            conf_gap = w.get("conf_gap", 0)
+            tq      = w.get("tq", w.get("trade_quality_score", 0))
             entry   = w.get("entry", 0)
             stop    = w.get("stop", 0)
             target1 = w.get("target1", 0)
@@ -3492,55 +3571,38 @@ def format_watchlist_section(watchlist: list, regime: str) -> list:
             rr      = w.get("rr", 0)
             risk    = w.get("risk_pct", 0)
             cur     = w.get("current", w.get("price", entry))
+            lines.append(f"    {sym} [{sector}] | Conf {conf:.1f} [gap {conf_gap:.1f}] | TQ {tq:.1f}")
             lines.append(
-                f"    Cur Rs{cur:.1f} | Entry Rs{entry:.1f} | "
-                f"Stop Rs{stop:.1f} | T1 Rs{target1:.1f} | "
-                f"T2 Rs{target2:.1f} | R/R {rr:.1f}x | Risk {risk:.1f}%"
+                f"    Cur Rs{cur:.1f} | Entry Rs{entry:.1f} | Stop Rs{stop:.1f} | "
+                f"T1 Rs{target1:.1f} | T2 Rs{target2:.1f} | R/R {rr:.1f}x | Risk {risk:.1f}%"
             )
             if w.get("warnings"):
-                lines.append(f"    ⚠️  {html.escape(' | '.join(str(x) for x in w['warnings']))}")
+                lines.append(f"    \u26a0\ufe0f  {html.escape(' | '.join(str(x) for x in w['warnings']))}")
 
+    # -- DEVELOPING: compact 1-liner, top 5, rest collapsed ---------------
     if dev:
-        lines.append(f"  DEVELOPING ({len(dev)} — gap 8-18):")
-        for w in dev:
-            lines.append(
-                f"    {html.escape(str(w['symbol']))} [{html.escape(str(w.get('sector','?')))}] | "
-                f"Conf {w.get('conf', w.get('final_confidence', 0)):.1f} "
-                f"[gap {w.get('conf_gap', 0):.1f}] | TQ {w.get('tq', w.get('trade_quality_score', 0)):.1f}"
-            )
-            entry   = w.get("entry", 0)
-            stop    = w.get("stop", 0)
-            target1 = w.get("target1", 0)
-            target2 = w.get("target2", 0)
-            rr      = w.get("rr", 0)
-            risk    = w.get("risk_pct", 0)
-            cur     = w.get("current", w.get("price", entry))
-            lines.append(
-                f"    Cur Rs{cur:.1f} | Entry Rs{entry:.1f} | "
-                f"Stop Rs{stop:.1f} | T1 Rs{target1:.1f} | "
-                f"T2 Rs{target2:.1f} | R/R {rr:.1f}x | Risk {risk:.1f}%"
-            )
+        shown = dev[:5]
+        rest  = dev[5:]
+        lines.append(f"  \U0001f7e1 DEVELOPING ({len(dev)} \u2014 building, not ready yet):")
+        for w in shown:
+            sym    = html.escape(str(w["symbol"]))
+            sector = html.escape(str(w.get("sector", "OTHERS")))
+            conf   = w.get("conf", w.get("final_confidence", 0))
+            rr     = w.get("rr", 0)
+            risk   = w.get("risk_pct", 0)
+            lines.append(f"    {sym} [{sector}] Conf {conf:.0f} | R/R {rr:.1f}x | Risk {risk:.1f}%")
+        if rest:
+            rest_names = ", ".join(w["symbol"].replace(".NS", "") for w in rest)
+            lines.append(f"    + {len(rest)} more: {rest_names}")
 
+    # -- MONITOR: collapsed to one line only ------------------------------
     if mon:
-        lines.append(f"  MONITOR ({len(mon)} — early stage):")
-        for w in mon:
-            lines.append(
-                f"    {html.escape(str(w['symbol']))} [{html.escape(str(w.get('sector','?')))}] | "
-                f"Conf {w.get('conf', w.get('final_confidence', 0)):.1f} "
-                f"[gap {w.get('conf_gap', 0):.1f}] | TQ {w.get('tq', w.get('trade_quality_score', 0)):.1f}"
-            )
-            entry   = w.get("entry", 0)
-            stop    = w.get("stop", 0)
-            target1 = w.get("target1", 0)
-            target2 = w.get("target2", 0)
-            rr      = w.get("rr", 0)
-            risk    = w.get("risk_pct", 0)
-            cur     = w.get("current", w.get("price", entry))
-            lines.append(
-                f"    Cur Rs{cur:.1f} | Entry Rs{entry:.1f} | "
-                f"Stop Rs{stop:.1f} | T1 Rs{target1:.1f} | "
-                f"T2 Rs{target2:.1f} | R/R {rr:.1f}x | Risk {risk:.1f}%"
-            )
+        best = max(mon, key=lambda x: x.get("rr", 0))
+        best_sym = best["symbol"].replace(".NS", "")
+        lines.append(
+            f"  \U0001f535 MONITOR ({len(mon)} early-stage) \u2014 "
+            f"best R/R: {best_sym} {best.get('rr', 0):.1f}x"
+        )
 
     if not near and not dev and not mon:
         lines.append("  None today.")
@@ -3624,7 +3686,15 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
     # Regime explanation (Patch 4)
     fii_flow = macro.get("fii_flow_cr", 0.0)
     dii_flow = macro.get("dii_flow_cr", 0.0)
-    reg_why  = regime_explanation(score, regime, vix_in, breadth_20, fii_flow, dii_flow)
+    # Pass NIFTY EMA values so EMA structure is reflected in the Why line
+    _kl = key_levels or {}
+    reg_why = regime_explanation(
+        score, regime, vix_in, breadth_20, fii_flow, dii_flow,
+        nifty_close = float(_kl.get("last",   0) or 0),
+        ema20       = float(_kl.get("ema20",  0) or 0),
+        ema50       = float(_kl.get("ema50",  0) or 0),
+        ema200      = float(_kl.get("ema200", 0) or 0),
+    )
     lines.append(f"  Why: {html.escape(str(reg_why))}")
     lines.append(f"  {REGIME_RATIONALE.get(regime, '')}")
 
