@@ -769,6 +769,25 @@ def bulk_deal_score(symbol: str, bulk_deals_dict: dict) -> int:
     return 0
 
 
+def ownership_quality_score(promoter_data: dict) -> int:
+    score    = 50
+    pledge   = promoter_data.get("promoter_pledge_pct", 0)
+    promoter = promoter_data.get("promoter_holding_pct", 50)
+    fii      = promoter_data.get("fii_pct", 0)
+    dii      = promoter_data.get("dii_pct", 0)
+    if pledge > 40:   score -= 30
+    elif pledge > 20: score -= 15
+    elif pledge > 10: score -= 5
+    if promoter > 60:   score += 15
+    elif promoter > 50: score += 8
+    elif promoter < 30: score -= 10
+    if fii > 15:   score += 10
+    elif fii > 5:  score += 5
+    if dii > 10:   score += 8
+    elif dii > 3:  score += 4
+    return max(0, min(100, score))
+
+
 NEUTRAL_FUNDAMENTALS = {
     "roe": 0.0, "de_ratio": 0.0, "roce": 0.0,
     "promoter_holding_pct": 50.0, "promoter_pledge_pct": 0.0,
