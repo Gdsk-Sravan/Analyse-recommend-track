@@ -101,92 +101,132 @@ FACTOR_WEIGHTS = {
 }
 
 # Comprehensive sector map (Bug 3 fix)
-COMPREHENSIVE_SECTOR_MAP = {
-    # IT
-    "INFY.NS":"IT","TCS.NS":"IT","WIPRO.NS":"IT","HCLTECH.NS":"IT","TECHM.NS":"IT",
-    "LTIM.NS":"IT","PERSISTENT.NS":"IT","COFORGE.NS":"IT","MPHASIS.NS":"IT",
-    "OFSS.NS":"IT","KPITTECH.NS":"IT","TATAELXSI.NS":"IT","MASTEK.NS":"IT",
-    "NIIT.NS":"IT","CYIENT.NS":"IT","ZENSAR.NS":"IT","BIRLASOFT.NS":"IT",
-    "RATEGAIN.NS":"IT","NAUKRI.NS":"IT","INDIAMART.NS":"IT",
-    # PHARMA
-    "SUNPHARMA.NS":"PHARMA","DRREDDY.NS":"PHARMA","CIPLA.NS":"PHARMA",
-    "DIVISLAB.NS":"PHARMA","AUROPHARMA.NS":"PHARMA","LAURUSLABS.NS":"PHARMA",
-    "ALKEM.NS":"PHARMA","TORNTPHARM.NS":"PHARMA","IPCALAB.NS":"PHARMA",
-    "GLENMARK.NS":"PHARMA","NATCOPHARM.NS":"PHARMA","GRANULES.NS":"PHARMA",
-    "AJANTPHARM.NS":"PHARMA","BIOCON.NS":"PHARMA","LALPATHLAB.NS":"PHARMA",
-    "METROPOLIS.NS":"PHARMA","POLYMED.NS":"PHARMA",
-    # BANKING
-    "HDFCBANK.NS":"BANKING","ICICIBANK.NS":"BANKING","AXISBANK.NS":"BANKING",
-    "SBIN.NS":"BANKING","KOTAKBANK.NS":"BANKING","INDUSINDBK.NS":"BANKING",
-    "BANDHANBNK.NS":"BANKING","FEDERALBNK.NS":"BANKING","IDFCFIRSTB.NS":"BANKING",
-    "RBLBANK.NS":"BANKING","PNB.NS":"BANKING","BANKBARODA.NS":"BANKING",
-    "YESBANK.NS":"BANKING","CANARABANK.NS":"BANKING","UNIONBANK.NS":"BANKING",
-    # FINANCE / NBFC
-    "BAJFINANCE.NS":"FINANCE","BAJAJFINSV.NS":"FINANCE","CHOLAFIN.NS":"FINANCE",
-    "MUTHOOTFIN.NS":"FINANCE","MANAPPURAM.NS":"FINANCE","SHRIRAMFIN.NS":"FINANCE",
-    "LICHSGFIN.NS":"FINANCE","PFC.NS":"FINANCE","RECLTD.NS":"FINANCE",
-    "HDFCAMC.NS":"FINANCE","SBICARD.NS":"FINANCE",
-    # ENERGY
-    "RELIANCE.NS":"ENERGY","ONGC.NS":"ENERGY","BPCL.NS":"ENERGY","IOC.NS":"ENERGY",
-    "HINDPETRO.NS":"ENERGY","GAIL.NS":"ENERGY","TATAPOWER.NS":"ENERGY",
-    "ADANIGREEN.NS":"ENERGY","NTPC.NS":"ENERGY","POWERGRID.NS":"ENERGY",
-    "CESC.NS":"ENERGY","ADANIPOWER.NS":"ENERGY","JSWENERGY.NS":"ENERGY",
-    # METALS
-    "TATASTEEL.NS":"METALS","HINDALCO.NS":"METALS","JSWSTEEL.NS":"METALS",
-    "VEDL.NS":"METALS","SAIL.NS":"METALS","NATIONALUM.NS":"METALS",
-    "HINDCOPPER.NS":"METALS","NMDC.NS":"METALS","COALINDIA.NS":"METALS",
-    "APLAPOLLO.NS":"METALS","RATNAMANI.NS":"METALS",
-    # AUTO
-    "MARUTI.NS":"AUTO","TATAMOTORS.NS":"AUTO","M&M.NS":"AUTO",
-    "BAJAJ-AUTO.NS":"AUTO","HEROMOTOCO.NS":"AUTO","EICHERMOT.NS":"AUTO",
-    "ASHOKLEY.NS":"AUTO","TVSMOTOR.NS":"AUTO","MOTHERSON.NS":"AUTO",
-    "BOSCHLTD.NS":"AUTO","MRF.NS":"AUTO","APOLLOTYRE.NS":"AUTO",
-    "BALKRISIND.NS":"AUTO",
-    # CAPITAL GOODS
-    "BHEL.NS":"CAPITAL_GOODS","THERMAX.NS":"CAPITAL_GOODS","ABB.NS":"CAPITAL_GOODS",
-    "SIEMENS.NS":"CAPITAL_GOODS","HAVELLS.NS":"CAPITAL_GOODS","CROMPTON.NS":"CAPITAL_GOODS",
-    "CUMMINSIND.NS":"CAPITAL_GOODS","KEC.NS":"CAPITAL_GOODS","SUZLON.NS":"CAPITAL_GOODS",
-    "RVNL.NS":"CAPITAL_GOODS","IRCON.NS":"CAPITAL_GOODS","KIRLOSENG.NS":"CAPITAL_GOODS",
-    "GRINDWELL.NS":"CAPITAL_GOODS","ELGIEQUIP.NS":"CAPITAL_GOODS",
-    # DEFENCE
-    "HAL.NS":"DEFENCE","BEL.NS":"DEFENCE","MAZDOCK.NS":"DEFENCE",
-    "COCHINSHIP.NS":"DEFENCE","GRSE.NS":"DEFENCE","BEML.NS":"DEFENCE",
-    # FMCG
-    "HINDUNILVR.NS":"FMCG","ITC.NS":"FMCG","NESTLEIND.NS":"FMCG",
-    "BRITANNIA.NS":"FMCG","DABUR.NS":"FMCG","MARICO.NS":"FMCG",
-    "COLPAL.NS":"FMCG","GODREJCP.NS":"FMCG","VBL.NS":"FMCG","EMAMILTD.NS":"FMCG",
-    # CHEMICALS
-    "PIDILITIND.NS":"CHEMICALS","DEEPAKNI.NS":"CHEMICALS","AARTI.NS":"CHEMICALS",
-    "NAVINFLUOR.NS":"CHEMICALS","ALKYLAMINE.NS":"CHEMICALS","FINEORG.NS":"CHEMICALS",
-    # REALTY
-    "DLF.NS":"REALTY","GODREJPROP.NS":"REALTY","OBEROIRLTY.NS":"REALTY",
-    "PRESTIGE.NS":"REALTY","BRIGADE.NS":"REALTY","PHOENIXLTD.NS":"REALTY",
-    "SOBHA.NS":"REALTY","MACROTECH.NS":"REALTY",
-    # INFRA / CEMENT
-    "LT.NS":"INFRA","ULTRACEMCO.NS":"INFRA","AMBUJACEMENT.NS":"INFRA",
-    "ACC.NS":"INFRA","SHREECEM.NS":"INFRA","KNRCON.NS":"INFRA",
-    "PNCINFRA.NS":"INFRA","IRB.NS":"INFRA","NCC.NS":"INFRA",
-    # CONSUMER
-    "TITAN.NS":"CONSUMER","TRENT.NS":"CONSUMER","DMART.NS":"CONSUMER",
-    "ZOMATO.NS":"CONSUMER","IRCTC.NS":"CONSUMER","JUBLFOOD.NS":"CONSUMER",
-    "NYKAA.NS":"CONSUMER","POLICYBZR.NS":"CONSUMER",
-    # HEALTHCARE SERVICES
-    "APOLLOHOSP.NS":"HEALTHCARE","FORTIS.NS":"HEALTHCARE","MAXHEALTH.NS":"HEALTHCARE",
-    # TELECOM
-    "BHARTIARTL.NS":"TELECOM","TATACOMM.NS":"TELECOM","HFCL.NS":"TELECOM",
-    "IDEA.NS":"TELECOM",
-    # LOGISTICS
-    "BLUEDART.NS":"LOGISTICS","CONCOR.NS":"LOGISTICS","DELHIVERY.NS":"LOGISTICS",
-    "TCI.NS":"LOGISTICS",
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTOR MAP — dynamic, not hardcoded
+# Priority: sector_master.csv (curated) → sector_cache.json (yfinance-fetched, grows over time)
+# ─────────────────────────────────────────────────────────────────────────────
+SECTOR_CACHE_FILE = os.getenv("SECTOR_CACHE_FILE", "sector_cache.json")
+
+# Normalize sector_master.csv labels to internal labels
+_CSV_LABEL_NORM = {
+    "Auto": "AUTO", "Banking": "BANKING", "Capital Goods": "CAPITAL_GOODS",
+    "Cement": "INFRA", "Chemicals": "CHEMICALS", "Consumer Goods": "FMCG",
+    "Consumer Services": "CONSUMER", "Defence": "DEFENCE", "Diversified": "OTHERS",
+    "Electronics Manufacturing": "CAPITAL_GOODS", "Finance": "FINANCE",
+    "FinTech": "FINANCE", "FMCG": "FMCG", "Healthcare": "HEALTHCARE",
+    "Infrastructure": "INFRA", "IT": "IT", "IT Hardware": "IT",
+    "Metals": "METALS", "Oil & Gas": "ENERGY", "Pharma": "PHARMA",
+    "Power": "ENERGY", "Realty": "REALTY", "Retail": "CONSUMER",
 }
+
+# Normalize yfinance sector labels to internal labels
+_YF_LABEL_NORM = {
+    "Technology": "IT", "Financial Services": "FINANCE",
+    "Healthcare": "HEALTHCARE", "Consumer Defensive": "FMCG",
+    "Consumer Cyclical": "CONSUMER", "Basic Materials": "METALS",
+    "Energy": "ENERGY", "Industrials": "CAPITAL_GOODS",
+    "Real Estate": "REALTY", "Communication Services": "TELECOM",
+    "Utilities": "ENERGY", "Automobile": "AUTO",
+    "Pharmaceuticals": "PHARMA", "Banking": "BANKING",
+    "Defence": "DEFENCE", "Chemicals": "CHEMICALS",
+}
+
+_SECTOR_MAP: dict = {}   # loaded at pipeline start via _init_sector_map()
+
+
+def _load_sector_map() -> dict:
+    """Load sector map from sector_master.csv then overlay sector_cache.json."""
+    result: dict = {}
+    # 1. sector_master.csv — curated, ships with repo
+    try:
+        sm_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sector_master.csv")
+        if os.path.exists(sm_path):
+            with open(sm_path, newline="", encoding="utf-8") as f:
+                for row in csv.DictReader(f):
+                    sym = row.get("symbol", "").strip()
+                    sec = row.get("sector", "").strip()
+                    if sym and sec:
+                        if not sym.endswith(".NS"):
+                            sym += ".NS"
+                        result[sym] = _CSV_LABEL_NORM.get(sec, sec.upper().replace(" ", "_"))
+    except Exception:
+        pass
+    # 2. sector_cache.json — yfinance-fetched, grows over runs (persisted in CI cache)
+    try:
+        if os.path.exists(SECTOR_CACHE_FILE):
+            with open(SECTOR_CACHE_FILE, "r") as f:
+                result.update(json.load(f))
+    except Exception:
+        pass
+    return result
+
+
+def _init_sector_map() -> None:
+    """Called once at pipeline start."""
+    global _SECTOR_MAP
+    _SECTOR_MAP = _load_sector_map()
 
 
 def get_sector(symbol: str) -> str:
     """Handles both 'RELIANCE' and 'RELIANCE.NS'. Unknown symbols → 'OTHERS'."""
     sym = symbol.strip()
     if not sym.endswith(".NS"):
-        sym = sym + ".NS"
-    return COMPREHENSIVE_SECTOR_MAP.get(sym, "OTHERS")
+        sym += ".NS"
+    return _SECTOR_MAP.get(sym, "OTHERS")
+
+
+def enrich_sectors_from_yfinance(symbols: list, max_fetch: int = 500) -> None:
+    """
+    Batch-fetch yfinance sector info for symbols not yet in _SECTOR_MAP.
+    Called once after tradable universe is built (prices already downloaded).
+    New sectors are merged into _SECTOR_MAP and saved to sector_cache.json.
+    On subsequent runs the cache is restored → zero yfinance calls needed.
+    """
+    global _SECTOR_MAP
+    unknown = [
+        s for s in symbols
+        if _SECTOR_MAP.get(s if s.endswith(".NS") else s + ".NS", "OTHERS") == "OTHERS"
+    ]
+    if not unknown:
+        _log(f"  Sector map: {len(_SECTOR_MAP)} symbols — fully covered")
+        return
+
+    to_fetch = unknown[:max_fetch]
+    _log(f"  Sector map: {len(_SECTOR_MAP)} known | enriching {len(to_fetch)}/{len(unknown)} unknowns via yfinance...")
+
+    new_sectors: dict = {}
+
+    def _fetch_one(sym: str) -> None:
+        try:
+            info    = yf.Ticker(sym).info
+            yf_sec  = (info.get("sector") or info.get("industry") or "").strip()
+            if yf_sec:
+                norm = _YF_LABEL_NORM.get(
+                    yf_sec,
+                    yf_sec.upper().replace(" & ", "_").replace(" ", "_")
+                )
+                new_sectors[sym] = norm   # GIL protects simple dict writes
+        except Exception:
+            pass
+
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        list(ex.map(_fetch_one, to_fetch))
+
+    if new_sectors:
+        _SECTOR_MAP.update(new_sectors)
+        try:
+            existing: dict = {}
+            if os.path.exists(SECTOR_CACHE_FILE):
+                with open(SECTOR_CACHE_FILE, "r") as f:
+                    existing = json.load(f)
+            existing.update(new_sectors)
+            with open(SECTOR_CACHE_FILE, "w") as f:
+                json.dump(existing, f, indent=2, sort_keys=True)
+            _log(f"  Sector cache: +{len(new_sectors)} new → {len(existing)} total ({SECTOR_CACHE_FILE})")
+        except Exception as e:
+            _log(f"[WARN] sector_cache save failed: {e}")
+    else:
+        _log("  Sector map: yfinance returned no new sector data (all remain OTHERS)")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -737,128 +777,10 @@ def _bhavcopy_from_file(filepath: str):
 
 def _bhavcopy_from_bse(date: datetime.datetime):
     """
-    Fetch BSE bhavcopy as fallback — BSE JSON API works from any IP including CI.
-    Strategy:
-      1. BSE India JSON API  — https://api.bseindia.com/BseIndiaAPI/api/BhavCopyDeliverableData/w
-      2. BSE ZIP download    — known URL patterns (fallback if API changes)
-    Maps BSE SC_NAME → NSE symbol via nse_all_symbols.csv.
+    BSE bhavcopy fallback — disabled.
+    BSE API and ZIP downloads both require browser session cookies unavailable from CI IPs.
+    Delivery % defaults to 50% when NSE data is also unavailable — scoring impact is minimal.
     """
-    import zipfile, io as _io
-
-    # Build NSE name→symbol map from nse_all_symbols.csv
-    name_to_sym: dict = {}
-    try:
-        csv_path = os.path.join(os.path.dirname(__file__) or ".", "nse_all_symbols.csv")
-        ns_df = pd.read_csv(csv_path)
-        for _, row in ns_df.iterrows():
-            raw_name = str(row.get("COMPANY_NAME", "")).strip()
-            sym = str(row.get("SYMBOL", "")).replace(".NS", "").strip()
-            if raw_name and sym:
-                norm = re.sub(r"[^a-z0-9]", "", raw_name.lower())
-                norm = re.sub(r"(ltd|limited|pvt|private|inc|corp|llp|llc)$", "", norm)
-                name_to_sym[norm] = sym
-    except Exception:
-        pass
-
-    bse_headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36",
-        "Accept": "application/json, text/plain, */*",
-        "Referer": "https://www.bseindia.com/",
-        "Origin":  "https://www.bseindia.com",
-    }
-
-    def _map_bse_rows(records: list, name_key: str, deliv_key: str):
-        """Map BSE name→NSE symbol and return SYMBOL/DELIV_PER DataFrame."""
-        rows = []
-        for rec in records:
-            raw_name = str(rec.get(name_key, "")).strip()
-            norm = re.sub(r"[^a-z0-9]", "", raw_name.lower())
-            norm = re.sub(r"(ltd|limited|pvt|private|inc|corp|llp|llc)$", "", norm)
-            nse_sym = name_to_sym.get(norm)
-            if nse_sym:
-                try:
-                    deliv_val = float(str(rec.get(deliv_key, "50")).replace(",", "").strip())
-                except (ValueError, TypeError):
-                    deliv_val = 50.0
-                rows.append({"SYMBOL": nse_sym, "DELIV_PER": deliv_val})
-        return pd.DataFrame(rows) if rows else None
-
-    for days_back in range(0, 6):
-        d = date - datetime.timedelta(days=days_back)
-        if d.weekday() >= 5:
-            continue
-        ddmmyyyy = d.strftime("%d%m%Y")   # BSE API format: 26062026
-        ddmmyy   = d.strftime("%d%m%y")   # old ZIP format: 260626
-        yyyymmdd = d.strftime("%Y%m%d")   # new ZIP format: 20260626
-
-        # ── Strategy 1: BSE JSON API (works from all IPs) ────────────────
-        api_urls = [
-            f"https://api.bseindia.com/BseIndiaAPI/api/BhavCopyDeliverableData/w?strdate={ddmmyyyy}",
-            f"https://api.bseindia.com/BseIndiaAPI/api/BhavCopyDeliverableData/w?Fdate={ddmmyyyy}&Tdate={ddmmyyyy}",
-        ]
-        for api_url in api_urls:
-            try:
-                resp = requests.get(api_url, headers=bse_headers, timeout=20)
-                if resp.status_code != 200 or len(resp.content) < 100:
-                    continue
-                data = resp.json()
-                # API returns a list directly or wrapped in a key
-                if isinstance(data, list):
-                    records = data
-                elif isinstance(data, dict):
-                    records = data.get("Table") or data.get("data") or data.get("Data") or []
-                else:
-                    continue
-                if not records:
-                    continue
-                # Detect name/delivery keys from first record
-                first = records[0]
-                name_key  = next((k for k in first if "name" in k.lower() or k.upper() in ("SC_NAME","SCRIP_NAME","SCNAME")), None)
-                deliv_key = next((k for k in first if "deliv" in k.lower() and ("per" in k.lower() or "%" in k.lower() or "pct" in k.lower())), None)
-                if not name_key or not deliv_key:
-                    _log(f"[WARN] BSE API response keys: {list(first.keys())[:8]}")
-                    continue
-                result_df = _map_bse_rows(records, name_key, deliv_key)
-                if result_df is not None and len(result_df) > 0:
-                    _log(f"  Bhavcopy from BSE API for {d.strftime('%d-%b-%Y')}: {len(result_df)} symbols mapped")
-                    return result_df
-            except Exception as e:
-                _log(f"[WARN] BSE API error ({ddmmyyyy}): {e}")
-                continue
-
-        # ── Strategy 2: BSE ZIP download (fallback) ──────────────────────
-        zip_headers = {**bse_headers, "Accept": "*/*"}
-        bse_urls = [
-            f"https://www.bseindia.com/download/BhavCopy/Equity/BhavCopy_BSE_CM_0_0_0_{yyyymmdd}_F_0000.CSV.ZIP",
-            f"https://www.bseindia.com/download/BhavCopy/Equity/EQ{ddmmyyyy}_CSV.ZIP",
-            f"https://www.bseindia.com/download/BhavCopy/Equity/EQ{ddmmyy}_CSV.ZIP",
-        ]
-        for url in bse_urls:
-            try:
-                resp = requests.get(url, headers=zip_headers, timeout=20)
-                if resp.status_code != 200 or len(resp.content) < 1000:
-                    continue
-                if resp.content[:4] != b"PK\x03\x04":
-                    continue  # not a ZIP — silently skip (BSE returning HTML)
-                with zipfile.ZipFile(_io.BytesIO(resp.content)) as zf:
-                    csv_name = next((n for n in zf.namelist() if n.lower().endswith(".csv")), None)
-                    if csv_name is None:
-                        continue
-                    bse_df = pd.read_csv(zf.open(csv_name))
-                bse_df.columns = [c.strip() for c in bse_df.columns]
-                deliv_col = next((c for c in bse_df.columns if "deliv" in c.lower() and ("per" in c.lower() or "%" in c.lower())), None)
-                name_col  = next((c for c in bse_df.columns if "name" in c.lower() or c.upper() in ("SC_NAME", "SCRIP_NAME")), None)
-                if not deliv_col or not name_col:
-                    continue
-                records = bse_df.to_dict("records")
-                result_df = _map_bse_rows(records, name_col, deliv_col)
-                if result_df is not None and len(result_df) > 0:
-                    _log(f"  Bhavcopy from BSE ZIP for {d.strftime('%d-%b-%Y')}: {len(result_df)} symbols mapped")
-                    return result_df
-            except Exception as e:
-                _log(f"[WARN] BSE ZIP error ({url.split('/')[-1]}): {e}")
-                continue
-
     return None
 
 
@@ -928,13 +850,8 @@ def fetch_nse_bhavcopy(date=None):
         if not nse_ok:
             break  # don't retry other dates if NSE is blocking us
 
-    # ── 3. BSE fallback ───────────────────────────────────────────────────────
-    _log("  Trying BSE bhavcopy as fallback...")
-    bse_df = _bhavcopy_from_bse(date)
-    if bse_df is not None:
-        return bse_df
-
-    _log("[WARN] All bhavcopy sources failed — delivery % will use 50% default for all stocks")
+    # ── 3. BSE fallback disabled — requires browser session unavailable from CI ──
+    _log("  Bhavcopy unavailable from CI — using 50% default (no impact on signals)")
     return None
 
 
@@ -1896,14 +1813,50 @@ def detect_market_regime(nifty_df, breadth_data: dict, macro_signals: dict) -> d
 # SECTION 6 — SCORING ENGINE
 # ─────────────────────────────────────────────────────────────────────────────
 
-def volume_delivery_score(vol_ratio: float, delivery_pct: float) -> float:
+def _obv_trend_score(closes: np.ndarray, volumes: np.ndarray) -> float:
+    """
+    On-Balance Volume trend score (0-100).
+    Replaces delivery % which requires external bhavcopy data unavailable from CI.
+    OBV = cumsum of volume * sign(close - prev_close).
+    Rising OBV = smart money accumulating. Falling OBV = distribution.
+    OBV divergence (price up, OBV down) = bearish warning.
+    """
+    try:
+        n = min(len(closes), len(volumes))
+        if n < 12:
+            return 50.0
+        c = closes[-n:]
+        v = volumes[-n:]
+        # Build OBV
+        obv = [0.0]
+        for i in range(1, n):
+            if c[i] > c[i-1]:
+                obv.append(obv[-1] + v[i])
+            elif c[i] < c[i-1]:
+                obv.append(obv[-1] - v[i])
+            else:
+                obv.append(obv[-1])
+        obv = np.array(obv)
+        # Slope of last 10 OBV values (normalised by avg volume)
+        window = obv[-10:]
+        avg_vol = float(np.mean(v[-10:])) or 1.0
+        slope = float(np.polyfit(range(10), window, 1)[0]) / avg_vol  # slope in vol-units/bar
+        # Price direction over same window
+        price_up = c[-1] > c[-10]
+        if slope > 0.3 and price_up:    return 95.0   # strong accumulation
+        if slope > 0.1 and price_up:    return 80.0   # moderate accumulation
+        if slope > 0.0:                 return 65.0   # quiet buying
+        if slope > -0.1:                return 50.0   # neutral
+        if slope <= -0.1 and price_up:  return 30.0   # bearish divergence (price up, OBV down)
+        if slope <= -0.3:               return 15.0   # distribution
+        return 40.0
+    except Exception:
+        return 50.0
+
+
+def volume_delivery_score(vol_ratio: float, obv_score: float) -> float:
     vol_score = min(100, vol_ratio * 45)
-    if delivery_pct >= 70:   deliv_score = 100
-    elif delivery_pct >= 55: deliv_score = 80
-    elif delivery_pct >= 40: deliv_score = 60
-    elif delivery_pct >= 25: deliv_score = 40
-    else:                    deliv_score = 20
-    return round(vol_score * 0.55 + deliv_score * 0.45, 1)
+    return round(vol_score * 0.55 + obv_score * 0.45, 1)
 
 
 def accumulation_score(closes: np.ndarray, volumes: np.ndarray,
@@ -2442,7 +2395,7 @@ def _default_stock_result(symbol: str, sector: str) -> dict:
     }
 
 
-def compute_all_factors(symbol: str, df, delivery_pct: float,
+def compute_all_factors(symbol: str, df,
                          sector: str, regime_data: dict,
                          sector_rotation: dict = None) -> dict:
     result = _default_stock_result(symbol, sector)
@@ -2525,8 +2478,9 @@ def compute_all_factors(symbol: str, df, delivery_pct: float,
         elif rsi < 35: mom = max(0, mom - 10)
         result["momentum_quality"] = round(mom, 1)
 
-        # ── Factor 3: Volume + Delivery + Accumulation ──
-        base_vol_score = volume_delivery_score(vol_ratio, delivery_pct)
+        # ── Factor 3: Volume + OBV Trend + Accumulation ──
+        obv_scr        = _obv_trend_score(closes, volumes)
+        base_vol_score = volume_delivery_score(vol_ratio, obv_scr)
         accum_scr, accum_signal = accumulation_score(closes, volumes, ema20, avg_vol_20)
         # Blend: 60% today's vol/delivery + 40% 10-day accumulation pattern
         combined_vol = round(base_vol_score * 0.60 + accum_scr * 0.40, 1)
@@ -2901,10 +2855,14 @@ def run_gates(stock: dict, regime: str, thresholds: dict,
 
     hard_fails = [f for f in fail_reasons if "WARNING" not in f]
     if hard_fails:
-        # EVENT_BLOCK / CORR → WATCHLIST not REJECTED where appropriate
-        soft_only = all("EVENT_BLOCK" in f or "PORTFOLIO_FULL" in f or "HIGH_CORR" in f
-                        for f in hard_fails)
-        if len(hard_fails) <= 2 and (soft_only or all("FAIL" in f and "LAGGING" not in f for f in hard_fails)):
+        # PORTFOLIO_FULL never blocks watchlist — stock is valid, just capacity is full today
+        # Strip it before deciding WATCHLIST vs REJECTED so it doesn't poison the check
+        scoreable_fails = [f for f in hard_fails if "PORTFOLIO_FULL" not in f]
+        soft_only = all("EVENT_BLOCK" in f or "HIGH_CORR" in f for f in scoreable_fails)
+        if not scoreable_fails:
+            # Only PORTFOLIO_FULL failed — valid setup, just no room
+            decision = "WATCHLIST"
+        elif len(scoreable_fails) <= 2 and (soft_only or all("FAIL" in f and "LAGGING" not in f for f in scoreable_fails)):
             decision = "WATCHLIST"
         else:
             decision = "REJECTED"
@@ -4013,6 +3971,9 @@ def _run_pipeline_inner():
     _log(f"  Capital: Rs{PORTFOLIO_CAPITAL:,.0f} | Groq keys: {len(GROQ_KEYS)} | Tracker: {'configured' if TRACKER_BOT_TOKEN else 'NOT configured'}")
     _ensure_portfolio_json()
 
+    # ── Sector map (must be first — used by all scoring) ──
+    _init_sector_map()
+
     # ── 0. Market holiday guard ──
     if not is_market_open():
         _log("[INFO] Market closed today (holiday or weekend). Skipping pipeline.")
@@ -4040,11 +4001,6 @@ def _run_pipeline_inner():
     macro["dii_flow_cr"] = fii_dii["dii_flow_cr"]
     _log(f"  FII: {fii_dii['fii_flow_cr']:+.0f}Cr | DII: {fii_dii['dii_flow_cr']:+.0f}Cr")
 
-    # ── 2. NSE Bhavcopy ──
-    _log("[2/18] Fetching NSE bhavcopy (delivery %)...")
-    bhavcopy = fetch_nse_bhavcopy()
-    _log(f"  Bhavcopy: {'loaded' if bhavcopy is not None else 'unavailable — using 50% default'}")
-
     # ── 3. Bulk/block deals ──
     _log("[3/18] Fetching bulk/block deals...")
     bulk_deals = fetch_bulk_deals()
@@ -4058,6 +4014,10 @@ def _run_pipeline_inner():
     _log("[5/18] Downloading prices (parallel)...")
     tradable = filter_and_download(symbols, period="6mo", max_workers=12)
     _log(f"  Tradable: {len(tradable)} stocks")
+
+    # ── 5b. Enrich sector map for all tradable symbols ──
+    _log("[5b] Enriching sector map from yfinance for unknowns...")
+    enrich_sectors_from_yfinance(list(tradable.keys()))
     if not tradable:
         _log("[ERROR] No tradable stocks. Aborting.")
         return
@@ -4099,9 +4059,8 @@ def _run_pipeline_inner():
     _log("[7/18] Scoring all stocks...")
     scored = []
     for symbol, df in tradable.items():
-        delivery_pct = get_delivery_pct(symbol, bhavcopy)
         sector       = get_sector(symbol)
-        scores       = compute_all_factors(symbol, df, delivery_pct, sector, regime_data, sector_rotation)
+        scores       = compute_all_factors(symbol, df, sector, regime_data, sector_rotation)
         base_conf    = compute_base_confidence(scores)
         # NOTE: **scores must come BEFORE base_confidence so our computed value wins
         # (scores dict contains base_confidence: 0.0 as a default placeholder)
@@ -4173,7 +4132,7 @@ def _run_pipeline_inner():
         sym = h.get("symbol", "")
         if sym:
             try:
-                df_tmp = fetch_price_data(sym, period="1d")
+                df_tmp = fetch_price_data(sym, period="5d")
                 if df_tmp is not None and len(df_tmp) > 0:
                     current_prices[sym] = float(df_tmp["Close"].squeeze().iloc[-1])
             except Exception:
