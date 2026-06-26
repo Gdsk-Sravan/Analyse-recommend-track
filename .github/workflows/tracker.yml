@@ -1,0 +1,39 @@
+name: Recommendation Tracker
+
+on:
+  schedule:
+    - cron: '0 11 * * 1-5'  # 4:30 PM IST weekdays (11:00 UTC)
+  workflow_dispatch:
+
+jobs:
+  track:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install yfinance openpyxl pandas numpy python-dotenv
+
+      - name: Download existing tracker from artifacts (if any)
+        continue-on-error: true
+        uses: dawidd6/action-download-artifact@v3
+        with:
+          name: recommendation-tracker
+          path: .
+          if_no_artifact_found: ignore
+
+      - name: Run tracker job
+        env:
+          TRACKER_XLSX: recommendation_tracker.xlsx
+        run: python tracker_job.py
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: recommendation-tracker
+          path: recommendation_tracker.xlsx
+          retention-days: 90
