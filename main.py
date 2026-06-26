@@ -404,7 +404,7 @@ def send_buy_telegram(buys: list, regime: str, timestamp: str) -> None:
             break
 
 
-
+def save_csv(data: list, base_filename: str) -> None:
     if not data:
         return
     try:
