@@ -2329,6 +2329,9 @@ def correlation_check(symbol: str, holdings: list, returns_cache: dict,
     if worst_corr >= max_corr:
         return True, round(worst_corr, 2), worst_symbol
     return False, round(worst_corr, 2), worst_symbol
+
+
+def classify_watchlist(stock: dict, regime: str, thresholds: dict) -> dict:
     thresh   = (thresholds or REGIME_THRESHOLDS)[regime]
     conf     = stock.get("final_confidence", 0)
     tq       = stock.get("trade_quality_score", 0)
