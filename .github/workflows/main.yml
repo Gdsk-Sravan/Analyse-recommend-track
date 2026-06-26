@@ -206,6 +206,7 @@ jobs:
             cache
             news_cache
             nse_all_symbols.csv
+            sector_cache.json
             universe_cache_meta.json
             weekly_job_meta.json
             tradable_universe.csv
@@ -240,39 +241,6 @@ jobs:
           echo "$MANUAL_PORTFOLIO_JSON" > portfolio.json
           echo "Portfolio loaded: $(python3 -c "import json; d=json.load(open('portfolio.json')); print(len(d), 'holdings')" 2>/dev/null || echo 'parse error')"
 
-      - name: Pre-download bhavcopy
-        continue-on-error: true
-        run: |
-          DATE_STR=$(TZ=Asia/Kolkata date +%d%b%Y | tr '[:lower:]' '[:upper:]')
-          DATE_YMD=$(TZ=Asia/Kolkata date +%Y%m%d)
-          echo "Trying to pre-fetch bhavcopy for ${DATE_STR}..."
-
-          # Attempt 1 — NSE archives CDN
-          STATUS=$(curl -s -o bhavcopy_today.csv -w "%{http_code}" --max-time 20 \
-            -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36" \
-            -H "Accept: text/csv,*/*" \
-            -H "Referer: https://www.nseindia.com/all-reports" \
-            "https://nsearchives.nseindia.com/products/content/sec_bhavdata_full_${DATE_STR}.csv" 2>/dev/null || echo "000")
-          SIZE=$(wc -c < bhavcopy_today.csv 2>/dev/null || echo 0)
-          if [ "$STATUS" = "200" ] && [ "$SIZE" -gt 1000 ]; then
-            echo "NSE bhavcopy downloaded (${SIZE} bytes)"
-          else
-            rm -f bhavcopy_today.csv
-
-            # Attempt 2 — NSE new ZIP format
-            STATUS=$(curl -s -o bhavcopy_today.zip -w "%{http_code}" --max-time 20 \
-              -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36" \
-              -H "Referer: https://www.nseindia.com/all-reports" \
-              "https://nsearchives.nseindia.com/content/equities/BhavCopy_NSE_CM_0_0_0_${DATE_YMD}_F_0000.csv.zip" 2>/dev/null || echo "000")
-            SIZE=$(wc -c < bhavcopy_today.zip 2>/dev/null || echo 0)
-            if [ "$STATUS" = "200" ] && [ "$SIZE" -gt 1000 ]; then
-              echo "NSE bhavcopy ZIP downloaded (${SIZE} bytes)"
-            else
-              rm -f bhavcopy_today.zip
-              echo "NSE bhavcopy not available from CI IP — BSE fallback will be used by main.py"
-            fi
-          fi
-
       - name: Run evening pipeline
         run: python3 main.py
 
@@ -291,6 +259,7 @@ jobs:
             cache
             news_cache
             nse_all_symbols.csv
+            sector_cache.json
             universe_cache_meta.json
             weekly_job_meta.json
             tradable_universe.csv
