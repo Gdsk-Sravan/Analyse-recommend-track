@@ -1,0 +1,35 @@
+[13:38:11] === PIPELINE STARTED 2026-06-26T13:38:11.648068 ===
+[13:38:11] === NSE SWING TRADE PIPELINE v6.0 STARTING ===
+[13:38:11]   Capital: Rs200,000 | Groq keys: 3 | Tracker: NOT configured
+[13:38:11] [INFO] Created empty portfolio.json — add your holdings manually to enable portfolio monitoring
+[13:38:11] [1/18] Fetching global macro...
+[13:38:22]   NIFTY +0.14% | VIX-IN 13.1 | USD/INR 94.39
+[13:38:22] [2/18] Fetching NSE bhavcopy (delivery %)...
+[13:38:26]   Bhavcopy: unavailable — using 50% default
+[13:38:26] [3/18] Fetching bulk/block deals...
+[13:38:29]   Bulk deals: 0 found
+[13:38:29] [4/18] Loading symbol universe...
+[13:38:29] Loaded 2360 symbols from stocks.txt
+[13:38:29] [5/18] Downloading prices (parallel)...
+[13:38:29] Downloading 2360 symbols with 12 workers...
+[13:45:47] Download complete: 1257 tradable, 77 failed/illiquid
+[13:45:47]   Tradable: 1257 stocks
+[13:45:47] [6/18] Detecting market regime...
+[13:45:48]   REGIME: TRANSITION | Score: 44.0/100 | EMA20 breadth: 60.8%
+[13:45:48]   Nifty 21d ret: +0.60% | 5d ret: -0.46%
+[13:45:48] [6c] Computing sector rotation...
+[13:45:48]   Leading: ['CHEMICALS', 'HEALTHCARE'] | Lagging: ['ENERGY', 'METALS', 'DEFENCE', 'IT']
+[13:45:48] [7/18] Scoring all stocks...
+[13:45:48] [CRITICAL] Unhandled pipeline exception: name '_default_stock_result' is not defined
+[13:45:48] Traceback (most recent call last):
+  File "/Users/I573441/Desktop/sample project/Data-AI-Stocks-analyser-platform-main/main.py", line 2846, in run_pipeline
+    lines.append("")
+    ~~~~~~~~~~~~^^^^
+  File "/Users/I573441/Desktop/sample project/Data-AI-Stocks-analyser-platform-main/main.py", line 2966, in _run_pipeline_inner
+    # ── 6b. Nifty key levels ──
+  File "/Users/I573441/Desktop/sample project/Data-AI-Stocks-analyser-platform-main/main.py", line 1809, in compute_all_factors
+    tight_consol = (
+         ^^^^^^^^^^^
+NameError: name '_default_stock_result' is not defined
+
+[13:45:48] === PIPELINE COMPLETE ===
