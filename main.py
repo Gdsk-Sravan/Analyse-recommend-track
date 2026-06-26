@@ -3953,13 +3953,6 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
         lines.append("  No active holdings.")
     lines.append("")
 
-    # ── Trade Tracker V2 (Patch 5) ──
-    if tracker_v2:
-        tracker_section = format_tracker_for_telegram(tracker_v2)
-        if tracker_section.strip():
-            lines.append(tracker_section)
-            lines.append("")
-
     # ── Upcoming Events ──
     if upcoming_events:
         lines.append("UPCOMING EVENTS")
@@ -4190,7 +4183,6 @@ def _run_pipeline_inner():
     # ── 13. Load tracker (before gates — needed for deduplication) ──
     _log("[13/18] Loading trade tracker...")
     tracker_entries = load_tracker()
-    tracker_v2      = initialize_tracker_if_new()
 
     # ── 13b. Upcoming events (needed by Gate 13 before gate system runs) ──
     upcoming_events = get_upcoming_events(lookahead_days=7)
@@ -4298,9 +4290,6 @@ def _run_pipeline_inner():
     _log("[15/18] Sending main Telegram report...")
     timestamp = datetime.datetime.now().strftime("%b %d, %Y %H:%M IST")
 
-    # Update tracker v2 PnL before embedding in message
-    tracker_v2 = update_tracker_v2_pnl(tracker_v2)
-
     message   = format_telegram_message(
         regime_data      = regime_data,
         buys             = buys,
@@ -4313,7 +4302,7 @@ def _run_pipeline_inner():
         timestamp        = timestamp,
         heat             = heat,
         platt            = platt,
-        tracker_v2       = tracker_v2,
+        tracker_v2       = None,
         rejected_stocks  = rejected,
         breadth_20       = breadth.get("ema20_pct", 50.0),
     )
@@ -4348,9 +4337,6 @@ def _run_pipeline_inner():
 
     maybe_send_weekly_stats(tracker_entries)
     save_tracker(tracker_entries)
-
-    # Save tracker v2 (new structured format)
-    save_tracker_v2(tracker_v2)
 
     # ── 17. Save CSVs ──
     _log("[17/18] Saving output CSVs...")
