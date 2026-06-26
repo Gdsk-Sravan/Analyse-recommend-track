@@ -1321,7 +1321,20 @@ def fetch_promoter_data(symbol_clean: str, delay_seconds: float = 2.5) -> dict:
 
     data = fetch_screener_data(symbol_clean)
     if data:
-        data["source"] = "SCREENER"
+        # FIX: screener HTML structure may have changed — ROE/D-E arrive as 0
+        # Supplement with yfinance when key financial ratios are all zero
+        if data.get("roe", 0) == 0 and data.get("de_ratio", 0) == 0:
+            try:
+                yf_data = fetch_yfinance_fundamentals(symbol_clean + ".NS")
+                if yf_data.get("roe", 0) != 0:
+                    data["roe"] = yf_data["roe"]
+                if yf_data.get("de_ratio", 0) != 0:
+                    data["de_ratio"] = yf_data["de_ratio"]
+                if yf_data.get("roce", 0) != 0:
+                    data["roce"] = yf_data["roce"]
+            except Exception:
+                pass
+        data["source"] = "SCREENER+YF"
         _log(f"[INFO] Fundamentals (screener): {symbol_clean} "
              f"ROE={data.get('roe',0):.1f}% D/E={data.get('de_ratio',0):.2f} "
              f"Pledge={data.get('promoter_pledge_pct',0):.1f}%")
@@ -3571,10 +3584,7 @@ def format_tracker_stats(all_entries: list) -> str:
 
 
 def maybe_send_weekly_stats(tracker_entries: list) -> None:
-    if datetime.date.today().weekday() == 6:
-        stats_msg = format_tracker_stats(tracker_entries)
-        send_tracker_telegram(stats_msg)
-        _log("[INFO] Weekly stats sent to tracker channel")
+    pass  # Weekly stats now stored in recommendation_tracker.xlsx via research_job.py
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -4585,13 +4595,6 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
             lines.append(f"  {html.escape(str(ev))}")
         lines.append("")
 
-    # ── Trade Tracker V2 ──
-    if tracker_v2:
-        tracker_section = format_tracker_for_telegram(tracker_v2)
-        if tracker_section:
-            lines.append("")
-            lines.append(tracker_section)
-
     # ── System Performance Snapshot ──
     lines.extend(format_system_snapshot(tracker_v2))
 
@@ -4773,40 +4776,40 @@ def _run_pipeline_inner():
         effective_thresholds = REGIME_THRESHOLDS
 
     # ── 1. Global macro ──
-    _log("[1/18] Fetching global macro...")
+    _log("[1/17] Fetching global macro...")
     macro = fetch_global_macro()
     _log(f"  NIFTY {macro['nifty_1d_pct']:+.2f}% | VIX-IN {macro['vix_in']:.1f} | USD/INR {macro['usdinr']:.2f}")
 
     # ── 1b. FII/DII flows from NSE ──
-    _log("[1b] Fetching FII/DII flows from NSE...")
+    _log("[2/17] Fetching FII/DII flows from NSE...")
     fii_dii = fetch_fii_dii_flows()
     macro["fii_flow_cr"] = fii_dii["fii_flow_cr"]
     macro["dii_flow_cr"] = fii_dii["dii_flow_cr"]
     _log(f"  FII: {fii_dii['fii_flow_cr']:+.0f}Cr | DII: {fii_dii['dii_flow_cr']:+.0f}Cr")
 
     # ── 3. Bulk/block deals ──
-    _log("[3/18] Fetching bulk/block deals...")
+    _log("[3/17] Fetching bulk/block deals...")
     bulk_deals = fetch_bulk_deals()
     _log(f"  Bulk deals: {len(bulk_deals)} found")
 
     # ── 4. Load symbols ──
-    _log("[4/18] Loading symbol universe...")
+    _log("[4/17] Loading symbol universe...")
     symbols = load_symbols("stocks.txt")
 
     # ── 5. Parallel price download + liquidity filter ──
-    _log("[5/18] Downloading prices (parallel)...")
+    _log("[5/17] Downloading prices (parallel)...")
     tradable = filter_and_download(symbols, period="6mo", max_workers=12)
     _log(f"  Tradable: {len(tradable)} stocks")
 
     # ── 5b. Enrich sector map for all tradable symbols ──
-    _log("[5b] Enriching sector map from yfinance for unknowns...")
+    _log("[5b/17] Enriching sector map from yfinance for unknowns...")
     enrich_sectors_from_yfinance(list(tradable.keys()))
     if not tradable:
         _log("[ERROR] No tradable stocks. Aborting.")
         return
 
     # ── 6. Market regime ──
-    _log("[6/18] Detecting market regime...")
+    _log("[6/17] Detecting market regime...")
     nifty_df    = fetch_price_data("^NSEI", period="1y")
     breadth     = compute_breadth(tradable)
     if nifty_df is None:
@@ -4832,14 +4835,14 @@ def _run_pipeline_inner():
     key_levels = compute_key_levels(nifty_df)
 
     # ── 6c. Sector rotation ──
-    _log("[6c] Computing sector rotation...")
+    _log("[6c/17] Computing sector rotation...")
     sector_rotation = compute_sector_rotation(tradable)
     leading = [s for s, d in sector_rotation.items() if d["status"] == "LEADING"]
     lagging = [s for s, d in sector_rotation.items() if d["status"] == "LAGGING"]
     _log(f"  Leading: {leading} | Lagging: {lagging}")
 
     # ── 7. Score all stocks ──
-    _log("[7/18] Scoring all stocks...")
+    _log("[7/17] Scoring all stocks...")
     scored = []
     for symbol, df in tradable.items():
         sector       = get_sector(symbol)
@@ -4854,7 +4857,7 @@ def _run_pipeline_inner():
     _log(f"  Top 40: best base conf {top_40[0]['base_confidence']:.1f} ({top_40[0]['symbol']})")
 
     # ── 8. News + AI risk for top 40 ──
-    _log("[8/18] News + AI risk for top 40...")
+    _log("[8/17] News + AI risk for top 40...")
     for stock in top_40:
         sym_clean  = stock["symbol"].replace(".NS", "")
         headlines  = fetch_news_for_symbol(sym_clean)
@@ -4871,11 +4874,11 @@ def _run_pipeline_inner():
         stock["news_risk"]     = max(0, 100 - int(penalty * 2))
 
     # ── 9. Promoter data + fundamentals — sequential with 24h cache (no rate limiting) ──
-    _log("[9/18] Fetching promoter/fundamentals for top 20 (sequential + cached)...")
+    _log("[9/17] Fetching promoter/fundamentals for top 20 (sequential + cached)...")
     top_40 = fetch_all_fundamentals_cached(top_40, max_stocks=20)
 
     # ── 10. Options PCR for top 20 (parallel) ──
-    _log("[10/18] Options PCR for top 20 (parallel)...")
+    _log("[10/17] Options PCR for top 20 (parallel)...")
 
     def _fetch_pcr(stock: dict) -> tuple:
         sym_clean = stock["symbol"].replace(".NS", "")
@@ -4896,7 +4899,7 @@ def _run_pipeline_inner():
         stock["options_sentiment"] = pcr_map.get(stock["symbol"], 60)
 
     # ── 11. Final confidence ──
-    _log("[11/18] Computing final confidence...")
+    _log("[11/17] Computing final confidence...")
     macro_adj_global = macro_regime_adjustment(macro) * 0.3
     for stock in top_40:
         bulk_adj  = bulk_deal_score(stock["symbol"], bulk_deals)
@@ -4913,7 +4916,7 @@ def _run_pipeline_inner():
     top_40.sort(key=lambda x: x["opportunity_score"], reverse=True)
 
     # ── 12. Portfolio monitoring ──
-    _log("[12/18] Monitoring portfolio...")
+    _log("[12/17] Monitoring portfolio...")
     holdings       = load_portfolio()
     current_prices = {}
     for h in holdings:
@@ -4928,7 +4931,7 @@ def _run_pipeline_inner():
     portfolio_alerts = monitor_portfolio(holdings, current_prices, regime)
 
     # ── 13. Load tracker (before gates — needed for deduplication) ──
-    _log("[13/18] Loading trade tracker...")
+    _log("[13/17] Loading trade tracker...")
     tracker_entries = load_tracker()
 
     # ── 13b. Tracker V2 — load, update PnL, close completed positions ──
@@ -4941,7 +4944,7 @@ def _run_pipeline_inner():
     upcoming_events = get_upcoming_events(lookahead_days=7)
 
     # ── 14. Gate system ──
-    _log("[14/18] Running gate system (13 gates)...")
+    _log("[14/17] Running gate system (13 gates)...")
     portfolio_context = {
         "active_count":   len([a for a in portfolio_alerts if a["action"] == "HOLD"]),
         "existing_count": len(holdings),
@@ -5047,7 +5050,7 @@ def _run_pipeline_inner():
     save_persistent_watchlist(wl_history)
 
     # ── 15. Format and send main Telegram message ──
-    _log("[15/18] Sending main Telegram report...")
+    _log("[15/17] Sending main Telegram report...")
     timestamp = datetime.datetime.now().strftime("%b %d, %Y %H:%M IST")
 
     # Compute nifty_below_all_emas for daily summary
@@ -5084,7 +5087,7 @@ def _run_pipeline_inner():
     send_buy_telegram(buys, regime, timestamp)
 
     # ── 16. Trade Tracker updates ──
-    _log("[16/18] Updating trade tracker...")
+    _log("[16/17] Updating trade tracker...")
     tracker_entries = update_tracker_trailing_stop(tracker_entries)
 
     for stock in buys:
@@ -5097,19 +5100,12 @@ def _run_pipeline_inner():
     tracker_entries, closed_today = update_tracker(tracker_entries)
 
     if closed_today:
-        close_msg = format_tracker_close_summary(closed_today)
-        send_tracker_telegram(close_msg)
         _log(f"  Tracker: {len(closed_today)} trade(s) closed today")
 
-    open_entries = [e for e in tracker_entries if e["status"] == "OPEN"]
-    tracker_msg  = format_tracker_daily(open_entries, closed_today, timestamp)
-    send_tracker_telegram(tracker_msg)
-
-    maybe_send_weekly_stats(tracker_entries)
     save_tracker(tracker_entries)
 
     # ── 17. Save CSVs + Excel ──
-    _log("[17/18] Saving output CSVs...")
+    _log("[17/17] Saving output CSVs + Excel...")
     for s in top_40:
         s.pop("_df", None)
         s.pop("fundamentals", None)
@@ -5127,7 +5123,7 @@ def _run_pipeline_inner():
     )
 
     # ── 18. Done ──
-    _log("[18/18] Pipeline complete.")
+    _log("[DONE] Pipeline complete.")
     _log(f"  BUY: {len(buys)} | WATCHLIST: {len(watchlist_stocks)} | SHORTS: {len(shorts)}")
 
 
