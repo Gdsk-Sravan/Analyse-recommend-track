@@ -1,0 +1,67 @@
+name: Stop Loss Monitor
+
+on:
+  schedule:
+    # Every 30 min during market hours 9:15 AM - 3:30 PM IST (3:45-10:00 UTC) Mon-Fri
+    - cron: '45 3 * * 1-5'
+    - cron: '15 4 * * 1-5'
+    - cron: '45 4 * * 1-5'
+    - cron: '15 5 * * 1-5'
+    - cron: '45 5 * * 1-5'
+    - cron: '15 6 * * 1-5'
+    - cron: '45 6 * * 1-5'
+    - cron: '15 7 * * 1-5'
+    - cron: '45 7 * * 1-5'
+    - cron: '15 8 * * 1-5'
+    - cron: '45 8 * * 1-5'
+    - cron: '15 9 * * 1-5'
+    - cron: '45 9 * * 1-5'
+    - cron: '00 10 * * 1-5'
+  workflow_dispatch:
+
+jobs:
+  stopwatch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install yfinance requests
+
+      - name: Download tracker artifact
+        uses: dawidd6/action-download-artifact@v3
+        continue-on-error: true
+        with:
+          workflow: main.yml
+          name: recommendation-tracker
+          path: .
+          workflow_conclusion: success
+
+      - name: Download stop alerts state
+        uses: dawidd6/action-download-artifact@v3
+        continue-on-error: true
+        with:
+          workflow: stopwatch.yml
+          name: stop-alerts
+          path: .
+          workflow_conclusion: success
+
+      - name: Run stop loss monitor
+        run: python stopwatch_job.py
+        env:
+          TELEGRAM_BOT_TOKEN:    ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:      ${{ secrets.TELEGRAM_CHAT_ID }}
+          TRADE_TRACKER_V2_FILE: trade_tracker.json
+
+      - name: Upload stop alerts state
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stop-alerts
+          path: stop_alerts_sent.json
+          retention-days: 7
+          overwrite: true
