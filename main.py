@@ -73,7 +73,9 @@ TRADE_TRACKER_V2_FILE   = os.getenv("TRADE_TRACKER_V2_FILE", "trade_tracker.json
 FUNDAMENTALS_CACHE_FILE = os.getenv("FUNDAMENTALS_CACHE_FILE", "fundamentals_cache.json")
 PORTFOLIO_FILE          = os.getenv("PORTFOLIO_FILE", "portfolio.json")
 WATCHLIST_FILE      = os.getenv("WATCHLIST_FILE", "watchlist_persist.json")
-TELEGRAM_MAX_CHARS  = 4000
+CONF_HISTORY_FILE   = os.getenv("CONF_HISTORY_FILE", "confidence_history.json")
+GATE_MEMORY_FILE    = os.getenv("GATE_MEMORY_FILE", "gate_memory.json")
+TELEGRAM_MAX_CHARS  = 3800  # buffer below 4096 hard limit
 
 # Regime thresholds — v6.0 calibrated (Bug 2 fix)
 REGIME_THRESHOLDS = {
@@ -522,19 +524,36 @@ def truncate_display(text: str, max_len: int = 100) -> str:
 
 
 def _split_telegram_message(text: str, max_len: int) -> list:
+    """Split at section (═) boundaries first, then fallback to newline split."""
     if len(text) <= max_len:
         return [text]
     chunks = []
-    while text:
-        if len(text) <= max_len:
-            chunks.append(text)
-            break
-        split_at = text.rfind("\n", 0, max_len)
-        if split_at == -1:
-            split_at = max_len
-        chunks.append(text[:split_at])
-        text = text[split_at:].lstrip("\n")
-    return chunks
+    DIVIDER = "═"
+    # Try splitting at section dividers
+    sections = text.split(DIVIDER * 10)  # lines of ═══…
+    chunk = ""
+    for section in sections:
+        candidate = (chunk + DIVIDER * 10 + section) if chunk else section
+        if len(candidate) <= max_len:
+            chunk = candidate
+        else:
+            if chunk:
+                chunks.append(chunk)
+            chunk = section
+    if chunk:
+        chunks.append(chunk)
+    # If any chunk still too long, split by newline
+    final = []
+    for c in chunks:
+        while len(c) > max_len:
+            split_at = c.rfind("\n", 0, max_len)
+            if split_at == -1:
+                split_at = max_len
+            final.append(c[:split_at])
+            c = c[split_at:].lstrip("\n")
+        if c:
+            final.append(c)
+    return final if final else [text]
 
 
 def _save_failed_telegram(message: str) -> None:
@@ -1865,6 +1884,71 @@ def compute_key_levels(nifty_df) -> dict:
         return {}
 
 
+def compute_nifty_state(nifty_df) -> dict:
+    """Single source of truth for NIFTY EMA/level data (BUG FIX 1).
+    Computed ONCE per pipeline run. Passed to all formatters.
+    """
+    try:
+        closes = nifty_df["Close"].squeeze().values.astype(float)
+        highs  = nifty_df["High"].squeeze().values.astype(float)
+        lows   = nifty_df["Low"].squeeze().values.astype(float)
+        ema20  = float(pd.Series(closes).ewm(span=20).mean().iloc[-1])
+        ema50  = float(pd.Series(closes).ewm(span=50).mean().iloc[-1])
+        ema200 = float(pd.Series(closes).ewm(span=200).mean().iloc[-1])
+        last   = float(closes[-1])
+
+        lookback = min(252, len(highs))
+        high_52w = float(np.max(highs[-lookback:]))
+        low_52w  = float(np.min(lows[-lookback:]))
+        high_20d = float(np.max(highs[-20:]))
+        low_20d  = float(np.min(lows[-20:]))
+
+        above_ema20  = last > ema20
+        above_ema50  = last > ema50
+        above_ema200 = last > ema200
+
+        if above_ema20 and above_ema50 and above_ema200:
+            structure = "🟢 Above all EMAs — bull structure intact"
+            ema_bear  = False
+        elif above_ema50 and above_ema200:
+            structure = "🟡 Below EMA20 — minor pullback in uptrend"
+            ema_bear  = False
+        elif above_ema200:
+            structure = "🟠 Below EMA20 & EMA50 — correction underway"
+            ema_bear  = True
+        else:
+            structure = "🔴 Below all EMAs — bearish structure. High caution."
+            ema_bear  = True
+
+        dist_52w_high = round((high_52w - last) / high_52w * 100, 1) if high_52w > 0 else 0.0
+
+        return {
+            "close":         round(last, 1),
+            "ema20":         round(ema20, 1),
+            "ema50":         round(ema50, 1),
+            "ema200":        round(ema200, 1),
+            "high_52w":      round(high_52w, 1),
+            "low_52w":       round(low_52w, 1),
+            "high_20d":      round(high_20d, 1),
+            "low_20d":       round(low_20d, 1),
+            "above_ema20":   above_ema20,
+            "above_ema50":   above_ema50,
+            "above_ema200":  above_ema200,
+            "ema_bear":      ema_bear,
+            "structure":     structure,
+            "dist_52w_high_pct": dist_52w_high,
+        }
+    except Exception as e:
+        _log(f"[WARN] compute_nifty_state failed: {e}")
+        return {
+            "close": 0, "ema20": 0, "ema50": 0, "ema200": 0,
+            "high_52w": 0, "low_52w": 0, "high_20d": 0, "low_20d": 0,
+            "above_ema20": False, "above_ema50": False, "above_ema200": False,
+            "ema_bear": True, "structure": "🔴 Data unavailable",
+            "dist_52w_high_pct": 0,
+        }
+
+
 def fetch_bse_results_dates(symbol_clean: str) -> list:
     """
     Fetch upcoming board meeting / results dates for a stock from BSE India API.
@@ -1948,6 +2032,73 @@ def is_near_event(symbol_clean: str, results_dates: list,
                 continue
 
     return False, ""
+
+
+# Known market events with sector impact (FEATURE 5)
+KNOWN_EVENTS = {
+    "Union Budget Presentation": {
+        "date":         "2026-07-01",
+        "sectors_up":   ["DEFENCE", "INFRA", "CAPITAL_GOODS", "RAILWAYS"],
+        "sectors_down": ["FMCG", "AUTO"],
+        "note":         "Historically: defence +3-6%, infra +2-4% post-budget"
+    },
+    "NSE Weekly Expiry": {
+        "date":         "",
+        "sectors_up":   [],
+        "sectors_down": [],
+        "note":         "Increased volatility on expiry day — tighten stops"
+    },
+    "NSE Monthly Expiry": {
+        "date":         "",
+        "sectors_up":   [],
+        "sectors_down": [],
+        "note":         "Monthly expiry — high volatility, avoid new entries"
+    },
+    "RBI MPC Decision": {
+        "date":         "",
+        "sectors_up":   ["BANKING", "FINANCE", "REALTY"],
+        "sectors_down": [],
+        "note":         "Rate decision — banking stocks react sharply"
+    },
+    "Financial Year End": {
+        "date":         "2026-03-31",
+        "sectors_up":   [],
+        "sectors_down": [],
+        "note":         "FY-end window dressing — watch for profit booking"
+    },
+}
+
+
+def format_upcoming_events(events: list, holdings: list) -> list:
+    """Shows upcoming events with impact on current holdings (FEATURE 5)."""
+    try:
+        if not events:
+            return []
+        lines = ["UPCOMING EVENTS"]
+        holding_sectors = set()
+        for h in (holdings or []):
+            sym = h.get("symbol", "")
+            if sym:
+                holding_sectors.add(get_sector(sym))
+
+        for ev in events:
+            # Strip date suffix if any (e.g. "RBI MPC Decision — 07 Aug")
+            ev_name = ev.split(" — ")[0].strip()
+            meta = KNOWN_EVENTS.get(ev_name, {"note": "", "sectors_up": [], "sectors_down": []})
+            lines.append(f"  {html.escape(ev)}")
+            if meta.get("note"):
+                lines.append(f"    {html.escape(meta['note'])}")
+            impacted_up   = holding_sectors & set(meta.get("sectors_up",   []))
+            impacted_down = holding_sectors & set(meta.get("sectors_down", []))
+            if impacted_up:
+                lines.append(f"    🟢 Your holdings may benefit: {', '.join(sorted(impacted_up))}")
+            if impacted_down:
+                lines.append(f"    🔴 Your holdings at risk: {', '.join(sorted(impacted_down))}")
+            if not impacted_up and not impacted_down and holdings:
+                lines.append("    ⚪ No direct impact on current holdings")
+        return lines
+    except Exception:
+        return ["UPCOMING EVENTS"] + [f"  {html.escape(str(ev))}" for ev in (events or [])]
 
 
 def get_upcoming_events(lookahead_days: int = 7) -> list:
@@ -3262,6 +3413,19 @@ def calculate_watchlist_levels(stock: dict) -> dict:
         }
 
 
+def get_stock_rr(stock: dict, levels: dict) -> float:
+    """Single authoritative R/R value (BUG FIX 7).
+    Priority: scoring engine rr_ratio > ATR-calculated levels rr.
+    """
+    scoring_rr = float(stock.get("rr_ratio", 0) or 0)
+    levels_rr  = float(levels.get("rr",       0) or 0)
+    if scoring_rr > 0:
+        return scoring_rr
+    if levels_rr > 0:
+        return levels_rr
+    return 0.0
+
+
 def classify_watchlist(stock: dict, regime: str, thresholds: dict) -> dict:
     thresh   = (thresholds or REGIME_THRESHOLDS)[regime]
     min_conf = thresh["min_confidence"]
@@ -3282,7 +3446,7 @@ def classify_watchlist(stock: dict, regime: str, thresholds: dict) -> dict:
         "target1":  levels["target1"],
         "target2":  levels["target2"],
         "rr":       levels["rr"],
-        "rr_ratio": stock.get("rr_ratio", levels["rr"]),
+        "rr_ratio": get_stock_rr(stock, levels),
         "risk_pct": levels["risk_pct"],
         "current":  levels["current"],
         "fail_reasons": stock.get("fail_reasons", []),
@@ -3968,55 +4132,67 @@ def format_conviction_meter(regime_score: float, breadth: float,
         return []
 
 
-def format_risk_meter(nifty_close: float, ema20: float, ema50: float,
-                       ema200: float, vix_in: float, breadth: float) -> list:
-    """Shows current market risk level with reasons (ENHANCEMENT 4)."""
+def format_risk_meter(nifty_state: dict, vix_in: float, breadth: float) -> list:
+    """Shows current market risk level with reasons (ENHANCEMENT 4 / BUG FIX 1).
+    Uses single nifty_state dict as source of truth."""
     try:
-        risk_factors = []
-        risk_score   = 0
-        if nifty_close > 0 and ema20 > 0:
-            if nifty_close < ema20:
-                risk_factors.append("✗ Below EMA20");   risk_score += 25
-            else:
-                risk_factors.append("✓ Above EMA20")
-        if nifty_close > 0 and ema50 > 0:
-            if nifty_close < ema50:
-                risk_factors.append("✗ Below EMA50");   risk_score += 25
-            else:
-                risk_factors.append("✓ Above EMA50")
-        if nifty_close > 0 and ema200 > 0:
-            if nifty_close < ema200:
-                risk_factors.append("✗ Below EMA200");  risk_score += 25
-            else:
-                risk_factors.append("✓ Above EMA200")
+        ns = nifty_state or {}
+        checks = []
+        risk_score = 0
+
+        if ns.get("above_ema20"):
+            checks.append("✓ Above EMA20")
+        else:
+            checks.append("✗ Below EMA20")
+            risk_score += 25
+
+        if ns.get("above_ema50"):
+            checks.append("✓ Above EMA50")
+        else:
+            checks.append("✗ Below EMA50")
+            risk_score += 25
+
+        if ns.get("above_ema200"):
+            checks.append("✓ Above EMA200")
+        else:
+            checks.append("✗ Below EMA200")
+            risk_score += 25
+
         if vix_in > 20:
-            risk_factors.append(f"✗ VIX elevated {vix_in:.1f}"); risk_score += 15
+            checks.append(f"✗ VIX elevated {vix_in:.1f}")
+            risk_score += 15
         else:
-            risk_factors.append(f"✓ VIX normal {vix_in:.1f}")
+            checks.append(f"✓ VIX normal {vix_in:.1f}")
+
         if breadth < 40:
-            risk_factors.append(f"✗ Weak breadth {breadth:.0f}%"); risk_score += 10
+            checks.append(f"✗ Weak breadth {breadth:.0f}%")
+            risk_score += 10
         else:
-            risk_factors.append(f"✓ Breadth ok {breadth:.0f}%")
-        if risk_score >= 75:   risk_label = "🔴 EXTREME"
-        elif risk_score >= 50: risk_label = "🟠 HIGH"
-        elif risk_score >= 25: risk_label = "🟡 MEDIUM"
-        else:                  risk_label = "🟢 LOW"
-        lines = [f"  Market Risk: {risk_label}"]
-        for f in risk_factors:
-            lines.append(f"    {f}")
+            checks.append(f"✓ Breadth ok {breadth:.0f}%")
+
+        if risk_score >= 75:   label = "🔴 EXTREME"
+        elif risk_score >= 50: label = "🟠 HIGH"
+        elif risk_score >= 25: label = "🟡 MEDIUM"
+        else:                  label = "🟢 LOW"
+
+        lines = [f"  Market Risk: {label}"]
+        for c in checks:
+            lines.append(f"    {c}")
         return lines
     except Exception:
         return []
 
 
-def format_breadth_dashboard(total_scanned: int, qualified: int,
-                              near_buy: int, developing: int,
-                              monitor: int, rejected: int,
+def format_breadth_dashboard(total_universe: int, total_tradable: int,
+                              qualified: int, near_buy: int,
+                              developing: int, monitor: int,
                               yesterday: dict = None) -> list:
-    """Universe breadth stats with delta arrows (ENHANCEMENT 5)."""
+    """Universe breadth stats with full counts (ENHANCEMENT 5 / BUG FIX 2)."""
     lines = ["  Market Breadth:"]
+    rejected = total_universe - qualified
     stats = [
-        ("Scanned",    total_scanned),
+        ("Universe",   total_universe),
+        ("Tradable",   total_tradable),
         ("Qualified",  qualified),
         ("Near Buy",   near_buy),
         ("Developing", developing),
@@ -4189,8 +4365,8 @@ def format_portfolio_dashboard(alerts: list, current_prices: dict,
 
 def format_daily_summary(regime: str, buys: list, watchlist: list,
                           portfolio_alerts: list, macro: dict,
-                          breadth: float) -> list:
-    """Executive briefing at end of Telegram report (ENHANCEMENT 9)."""
+                          nifty_state: dict = None) -> list:
+    """Executive briefing at end of Telegram report (ENHANCEMENT 9 / BUG FIX 6)."""
     try:
         near_miss_count = len([w for w in watchlist if w.get("tier") == "NEAR_MISS"])
         exits = [a for a in portfolio_alerts if "EXIT" in str(a.get("action", ""))]
@@ -4212,11 +4388,15 @@ def format_daily_summary(regime: str, buys: list, watchlist: list,
             if near_miss_count > 0:
                 lines.append(f"  {near_miss_count} stock(s) within 8 pts of qualifying — watch closely.")
 
-        nifty_below = macro.get("nifty_below_all_emas", False)
-        if nifty_below:
-            lines.append("  NIFTY trading below all major EMAs — risk remains elevated.")
+        # Use nifty_state as single source of truth (BUG FIX 6)
+        ns = nifty_state or {}
+        if ns.get("ema_bear", macro.get("nifty_below_all_emas", False)):
+            lines.append(
+                "  NIFTY trading below major EMAs — risk elevated. "
+                "Avoid aggressive positioning."
+            )
         else:
-            lines.append("  NIFTY structure supportive of new positions.")
+            lines.append("  NIFTY structure supportive — trend intact above key EMAs.")
 
         if exits:
             lines.append(f"  ⚠️  {len(exits)} position(s) require immediate exit review.")
@@ -4272,11 +4452,13 @@ def format_system_snapshot(tracker_v2: dict, portfolio_count: int = 0) -> list:
         return []
 
 
-def format_watchlist_section(watchlist: list, regime: str) -> list:
+def format_watchlist_section(watchlist: list, regime: str,
+                              conf_history: dict = None,
+                              gate_memory: dict = None) -> list:
     """
     NEAR MISS  — full detail, sorted by R/R descending (fully actionable)
-    DEVELOPING — compact 1-liner each, top 5 by confidence, rest collapsed
-    MONITOR    — single collapsed count line only (not actionable today)
+    DEVELOPING — full levels top 3, rest collapsed (BUG FIX 3)
+    MONITOR    — single collapsed count line only (BUG FIX 4)
     """
     thresh   = REGIME_THRESHOLDS[regime]
     min_conf = thresh["min_confidence"]
@@ -4313,29 +4495,59 @@ def format_watchlist_section(watchlist: list, regime: str) -> list:
             if w.get("warnings"):
                 lines.append(f"    \u26a0\ufe0f  {html.escape(' | '.join(str(x) for x in w['warnings']))}")
 
-    # -- DEVELOPING: compact 1-liner, top 5, rest collapsed ---------------
+    # -- DEVELOPING: full levels, top 3 in Telegram (BUG FIX 3) ----------------
     if dev:
-        shown = dev[:5]
-        rest  = dev[5:]
         lines.append(f"  \U0001f7e1 DEVELOPING ({len(dev)} \u2014 building, not ready yet):")
-        for w in shown:
+        for w in dev[:3]:
             sym    = html.escape(str(w["symbol"]))
             sector = html.escape(str(w.get("sector", "OTHERS")))
             conf   = w.get("conf", w.get("final_confidence", 0))
+            tq     = w.get("tq", w.get("trade_quality_score", 0))
+            gap    = w.get("conf_gap", 0)
+            entry  = w.get("entry", 0)
+            stop   = w.get("stop", 0)
+            t1     = w.get("target1", 0)
+            t2     = w.get("target2", 0)
             rr     = w.get("rr_ratio", w.get("rr", 0))
             risk   = w.get("risk_pct", 0)
-            lines.append(f"    {sym} [{sector}] Conf {conf:.0f} | R/R {rr:.1f}x | Risk {risk:.1f}%")
-        if rest:
-            rest_names = ", ".join(w["symbol"].replace(".NS", "") for w in rest)
-            lines.append(f"    + {len(rest)} more: {rest_names}")
+            cur    = w.get("current", w.get("price", entry))
+            opp    = w.get("opportunity_score", 0)
+            lines.append(
+                f"    {sym} [{sector}] | "
+                f"Opp {opp:.1f} | Conf {conf:.1f} [gap {gap:.1f}] | TQ {tq:.1f}"
+            )
+            lines.append(
+                f"    Entry Rs{entry:.2f} | Stop Rs{stop:.2f} ({risk:.1f}%) | "
+                f"T1 Rs{t1:.2f} | T2 Rs{t2:.2f} | R/R {rr:.1f}x"
+            )
+            lines.append(f"    (Cur Rs{cur:.1f})")
+            # Compact check summary
+            lines.append(f"     Failed checks:")
+            if conf < thresh["min_confidence"]:
+                lines.append(f"     \u2717 Confidence {conf:.1f} \u2014 need +{gap:.1f}")
+            else:
+                lines.append(f"     \u2713 Confidence {conf:.1f} \u2014 PASSED")
+            if tq < thresh["min_tq"]:
+                lines.append(f"     \u2717 TQ {tq:.1f} \u2014 need +{thresh['min_tq']-tq:.1f}")
+            else:
+                lines.append(f"     \u2713 TQ {tq:.1f} \u2014 PASSED")
+            if rr < thresh["min_rr"]:
+                lines.append(f"     \u2717 R/R {rr:.2f}x \u2014 need +{thresh['min_rr']-rr:.2f}x")
+            else:
+                lines.append(f"     \u2713 R/R {rr:.2f}x \u2014 PASSED")
+            lines.append("     \u2192 Watch for: volume surge or consolidation above entry")
+        if len(dev) > 3:
+            rest_names = ", ".join(w["symbol"].replace(".NS", "") for w in dev[3:])
+            lines.append(f"    + {len(dev)-3} more: {rest_names}")
 
-    # -- MONITOR: collapsed to one line only ------------------------------
+    # -- MONITOR: collapsed to one line only (BUG FIX 4) --------------------
     if mon:
-        best = max(mon, key=lambda x: x.get("rr", 0))
+        best     = max(mon, key=lambda x: x.get("rr_ratio", x.get("rr", 0)))
         best_sym = best["symbol"].replace(".NS", "")
+        best_rr  = best.get("rr_ratio", best.get("rr", 0))
         lines.append(
             f"  \U0001f535 MONITOR ({len(mon)} early-stage) \u2014 "
-            f"best R/R: {best_sym} {best.get('rr', 0):.1f}x"
+            f"best R/R: {best_sym} {best_rr:.1f}x | full list in Excel tracker"
         )
 
     if not near and not dev and not mon:
@@ -4378,6 +4590,145 @@ def format_no_buy_explanation(top_rejected: list, regime: str) -> list:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# SECTION 9b — CONFIDENCE HISTORY + GATE MEMORY (FEATURES 2 & 7)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def load_confidence_history() -> dict:
+    """Load {symbol: {dates:[], confs:[]}} rolling 3-day window."""
+    try:
+        if os.path.exists(CONF_HISTORY_FILE):
+            with open(CONF_HISTORY_FILE, "r") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return {}
+
+
+def update_confidence_history(history: dict, scored_stocks: list,
+                               today_str: str) -> dict:
+    """Update rolling 3-day confidence for all scored stocks."""
+    try:
+        for stock in scored_stocks:
+            sym  = stock.get("symbol", "")
+            conf = float(stock.get("final_confidence", 0) or 0)
+            if not sym:
+                continue
+            if sym not in history:
+                history[sym] = {"dates": [], "confs": []}
+            history[sym]["dates"].append(today_str)
+            history[sym]["confs"].append(conf)
+            history[sym]["dates"] = history[sym]["dates"][-3:]
+            history[sym]["confs"] = history[sym]["confs"][-3:]
+    except Exception:
+        pass
+    return history
+
+
+def save_confidence_history(history: dict) -> None:
+    try:
+        with open(CONF_HISTORY_FILE, "w") as f:
+            json.dump(history, f, indent=2)
+    except Exception as e:
+        _log(f"[WARN] Confidence history save failed: {e}")
+
+
+def get_confidence_trend(symbol: str, history: dict) -> str:
+    """Returns trend arrow string for Telegram. Empty string if insufficient data."""
+    try:
+        data  = history.get(symbol, {})
+        confs = data.get("confs", [])
+        if len(confs) < 2:
+            return ""
+        if len(confs) == 2:
+            c1, c2 = confs
+            delta  = c2 - c1
+            arrow  = "\u2191" if delta > 1 else ("\u2193" if delta < -1 else "\u2192")
+            return f"{arrow} {c1:.0f}\u2192{c2:.0f}"
+        c1, c2, c3 = confs[-3], confs[-2], confs[-1]
+        total = c3 - c1
+        d1    = c2 - c1
+        d2    = c3 - c2
+        if total > 4 and d1 > 0 and d2 > 0:
+            arrow, label = "\u2191\u2191", "rising fast"
+        elif total > 1:
+            arrow, label = "\u2191 ", "rising"
+        elif total < -4:
+            arrow, label = "\u2193\u2193", "falling fast"
+        elif total < -1:
+            arrow, label = "\u2193 ", "falling"
+        else:
+            arrow, label = "\u2192 ", "flat"
+        return f"{arrow} {c1:.0f}\u2192{c2:.0f}\u2192{c3:.0f} ({label})"
+    except Exception:
+        return ""
+
+
+def load_gate_memory() -> dict:
+    """Load {symbol: {history: [{date, fails, conf}]}} rolling 5-day window."""
+    try:
+        if os.path.exists(GATE_MEMORY_FILE):
+            with open(GATE_MEMORY_FILE, "r") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return {}
+
+
+def update_gate_memory(memory: dict, watchlist: list, today_str: str) -> dict:
+    """Track fail reasons per stock over time."""
+    try:
+        for stock in watchlist:
+            sym   = stock.get("symbol", "")
+            fails = stock.get("fail_reasons", [])
+            conf  = float(stock.get("final_confidence", 0) or 0)
+            if not sym:
+                continue
+            if sym not in memory:
+                memory[sym] = {"history": []}
+            memory[sym]["history"].append({"date": today_str, "fails": fails, "conf": conf})
+            memory[sym]["history"] = memory[sym]["history"][-5:]
+    except Exception:
+        pass
+    return memory
+
+
+def save_gate_memory(memory: dict) -> None:
+    try:
+        with open(GATE_MEMORY_FILE, "w") as f:
+            json.dump(memory, f, indent=2)
+    except Exception as e:
+        _log(f"[WARN] Gate memory save failed: {e}")
+
+
+def get_gate_pattern(symbol: str, memory: dict) -> str:
+    """Returns one-line pattern description. Empty string if insufficient history."""
+    try:
+        data = memory.get(symbol, {})
+        hist = data.get("history", [])
+        if len(hist) < 2:
+            return ""
+        all_fails = [set(h.get("fails", [])) for h in hist]
+        confs     = [h.get("conf", 0) for h in hist]
+        if len(hist) >= 3:
+            recent_fails = all_fails[-3:]
+            persistent   = set.intersection(*recent_fails) if all(recent_fails) else set()
+            if persistent:
+                fail_name  = list(persistent)[0].split("(")[0].strip()
+                conf_trend = confs[-1] - confs[-3]
+                if conf_trend > 2:
+                    return f"Day {len(hist)} {fail_name} but conf rising +{conf_trend:.1f} \u2705"
+                elif conf_trend < -2:
+                    return f"Day {len(hist)} {fail_name} \u2014 conf falling {conf_trend:.1f} \u26a0\ufe0f"
+                elif len(hist) >= 4:
+                    return f"Day {len(hist)} stuck on {fail_name} \u2014 consider removing \ud83d\udd34"
+                else:
+                    return f"Day {len(hist)} {fail_name} \u2014 monitoring"
+    except Exception:
+        pass
+    return ""
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # SECTION 10 — TELEGRAM OUTPUT FORMATTER
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -4388,7 +4739,12 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
                               heat: dict = None, platt: dict = None,
                               tracker_v2: dict = None,
                               rejected_stocks: list = None,
-                              breadth_20: float = 50.0) -> str:
+                              breadth_20: float = 50.0,
+                              nifty_state: dict = None,
+                              universe_count: int = 0,
+                              tradable_count: int = 0,
+                              conf_history: dict = None,
+                              gate_memory: dict = None) -> str:
     lines  = []
     regime = regime_data["regime"]
     score  = regime_data["score"]
@@ -4451,16 +4807,11 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
     fii_dii_line = format_fii_dii(fii_flow, dii_flow)
     lines.append(f"  {fii_dii_line}")
 
-    # ── Market Conviction Meter + Risk Meter ──
+    # ── Market Conviction Meter + Risk Meter (BUG FIX 1: single nifty_state) ──
     _kl2 = key_levels or {}
+    _ns  = nifty_state or {}
     lines.extend(format_conviction_meter(score, breadth_20, fii_flow, dii_flow))
-    lines.extend(format_risk_meter(
-        float(_kl2.get("last",   0) or 0),
-        float(_kl2.get("ema20",  0) or 0),
-        float(_kl2.get("ema50",  0) or 0),
-        float(_kl2.get("ema200", 0) or 0),
-        vix_in, breadth_20,
-    ))
+    lines.extend(format_risk_meter(_ns, vix_in, breadth_20))
     lines.append("")
 
     lines.append(
@@ -4502,30 +4853,35 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
         lines.append(
             f"  20D Range: {kl.get('recent_low_20d', '—')} — {kl.get('recent_high_20d', '—')}"
         )
-        # One-line structure interpretation
+        # One-line structure from nifty_state (BUG FIX 1: single source)
         try:
-            nifty_close = float(kl.get("last", 0) or 0)
-            structure   = interpret_nifty_structure(
-                nifty_close,
-                float(kl.get("ema20",  0) or 0),
-                float(kl.get("ema50",  0) or 0),
-                float(kl.get("ema200", 0) or 0),
-                float(kl.get("high_52w", 0) or 0),
-            )
-            lines.append(f"  Structure: {structure}")
+            ns = nifty_state or {}
+            if ns.get("structure"):
+                lines.append(f"  Structure: {ns['structure']}")
+            else:
+                nifty_close = float(kl.get("last", 0) or 0)
+                structure   = interpret_nifty_structure(
+                    nifty_close,
+                    float(kl.get("ema20",  0) or 0),
+                    float(kl.get("ema50",  0) or 0),
+                    float(kl.get("ema200", 0) or 0),
+                    float(kl.get("high_52w", 0) or 0),
+                )
+                lines.append(f"  Structure: {structure}")
         except Exception:
             pass
         lines.append("")
 
-    # ── Breadth Dashboard ──
+    # ── Breadth Dashboard (BUG FIX 2: full universe counts) ──
     _near_c = len([w for w in watchlist if w.get("tier") == "NEAR_MISS"])
     _dev_c  = len([w for w in watchlist if w.get("tier") == "DEVELOPING"])
     _mon_c  = len([w for w in watchlist if w.get("tier") == "MONITOR"])
     _rej_c  = len(rejected_stocks or [])
-    _tot_scanned = len(buys) + len(watchlist) + _rej_c + len(shorts)
+    _qual_c = len(buys) + len(watchlist)
     lines.extend(format_breadth_dashboard(
-        _tot_scanned, len(buys) + len(watchlist),
-        _near_c, _dev_c, _mon_c, _rej_c,
+        universe_count or (len(buys) + len(watchlist) + _rej_c + len(shorts)),
+        tradable_count or (len(buys) + len(watchlist) + _rej_c),
+        _qual_c, _near_c, _dev_c, _mon_c,
     ))
     lines.append("")
 
@@ -4592,7 +4948,11 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
         lines.append("")
 
     # ── Watchlist — ALL stocks, all tiers, with levels (Patch 1) ──
-    wl_lines = format_watchlist_section(watchlist, regime)
+    wl_lines = format_watchlist_section(
+        watchlist, regime,
+        conf_history=conf_history or {},
+        gate_memory=gate_memory or {},
+    )
     lines.extend(wl_lines)
     lines.append("")
 
@@ -4637,19 +4997,17 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
         lines.append("  No active holdings.")
     lines.append("")
 
-    # ── Upcoming Events ──
+    # ── Upcoming Events with holding impact (FEATURE 5) ──
     if upcoming_events:
-        lines.append("UPCOMING EVENTS")
-        for ev in upcoming_events:
-            lines.append(f"  {html.escape(str(ev))}")
+        lines.extend(format_upcoming_events(upcoming_events, portfolio_alerts))
         lines.append("")
 
     # ── System Performance Snapshot ──
     lines.extend(format_system_snapshot(tracker_v2, portfolio_count=len(portfolio_alerts)))
 
-    # ── Daily Summary (executive briefing) ──
+    # ── Daily Summary (BUG FIX 6: use nifty_state) ──
     lines.extend(format_daily_summary(
-        regime, buys, watchlist, portfolio_alerts, macro, breadth_20
+        regime, buys, watchlist, portfolio_alerts, macro, nifty_state
     ))
 
     # ── Footer ──
@@ -4880,8 +5238,10 @@ def _run_pipeline_inner():
     _log(f"  REGIME: {regime} | Score: {regime_data['score']:.1f}/100 | EMA20 breadth: {breadth['ema20_pct']:.1f}%")
     _log(f"  Nifty 21d ret: {nifty_ret21_real:+.2f}% | 5d ret: {nifty_ret5_real:+.2f}%")
 
-    # ── 6b. Nifty key levels ──
-    key_levels = compute_key_levels(nifty_df)
+    # ── 6b. Nifty key levels + single nifty_state (BUG FIX 1) ──
+    key_levels  = compute_key_levels(nifty_df)
+    nifty_state = compute_nifty_state(nifty_df)
+    _log(f"  Nifty structure: {nifty_state['structure']}")
 
     # ── 6c. Sector rotation ──
     _log("[6c/17] Computing sector rotation...")
@@ -5058,7 +5418,18 @@ def _run_pipeline_inner():
     max_buys = effective_thresholds[regime]["max_buys"]
     buys = buys[:max_buys]
 
-    # ── 14b. Tag repeat signals ──
+    # ── 14b. Confidence history update (FEATURE 2) ──
+    _today_str_h = datetime.date.today().isoformat()
+    conf_history = load_confidence_history()
+    conf_history = update_confidence_history(conf_history, top_40, _today_str_h)
+    save_confidence_history(conf_history)
+    _log(f"  Confidence history: {len(conf_history)} symbols tracked")
+
+    # ── 14c. Gate memory update (FEATURE 7) ──
+    gate_memory = load_gate_memory()
+    gate_memory = update_gate_memory(gate_memory, watchlist_stocks, _today_str_h)
+    save_gate_memory(gate_memory)
+    _log(f"  Gate memory: {len(gate_memory)} symbols tracked")
     buys = tag_repeat_buy_signals(buys, tracker_entries)
 
     # ── 14c. Position sizing — Kelly + Heat-aware ──
@@ -5101,16 +5472,7 @@ def _run_pipeline_inner():
     # ── 15. Format and send main Telegram message ──
     _log("[15/17] Sending main Telegram report...")
     timestamp = datetime.datetime.now().strftime("%b %d, %Y %H:%M IST")
-
-    # Compute nifty_below_all_emas for daily summary
-    _kl_pipe = key_levels or {}
-    _nc_close = float(_kl_pipe.get("last", 0) or 0)
-    macro["nifty_below_all_emas"] = (
-        _nc_close > 0 and
-        _nc_close < float(_kl_pipe.get("ema20", 0) or 0) and
-        _nc_close < float(_kl_pipe.get("ema50", 0) or 0) and
-        _nc_close < float(_kl_pipe.get("ema200", 0) or 0)
-    )
+    # nifty_state already computed at step 6b — pass through (BUG FIX 1)
 
     message = format_telegram_message(
         regime_data      = regime_data,
@@ -5127,6 +5489,11 @@ def _run_pipeline_inner():
         tracker_v2       = tracker_v2,
         rejected_stocks  = rejected,
         breadth_20       = breadth.get("ema20_pct", 50.0),
+        nifty_state      = nifty_state,
+        universe_count   = len(symbols),
+        tradable_count   = len(tradable),
+        conf_history     = conf_history,
+        gate_memory      = gate_memory,
     )
     _log("--- TELEGRAM PREVIEW (first 1500 chars) ---")
     _log(message[:1500])
