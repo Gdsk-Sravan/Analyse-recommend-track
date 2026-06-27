@@ -1,0 +1,36 @@
+name: Weekly Summary
+
+on:
+  schedule:
+    - cron: '30 4 * * 6'     # Saturday 10:00 AM IST (4:30 UTC)
+  workflow_dispatch:
+
+jobs:
+  weekly:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install yfinance requests numpy
+
+      - name: Download tracker artifact (for active positions + conf history)
+        uses: dawidd6/action-download-artifact@v3
+        continue-on-error: true
+        with:
+          workflow: main.yml
+          name: recommendation-tracker
+          path: .
+          workflow_conclusion: success
+
+      - name: Run weekly summary
+        run: python weekly_summary_job.py
+        env:
+          TELEGRAM_BOT_TOKEN:  ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:    ${{ secrets.TELEGRAM_CHAT_ID }}
+          TRADE_TRACKER_V2_FILE: trade_tracker.json
+          CONF_HISTORY_FILE:   confidence_history.json
