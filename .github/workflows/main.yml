@@ -273,7 +273,11 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: recommendation-tracker
-          path: recommendation_tracker.xlsx
+          path: |
+            recommendation_tracker.xlsx
+            trade_tracker.json
+            confidence_history.json
+            gate_memory.json
           retention-days: 90
           if-no-files-found: ignore
 
