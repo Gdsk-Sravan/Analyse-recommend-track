@@ -1,0 +1,35 @@
+name: Pre-Market Brief
+
+on:
+  schedule:
+    - cron: '30 3 * * 1-5'   # 9:00 AM IST Mon-Fri (3:30 UTC)
+  workflow_dispatch:
+
+jobs:
+  premarket:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install yfinance requests
+
+      - name: Run pre-market brief
+        run: python premarket_job.py
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+          TRADE_TRACKER_V2_FILE: trade_tracker.json
+
+      - name: Download tracker artifact (if available)
+        uses: dawidd6/action-download-artifact@v3
+        continue-on-error: true
+        with:
+          workflow: main.yml
+          name: recommendation-tracker
+          path: .
+          workflow_conclusion: success
