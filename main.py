@@ -2211,8 +2211,7 @@ def _fetch_fii_dii_mc_rss() -> "dict | None":
             result = _parse_fii_dii_from_text(text)
             if result:
                 return result
-        if fii_entries:
-            _log("    [MC RSS] FII entries found but regex could not parse crore amounts")
+            _log(f"    [MC RSS] No parse match — title: {entry.get('title','')!r}")
     except Exception as e:
         _log(f"    [MC RSS] Error — {e}")
     return None
@@ -2247,8 +2246,7 @@ def _fetch_fii_dii_et_rss() -> "dict | None":
                 result = _parse_fii_dii_from_text(text)
                 if result:
                     return result
-            if fii_entries:
-                _log("    [ET RSS] FII entries found but regex could not parse crore amounts")
+                _log(f"    [ET RSS] No parse match — title: {entry.get('title','')!r}")
     except Exception as e:
         _log(f"    [ET RSS] Error — {e}")
     return None
@@ -2275,8 +2273,7 @@ def _fetch_fii_dii_bs_rss() -> "dict | None":
             result = _parse_fii_dii_from_text(text)
             if result:
                 return result
-        if fii_entries:
-            _log("    [BS RSS] FII entries found but regex could not parse crore amounts")
+            _log(f"    [BS RSS] No parse match — title: {entry.get('title','')!r}")
     except Exception as e:
         _log(f"    [BS RSS] Error — {e}")
     return None
@@ -2308,8 +2305,7 @@ def _fetch_fii_dii_google_news() -> "dict | None":
             result = _parse_fii_dii_from_text(text)
             if result:
                 return result
-        if fii_entries:
-            _log("    [Google News] FII entries found but regex could not parse crore amounts")
+            _log(f"    [Google News] No parse match — title: {entry.get('title','')!r}")
     except Exception as e:
         _log(f"    [Google News] Error — {e}")
     return None
@@ -2322,13 +2318,21 @@ def _fetch_fii_dii_nse() -> "dict | None":
         if not r:
             _log("    [NSE API] Session/request returned None (Cloudflare block or timeout)")
             return None
-        _log(f"    [NSE API] HTTP {r.status_code}")
-        if r.status_code != 200:
-            _log(f"    [NSE API] Non-200 response — {r.status_code}")
+        _log(f"    [NSE API] HTTP {r.status_code} | Content-Type: {r.headers.get('Content-Type','?')} | Body len: {len(r.content)}")
+        if not r.content:
+            _log("    [NSE API] Empty body — Cloudflare gate (no action needed if before 5:30 PM)")
             return None
-        data = r.json()
+        ct = r.headers.get("Content-Type", "")
+        if "html" in ct.lower() or r.content[:1] == b"<":
+            _log(f"    [NSE API] Got HTML instead of JSON (Cloudflare gate) — body snippet: {r.text[:80]!r}")
+            return None
+        try:
+            data = r.json()
+        except Exception as je:
+            _log(f"    [NSE API] JSON parse failed: {je} — body snippet: {r.text[:80]!r}")
+            return None
         if not isinstance(data, list) or not data:
-            _log(f"    [NSE API] Unexpected response format: {type(data).__name__}")
+            _log(f"    [NSE API] Unexpected response format: {type(data).__name__} — {str(data)[:80]}")
             return None
         latest   = data[0]
         fii_buy  = float(str(latest.get("fiiBuy",  "0")).replace(",", ""))
@@ -2336,14 +2340,14 @@ def _fetch_fii_dii_nse() -> "dict | None":
         dii_buy  = float(str(latest.get("diiBuy",  "0")).replace(",", ""))
         dii_sell = float(str(latest.get("diiSell", "0")).replace(",", ""))
         if fii_buy + fii_sell + dii_buy + dii_sell == 0:
-            _log("    [NSE API] All values zero — data not yet published")
+            _log("    [NSE API] All buy/sell values are zero — data not yet published")
             return None
         return {
             "fii_flow_cr": round(fii_buy - fii_sell, 2),
             "dii_flow_cr": round(dii_buy - dii_sell, 2),
         }
     except Exception as e:
-        _log(f"    [NSE API] Error — {e}")
+        _log(f"    [NSE API] Unexpected error — {e}")
         return None
 
 
