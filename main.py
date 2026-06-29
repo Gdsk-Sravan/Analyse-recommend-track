@@ -3884,14 +3884,14 @@ def classify_watchlist(stock: dict, regime: str, thresholds: dict) -> dict:
     }
 
     # Tier logic: relative to regime gap size (not absolute confidence)
-    # NEAR_MISS  = gap <= 8  (very close — watch daily)
-    # DEVELOPING = gap <= 18 (building — watch weekly)
-    # MONITOR    = gap > 18  (early stage — track loosely)
-    if conf_gap <= 8 and tq >= thresh["min_tq"] - 5:
+    # NEAR_MISS  = gap <= 15  (within striking distance — watch daily)
+    # DEVELOPING = gap <= 25  (building — watch weekly)
+    # MONITOR    = gap > 25   (early stage — track loosely)
+    if conf_gap <= 15 and tq >= thresh["min_tq"] - 5:
         return {**base, "tier": "NEAR_MISS",
                 "note": f"Needs +{conf_gap:.1f} conf. Watch for volume trigger.",
                 "days_to_watch": 3, "watch_days": 3}
-    elif conf_gap <= 18 and tq >= 70:
+    elif conf_gap <= 25 and tq >= 70:
         return {**base, "tier": "DEVELOPING",
                 "note": f"TQ {tq:.1f} building. Conf gap {conf_gap:.1f}.",
                 "days_to_watch": 7, "watch_days": 7}
@@ -5710,7 +5710,7 @@ def _run_pipeline_inner():
         # (scores dict contains base_confidence: 0.0 as a default placeholder)
         scored.append({"symbol": symbol, "sector": sector, "_df": df, **scores, "base_confidence": base_conf})
 
-    scored.sort(key=lambda x: x["base_confidence"], reverse=True)
+    scored.sort(key=lambda x: (-x["base_confidence"], x["symbol"]))
     top_40 = scored[:40]
     _log(f"  Top 40: best base conf {top_40[0]['base_confidence']:.1f} ({top_40[0]['symbol']})")
 
@@ -5766,12 +5766,12 @@ def _run_pipeline_inner():
         stock["final_confidence"] = compute_final_confidence(
             base_conf, regime, stock.get("news_penalty", 0), macro_adj_global, bulk_adj
         )
-    top_40.sort(key=lambda x: x["final_confidence"], reverse=True)
+    top_40.sort(key=lambda x: (-x["final_confidence"], x["symbol"]))
 
     # ── 11b. Opportunity scores (ENHANCEMENT 1) ──
     for stock in top_40:
         stock["opportunity_score"] = compute_opportunity_score(stock)
-    top_40.sort(key=lambda x: x["opportunity_score"], reverse=True)
+    top_40.sort(key=lambda x: (-x["opportunity_score"], x["symbol"]))
 
     # ── 12. Portfolio monitoring ──
     _log("[12/17] Monitoring portfolio...")
@@ -5861,8 +5861,8 @@ def _run_pipeline_inner():
     for stock in buys + watchlist_stocks:
         if "opportunity_score" not in stock:
             stock["opportunity_score"] = compute_opportunity_score(stock)
-    buys.sort(key=lambda x: x.get("opportunity_score", 0), reverse=True)
-    watchlist_stocks.sort(key=lambda x: x.get("opportunity_score", 0), reverse=True)
+    buys.sort(key=lambda x: (-x.get("opportunity_score", 0), x.get("symbol", "")))
+    watchlist_stocks.sort(key=lambda x: (-x.get("opportunity_score", 0), x.get("symbol", "")))
 
     # Enforce max_buys cap
     max_buys = effective_thresholds[regime]["max_buys"]
