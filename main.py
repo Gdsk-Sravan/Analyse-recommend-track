@@ -2277,11 +2277,11 @@ def _fetch_fii_dii_bs_rss() -> "dict | None":
 
 
 def _fetch_fii_dii_google_news() -> "dict | None":
-    """Google News RSS — URL-encoded date, works from CI.
-    Runs two queries (FII-focused, DII-focused) and merges results,
-    because individual headlines often mention only one side.
     """
-    import re as _re
+    Google News RSS — single combined query extracts both FII and DII from the same article.
+    DII never has standalone headlines — it always appears alongside FII in the same article.
+    Falls back to FII-only query if combined query yields nothing.
+    """
     try:
         if not _FEEDPARSER_OK:
             _log("    [Google News] feedparser not available — skipped")
@@ -2289,65 +2289,59 @@ def _fetch_fii_dii_google_news() -> "dict | None":
         from urllib.parse import quote
         today_str = datetime.date.today().strftime("%d %b").lstrip("0")  # "29 Jun"
 
-        # Phrases that unambiguously indicate a CUMULATIVE/PERIOD figure.
-        # Must be specific multi-word phrases — lone month/year names appear in daily headlines too.
         _CUMULATIVE_PHRASES = (
             "so far", "lakh crore", "ytd", "cumulative",
             "month to date", "year to date", "this month", "this year",
             "in the month", "for the month", "during the month",
             "total outflow", "total inflow", "total 2024", "total 2025", "total 2026",
-            "since january", "since april",  # fiscal year start phrases
-            "outflows reach", "inflows reach",
+            "since january", "since april", "outflows reach", "inflows reach",
         )
 
-        fii_val = dii_val = None
-
-        queries = [
-            (f"FII FPI crore NSE {today_str}",                    "FII"),
-            (f"DII domestic institutional crore NSE {today_str}", "DII"),
-        ]
-        for raw_q, label in queries:
+        # Try combined query first (best chance of finding both FII + DII in one article),
+        # then fall back to FII-only
+        for raw_q in [
+            f"FII DII crore NSE {today_str}",   # combined — most articles mention both
+            f"FII FPI crore NSE {today_str}",    # FII-only fallback
+        ]:
             url  = f"https://news.google.com/rss/search?q={quote(raw_q)}&hl=en-IN&gl=IN&ceid=IN:en"
-            _log(f"    [Google News/{label}] fetching: {url}")
+            _log(f"    [Google News] fetching: {url}")
             feed    = feedparser.parse(url)
-            status  = getattr(feed, 'status', 'N/A')
+            status  = getattr(feed, "status", "N/A")
             entries = feed.entries
-            _log(f"    [Google News/{label}] HTTP {status} — {len(entries)} entries")
+            _log(f"    [Google News] HTTP {status} — {len(entries)} entries")
 
-            for entry in entries[:20]:
+            for entry in entries[:25]:
                 title = entry.get("title", "")
                 text  = title + " " + entry.get("summary", "")
                 tl    = text.lower()
-                # Must mention the right entity and a crore amount
-                if label == "FII" and ("fii" not in tl and "fpi" not in tl and "foreign institutional" not in tl):
-                    continue
-                if label == "DII" and ("dii" not in tl and "domestic institutional" not in tl and "domestic investor" not in tl):
-                    _log(f"    [Google News/{label}] skipped (no DII keyword) — title: {title!r}")
+
+                if "fii" not in tl and "fpi" not in tl and "foreign institutional" not in tl:
                     continue
                 if "crore" not in tl:
                     continue
-                # Reject cumulative/period headlines — we want today's daily figure only
-                if any(w in tl for w in _CUMULATIVE_PHRASES):
-                    _log(f"    [Google News/{label}] skipped (cumulative/monthly) — title: {title!r}")
+                if any(p in tl for p in _CUMULATIVE_PHRASES):
+                    _log(f"    [Google News] skipped (cumulative) — {title!r}")
                     continue
-                _log(f"    [Google News/{label}] attempting parse — title: {title!r}")
-                result = _parse_fii_dii_from_text(text)
-                if result:
-                    _log(f"    [Google News/{label}] matched — title: {title!r}")
-                    if label == "FII" and result["fii_flow_cr"] != 0:
-                        fii_val = result["fii_flow_cr"]
-                        break
-                    if label == "DII" and result["dii_flow_cr"] != 0:
-                        dii_val = result["dii_flow_cr"]
-                        break
-                else:
-                    _log(f"    [Google News/{label}] no parse match — title: {title!r}")
 
-        if fii_val is not None or dii_val is not None:
-            return {
-                "fii_flow_cr": fii_val or 0.0,
-                "dii_flow_cr": dii_val or 0.0,
-            }
+                _log(f"    [Google News] attempting parse — {title!r}")
+                result = _parse_fii_dii_from_text(text)
+                if not result or result.get("fii_flow_cr", 0) == 0:
+                    _log(f"    [Google News] no FII value found")
+                    continue
+
+                fii_val   = result["fii_flow_cr"]
+                dii_val   = result.get("dii_flow_cr", 0.0)
+                dii_found = dii_val != 0
+                _log(
+                    f"    [Google News] matched — FII {fii_val:+.0f}Cr"
+                    + (f" | DII {dii_val:+.0f}Cr" if dii_found else " | DII not in this article")
+                )
+                return {
+                    "fii_flow_cr": fii_val,
+                    "dii_flow_cr": dii_val,
+                    "dii_found":   dii_found,
+                }
+
     except Exception as e:
         _log(f"    [Google News] Error — {e}")
     return None
