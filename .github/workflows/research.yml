@@ -1,8 +1,6 @@
 name: Research Analytics
 
 on:
-  schedule:
-    - cron: '0 4 * * 6'  # Saturdays 9:30 AM IST (4:00 UTC)
   workflow_dispatch:
 
 jobs:
