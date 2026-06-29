@@ -1427,7 +1427,7 @@ _NSE_BROWSER_HEADERS = {
     ),
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.9",
-    "Accept-Encoding": "gzip, deflate, br",
+    "Accept-Encoding": "gzip, deflate",  # no 'br' — requests can't decode brotli without extra library
     "Connection": "keep-alive",
     "DNT": "1",
 }
@@ -2100,6 +2100,8 @@ def _nse_session_get(path: str, timeout: int = 12) -> "requests.Response | None"
     """
     Establishes a proper NSE browser-like session before hitting any API endpoint.
     NSE uses Cloudflare which drops requests without prior homepage visit + cookies.
+    Note: do NOT set Accept-Encoding to include 'br' (brotli) — requests cannot
+    decompress brotli without the optional brotli library, causing garbled responses.
     """
     try:
         _BROWSER_UA = (
@@ -2111,7 +2113,7 @@ def _nse_session_get(path: str, timeout: int = 12) -> "requests.Response | None"
             "User-Agent":      _BROWSER_UA,
             "Accept":          "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Accept-Language": "en-IN,en;q=0.9",
-            "Accept-Encoding": "gzip, deflate, br",
+            "Accept-Encoding": "gzip, deflate",  # no 'br' — requests can't decode brotli
             "Connection":      "keep-alive",
         }
         session = requests.Session()
@@ -2136,50 +2138,42 @@ def _parse_fii_dii_from_text(text: str) -> "dict | None":
     Handles patterns like:
       "FII net sellers of Rs 1,234.56 crore"
       "FIIs bought Rs 384 crore; DIIs bought Rs 5748 crore"
+      "FIIs Pull Rs 20,637 Crore in One Day"
       "FPI net purchase: 1234.56"
     Returns {"fii_flow_cr": float, "dii_flow_cr": float} or None.
     """
     import re as _re
     text = text.replace("\n", " ").replace("\u00a0", " ")
 
-    # Pattern A: "FII/FPI bought/sold/net Rs X crore"
-    fii_patterns = [
-        r'(?:FII|FPI)s?\s+(?:net\s+)?(?:bought|purchased|inflow)[^\d]{0,30}([\d,]+(?:\.\d+)?)',
-        r'(?:FII|FPI)s?\s+(?:net\s+)?(?:sold|outflow|sellers?)[^\d]{0,30}([\d,]+(?:\.\d+)?)',
-        r'(?:FII|FPI)\s+net[^\d]{0,30}([-]?[\d,]+(?:\.\d+)?)',
-        r'(?:FII|FPI)[^\d]{0,30}net\s+(?:buy|sell|purchase)[^\d]{0,30}([\d,]+(?:\.\d+)?)',
-    ]
-    dii_patterns = [
-        r'DII[sS]?\s+(?:net\s+)?(?:bought|purchased|inflow)[^\d]{0,30}([\d,]+(?:\.\d+)?)',
-        r'DII[sS]?\s+(?:net\s+)?(?:sold|outflow|sellers?)[^\d]{0,30}([\d,]+(?:\.\d+)?)',
-        r'DII\s+net[^\d]{0,30}([-]?[\d,]+(?:\.\d+)?)',
-    ]
+    # Words that imply net BUY (positive)
+    _BUY_WORDS  = r'bought|purchased|inflow|invest|pour|poured|pump|pumped|net\s+buy|net\s+purchase'
+    # Words that imply net SELL (negative)
+    _SELL_WORDS = r'sold|sell|outflow|seller|pull|pulled|withdraw|withdrew|withdrawn|dump|dumped|offload|offloaded|exit'
 
-    fii_val = dii_val = None
+    # Generic amount pattern: optional "Rs" then digits with optional commas/decimals
+    _AMT = r'(?:Rs\.?\s*|INR\s*|₹\s*)?(\d[\d,]*(?:\.\d+)?)\s*[Cc]rore'
 
-    # Try positive (bought) patterns first
-    for pat in fii_patterns[:2]:
-        m = _re.search(pat, text, _re.I)
-        if m:
-            v = float(m.group(1).replace(",", ""))
-            # Negative if "sold"
-            fii_val = -v if _re.search(r'sold|outflow|seller', pat, _re.I) else v
-            break
-    if fii_val is None:
-        m = _re.search(fii_patterns[2], text, _re.I)
-        if m:
-            fii_val = float(m.group(1).replace(",", ""))
+    fii_pat_buy  = rf'(?:FII|FPI)s?\s+(?:net\s+)?(?:{_BUY_WORDS})[^\d{{}}]{{0,40}}{_AMT}'
+    fii_pat_sell = rf'(?:FII|FPI)s?\s+(?:net\s+)?(?:{_SELL_WORDS})[^\d{{}}]{{0,40}}{_AMT}'
+    fii_pat_net  = rf'(?:FII|FPI)\s+net[^\d]{{0,30}}([-]?[\d,]+(?:\.\d+)?)'
+    dii_pat_buy  = rf'DII[sS]?\s+(?:net\s+)?(?:{_BUY_WORDS})[^\d{{}}]{{0,40}}{_AMT}'
+    dii_pat_sell = rf'DII[sS]?\s+(?:net\s+)?(?:{_SELL_WORDS})[^\d{{}}]{{0,40}}{_AMT}'
+    dii_pat_net  = rf'DII\s+net[^\d]{{0,30}}([-]?[\d,]+(?:\.\d+)?)'
 
-    for pat in dii_patterns[:2]:
-        m = _re.search(pat, text, _re.I)
+    def _extract(buy_pat, sell_pat, net_pat):
+        m = _re.search(buy_pat, text, _re.I)
         if m:
-            v = float(m.group(1).replace(",", ""))
-            dii_val = -v if _re.search(r'sold|outflow|seller', pat, _re.I) else v
-            break
-    if dii_val is None:
-        m = _re.search(dii_patterns[2], text, _re.I)
+            return float(m.group(1).replace(",", ""))
+        m = _re.search(sell_pat, text, _re.I)
         if m:
-            dii_val = float(m.group(1).replace(",", ""))
+            return -float(m.group(1).replace(",", ""))
+        m = _re.search(net_pat, text, _re.I)
+        if m:
+            return float(m.group(1).replace(",", ""))
+        return None
+
+    fii_val = _extract(fii_pat_buy, fii_pat_sell, fii_pat_net)
+    dii_val = _extract(dii_pat_buy, dii_pat_sell, dii_pat_net)
 
     if fii_val is not None or dii_val is not None:
         return {
@@ -2280,7 +2274,10 @@ def _fetch_fii_dii_bs_rss() -> "dict | None":
 
 
 def _fetch_fii_dii_google_news() -> "dict | None":
-    """Google News RSS — URL-encoded date, works from CI."""
+    """Google News RSS — URL-encoded date, works from CI.
+    Runs two queries (FII-focused, DII-focused) and merges results,
+    because individual headlines often mention only one side.
+    """
     import re as _re
     try:
         if not _FEEDPARSER_OK:
@@ -2288,24 +2285,49 @@ def _fetch_fii_dii_google_news() -> "dict | None":
             return None
         from urllib.parse import quote
         today_str = datetime.date.today().strftime("%d %b").lstrip("0")  # "29 Jun"
-        query     = quote(f"FII DII crore NSE {today_str}")
-        url       = f"https://news.google.com/rss/search?q={query}&hl=en-IN&gl=IN&ceid=IN:en"
-        _log(f"    [Google News] fetching: {url}")
-        feed    = feedparser.parse(url)
-        status  = getattr(feed, 'status', 'N/A')
-        entries = feed.entries
-        _log(f"    [Google News] HTTP {status} — {len(entries)} entries")
-        fii_entries = [e for e in entries[:15]
-                       if ("fii" in (e.get("title","")+e.get("summary","")).lower()
-                           or "fpi" in (e.get("title","")+e.get("summary","")).lower())
-                       and "crore" in (e.get("title","")+e.get("summary","")).lower()]
-        _log(f"    [Google News] {len(fii_entries)} FII-related entries")
-        for entry in fii_entries:
-            text   = entry.get("title", "") + " " + entry.get("summary", "")
-            result = _parse_fii_dii_from_text(text)
-            if result:
-                return result
-            _log(f"    [Google News] No parse match — title: {entry.get('title','')!r}")
+
+        fii_val = dii_val = None
+
+        queries = [
+            (f"FII FPI crore NSE {today_str}",  "FII"),
+            (f"DII crore NSE India {today_str}", "DII"),
+        ]
+        for raw_q, label in queries:
+            url  = f"https://news.google.com/rss/search?q={quote(raw_q)}&hl=en-IN&gl=IN&ceid=IN:en"
+            _log(f"    [Google News/{label}] fetching: {url}")
+            feed    = feedparser.parse(url)
+            status  = getattr(feed, 'status', 'N/A')
+            entries = feed.entries
+            _log(f"    [Google News/{label}] HTTP {status} — {len(entries)} entries")
+
+            for entry in entries[:20]:
+                title = entry.get("title", "")
+                text  = title + " " + entry.get("summary", "")
+                tl    = text.lower()
+                # Must mention the right entity and a crore amount
+                if label == "FII" and ("fii" not in tl and "fpi" not in tl):
+                    continue
+                if label == "DII" and "dii" not in tl:
+                    continue
+                if "crore" not in tl:
+                    continue
+                result = _parse_fii_dii_from_text(text)
+                if result:
+                    _log(f"    [Google News/{label}] matched — title: {title!r}")
+                    if label == "FII" and result["fii_flow_cr"] != 0:
+                        fii_val = result["fii_flow_cr"]
+                        break
+                    if label == "DII" and result["dii_flow_cr"] != 0:
+                        dii_val = result["dii_flow_cr"]
+                        break
+                else:
+                    _log(f"    [Google News/{label}] no parse match — title: {title!r}")
+
+        if fii_val is not None or dii_val is not None:
+            return {
+                "fii_flow_cr": fii_val or 0.0,
+                "dii_flow_cr": dii_val or 0.0,
+            }
     except Exception as e:
         _log(f"    [Google News] Error — {e}")
     return None
