@@ -18,6 +18,12 @@ ALERT_FILE         = "stop_alerts_sent.json"  # prevent duplicate alerts
 STOP_WARNING_PCT  = 3.0  # alert when within 3% of stop
 STOP_CRITICAL_PCT = 1.0  # critical alert when within 1% of stop
 
+# Market-open run: 9:15 AM IST = 3:45 UTC → cron '45 3 * * 1-5'
+# Market-close run: 3:30 PM IST = 10:00 UTC → cron '00 10 * * 1-5'
+_OPEN_CRON_UTC  = (3, 45)   # (hour, minute) UTC
+_CLOSE_CRON_UTC = (10, 0)
+_HEARTBEAT_WINDOW_MIN = 12  # minutes either side to match the cron slot
+
 
 def _get_live_price(sym: str) -> float:
     """Fetch current price. Returns 0.0 on failure."""
@@ -169,6 +175,55 @@ def run_stopwatch():
 
     if not alerts:
         print(f"[INFO] All {len(active)} positions safe at {now.strftime('%H:%M')}")
+
+    # ── Heartbeat messages ──
+    # Market open (9:15 AM IST ≈ 3:45 UTC): confirm monitoring started
+    # Market close (3:30 PM IST ≈ 10:00 UTC): day summary
+    try:
+        now_utc_h = now.utctimetuple().tm_hour
+        now_utc_m = now.utctimetuple().tm_min
+
+        def _near_cron(h, m):
+            total_now  = now_utc_h * 60 + now_utc_m
+            total_cron = h * 60 + m
+            return abs(total_now - total_cron) <= _HEARTBEAT_WINDOW_MIN
+
+        if _near_cron(*_OPEN_CRON_UTC):
+            # Market open heartbeat — always send
+            pos_lines = []
+            for pos in active:
+                sym  = pos.get("symbol", "?")
+                stop = float(pos.get("stop", 0) or 0)
+                t1   = float(pos.get("target1", 0) or 0)
+                t2   = float(pos.get("target2", 0) or 0)
+                pos_lines.append(f"  {sym} | Stop Rs{stop:.0f} | T1 Rs{t1:.0f} | T2 Rs{t2:.0f}")
+            body = "\n".join(pos_lines) if pos_lines else "  (no positions)"
+            _send_alert(
+                f"\U0001f7e2 STOPWATCH STARTED — {now.strftime('%d %b %Y')}\n"
+                f"Monitoring {len(active)} position(s) every 30 min until 3:30 PM IST\n"
+                f"{body}"
+            )
+            print("[INFO] Market-open heartbeat sent")
+
+        elif _near_cron(*_CLOSE_CRON_UTC):
+            # Market close summary
+            day_alerts = [k for k, v in alerts_sent.items()
+                          if today_str in k and v in ("STOP_HIT", "CRITICAL", "WARNING", "T1_HIT")]
+            if day_alerts:
+                alert_summary = "\n".join(f"  {k}: {alerts_sent[k]}" for k in day_alerts)
+                _send_alert(
+                    f"\U0001f534 STOPWATCH CLOSED — {now.strftime('%d %b %Y')}\n"
+                    f"Alerts today:\n{alert_summary}"
+                )
+            else:
+                _send_alert(
+                    f"\U0001f7e2 STOPWATCH CLOSED — {now.strftime('%d %b %Y')}\n"
+                    f"All {len(active)} position(s) safe today. No stop alerts fired.\n"
+                    f"Market closes in a few minutes — review open positions."
+                )
+            print("[INFO] Market-close summary sent")
+    except Exception as e:
+        print(f"[WARN] Heartbeat send failed: {e}")
 
 
 if __name__ == "__main__":
