@@ -1647,11 +1647,14 @@ def fetch_bulk_deals(days_back: int = 3) -> dict:
             # 200 but NSE sometimes returns an HTML Cloudflare gate with 200 status
             ct = resp.headers.get("Content-Type", "")
             if not resp.content:
-                _log("  [Bulk Deals] Empty body (Cloudflare gate or no data) — trying next endpoint")
+                _log("  [Bulk Deals] Empty body — trying next endpoint")
                 continue
             if "html" in ct.lower() or resp.content[:1] == b"<":
-                _log(f"  [Bulk Deals] Got HTML instead of JSON (Cloudflare gate) — body snippet: {resp.text[:120]!r}")
-                break
+                _log(
+                    f"  [Bulk Deals] Got HTML instead of JSON (Cloudflare gate) — "
+                    f"NSE is blocking API access from this IP. Bulk deals unavailable."
+                )
+                break  # No point trying fallback endpoint — same IP will be blocked again
 
             try:
                 payload = resp.json()
@@ -2317,6 +2320,7 @@ def _fetch_fii_dii_google_news() -> "dict | None":
                 if any(w in tl for w in _CUMULATIVE_WORDS):
                     _log(f"    [Google News/{label}] skipped (cumulative/monthly) — title: {title!r}")
                     continue
+                _log(f"    [Google News/{label}] attempting parse — title: {title!r}")
                 result = _parse_fii_dii_from_text(text)
                 if result:
                     _log(f"    [Google News/{label}] matched — title: {title!r}")
