@@ -2046,128 +2046,236 @@ def macro_regime_adjustment(macro: dict) -> int:
     return max(-20, min(10, adj))
 
 
+def _nse_session_get(path: str, timeout: int = 12) -> "requests.Response | None":
+    """
+    Establishes a proper NSE browser-like session before hitting any API endpoint.
+    NSE uses Cloudflare which drops requests without prior homepage visit + cookies.
+    """
+    try:
+        _BROWSER_UA = (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/124.0.0.0 Safari/537.36"
+        )
+        _BASE_HEADERS = {
+            "User-Agent":      _BROWSER_UA,
+            "Accept":          "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-IN,en;q=0.9",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Connection":      "keep-alive",
+        }
+        session = requests.Session()
+        session.get("https://www.nseindia.com", headers=_BASE_HEADERS, timeout=10)
+        import time as _t; _t.sleep(0.8)
+        r = session.get(
+            f"https://www.nseindia.com{path}",
+            headers={**_BASE_HEADERS,
+                     "Referer": "https://www.nseindia.com",
+                     "X-Requested-With": "XMLHttpRequest",
+                     "Accept": "application/json, text/plain, */*"},
+            timeout=timeout,
+        )
+        return r if r.status_code == 200 else None
+    except Exception:
+        return None
+
+
+def _fetch_fii_dii_nse() -> dict | None:
+    """Try NSE fiidiiTradeReact with proper session."""
+    try:
+        r = _nse_session_get("/api/fiidiiTradeReact")
+        if not r:
+            return None
+        data = r.json()
+        if not isinstance(data, list) or not data:
+            return None
+        latest   = data[0]
+        fii_buy  = float(str(latest.get("fiiBuy",  "0")).replace(",", ""))
+        fii_sell = float(str(latest.get("fiiSell", "0")).replace(",", ""))
+        dii_buy  = float(str(latest.get("diiBuy",  "0")).replace(",", ""))
+        dii_sell = float(str(latest.get("diiSell", "0")).replace(",", ""))
+        if fii_buy + fii_sell + dii_buy + dii_sell == 0:
+            return None
+        return {
+            "fii_flow_cr": round(fii_buy - fii_sell, 2),
+            "dii_flow_cr": round(dii_buy - dii_sell, 2),
+        }
+    except Exception:
+        return None
+
+
+def _fetch_fii_dii_moneycontrol() -> dict | None:
+    """
+    Moneycontrol internal price API — works from server IPs, no cookies needed.
+    Returns JSON with daily FII/DII buy/sell values.
+    """
+    try:
+        _UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+               "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
+        # Moneycontrol's internal market stats API (no auth, no cookies)
+        r = requests.get(
+            "https://priceapi.moneycontrol.com/techCharts/indianMarket/stock/fiidii"
+            "?page=1&pageSize=3",
+            headers={"User-Agent": _UA, "Referer": "https://www.moneycontrol.com"},
+            timeout=10,
+        )
+        if r.status_code == 200:
+            data = r.json()
+            # Response: {"data": [{"fiiBuy": "...", "fiiSell": "...", ...}, ...]}
+            rows = data.get("data", data if isinstance(data, list) else [])
+            if rows:
+                row = rows[0]
+                fii_buy  = float(str(row.get("fiiBuy",  row.get("fii_buy",  "0"))).replace(",",""))
+                fii_sell = float(str(row.get("fiiSell", row.get("fii_sell", "0"))).replace(",",""))
+                dii_buy  = float(str(row.get("diiBuy",  row.get("dii_buy",  "0"))).replace(",",""))
+                dii_sell = float(str(row.get("diiSell", row.get("dii_sell", "0"))).replace(",",""))
+                if fii_buy + fii_sell + dii_buy + dii_sell > 0:
+                    return {
+                        "fii_flow_cr": round(fii_buy - fii_sell, 2),
+                        "dii_flow_cr": round(dii_buy - dii_sell, 2),
+                    }
+    except Exception as e:
+        _log(f"[WARN] Moneycontrol FII/DII API failed: {e}")
+    return None
+
+
+def _fetch_fii_dii_mc_scrape() -> dict | None:
+    """
+    Scrapes Moneycontrol FII/DII activity page with regex.
+    Works from server IPs — no JS rendering needed for these numbers.
+    """
+    import re as _re
+    try:
+        _UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+               "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
+        r = requests.get(
+            "https://www.moneycontrol.com/stocks/marketstats/fii_dii_activity/index.php",
+            headers={"User-Agent": _UA,
+                     "Accept": "text/html,application/xhtml+xml",
+                     "Accept-Language": "en-IN,en;q=0.9"},
+            timeout=12,
+        )
+        if r.status_code != 200:
+            return None
+        html = r.text
+        # Moneycontrol renders numbers like: "Net: -1,234.56" in the FII/DII table
+        # Pattern captures net values from the data table
+        fii_m = _re.search(
+            r'(?:FII|FPI)[^<]{0,200}?Net[^<]{0,50}?([-+]?[\d,]+\.?\d*)',
+            html, _re.IGNORECASE | _re.DOTALL
+        )
+        dii_m = _re.search(
+            r'DII[^<]{0,200}?Net[^<]{0,50}?([-+]?[\d,]+\.?\d*)',
+            html, _re.IGNORECASE | _re.DOTALL
+        )
+        if fii_m or dii_m:
+            fii_val = float(fii_m.group(1).replace(",","")) if fii_m else 0.0
+            dii_val = float(dii_m.group(1).replace(",","")) if dii_m else 0.0
+            if fii_val != 0 or dii_val != 0:
+                return {"fii_flow_cr": fii_val, "dii_flow_cr": dii_val}
+    except Exception as e:
+        _log(f"[WARN] Moneycontrol scrape FII/DII failed: {e}")
+    return None
+
+
+def _fetch_fii_dii_google_news() -> dict | None:
+    """
+    Last-resort: parse Google News RSS for FII/DII headlines with crore amounts.
+    Covers the 7 PM scheduled run when all API sources may be exhausted.
+    """
+    import re as _re
+    try:
+        if not _FEEDPARSER_OK:
+            return None
+        today_str = datetime.date.today().strftime("%d %b").lstrip("0")  # e.g. "29 Jun"
+        feed = feedparser.parse(
+            "https://news.google.com/rss/search"
+            f"?q=FII+DII+crore+NSE+{today_str}&hl=en-IN&gl=IN&ceid=IN:en"
+        )
+        for entry in feed.entries[:10]:
+            title = entry.get("title", "")
+            # Match: "FII bought/sold XXXX crore, DII bought YYYY crore"
+            fii_m = _re.search(r'FII\s+(bought|sold)\s+([\d,]+(?:\.\d+)?)\s*crore', title, _re.I)
+            dii_m = _re.search(r'DII\s+(bought|sold)\s+([\d,]+(?:\.\d+)?)\s*crore', title, _re.I)
+            if fii_m and dii_m:
+                fii_val = float(fii_m.group(2).replace(",",""))
+                dii_val = float(dii_m.group(2).replace(",",""))
+                if "sold" in fii_m.group(1).lower():
+                    fii_val = -fii_val
+                if "sold" in dii_m.group(1).lower():
+                    dii_val = -dii_val
+                return {"fii_flow_cr": fii_val, "dii_flow_cr": dii_val}
+    except Exception as e:
+        _log(f"[WARN] Google News FII/DII parse failed: {e}")
+    return None
+
+
 def fetch_fii_dii_flows(max_retries: int = 2) -> dict:
     """
-    Fetches FII/DII flows from NSE with retry for post-market timing.
+    Fetches FII/DII flows — tries 4 independent sources in order.
     available=True ONLY when real non-zero data is returned.
-    Rs0+Rs0 = data not published yet — treated as unavailable, not zero flows.
     """
     from datetime import time as dtime
     import time as _time
 
     now_ist      = datetime.datetime.now()
     just_closed  = dtime(15, 30) <= now_ist.time() <= dtime(16, 15)
+    is_prov      = now_ist.time() < dtime(18, 0)
 
     result = {
-        "fii_flow_cr":    0.0,
-        "dii_flow_cr":    0.0,
-        "is_provisional": False,
-        "available":      False,
+        "fii_flow_cr": 0.0, "dii_flow_cr": 0.0,
+        "is_provisional": False, "available": False,
     }
 
-    for attempt in range(max_retries):
-        # ATTEMPT 1: NSE fiidiiTradeReact API
+    sources = [
+        ("NSE API",              _fetch_fii_dii_nse),
+        ("Moneycontrol API",     _fetch_fii_dii_moneycontrol),
+        ("Moneycontrol Scrape",  _fetch_fii_dii_mc_scrape),
+        ("Google News",          _fetch_fii_dii_google_news),
+    ]
+
+    for name, fn in sources:
         try:
-            session = requests.Session()
-            session.get("https://www.nseindia.com",
-                        headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
-                        timeout=10)
-            r = session.get(
-                "https://www.nseindia.com/api/fiidiiTradeReact",
-                headers={
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-                    "Referer":    "https://www.nseindia.com",
-                    "Accept":     "application/json",
-                }, timeout=12)
-            if r.status_code == 200:
-                data = r.json()
-                if isinstance(data, list) and len(data) > 0:
-                    latest   = data[0]
-                    fii_buy  = float(str(latest.get("fiiBuy",  "0")).replace(",", ""))
-                    fii_sell = float(str(latest.get("fiiSell", "0")).replace(",", ""))
-                    dii_buy  = float(str(latest.get("diiBuy",  "0")).replace(",", ""))
-                    dii_sell = float(str(latest.get("diiSell", "0")).replace(",", ""))
-                    total_activity = fii_buy + fii_sell + dii_buy + dii_sell
-                    if total_activity > 0:   # real data
-                        result["fii_flow_cr"]    = round(fii_buy - fii_sell, 2)
-                        result["dii_flow_cr"]    = round(dii_buy - dii_sell, 2)
-                        result["is_provisional"] = now_ist.time() < dtime(18, 0)
-                        result["available"]      = True
-                        return result
-                    # Zeros — data not published yet
-                    if just_closed and attempt < max_retries - 1:
-                        _log("[INFO] FII/DII zeros (market just closed) — retrying in 60s")
-                        _time.sleep(60)
-                        continue
+            _log(f"  [FII/DII] Trying {name}...")
+            data = fn()
+            if data and (data["fii_flow_cr"] != 0 or data["dii_flow_cr"] != 0):
+                result["fii_flow_cr"]    = data["fii_flow_cr"]
+                result["dii_flow_cr"]    = data["dii_flow_cr"]
+                result["is_provisional"] = is_prov
+                result["available"]      = True
+                _log(f"  [FII/DII] Got data from {name}: FII {result['fii_flow_cr']:+.0f}Cr | DII {result['dii_flow_cr']:+.0f}Cr")
+                return result
         except Exception as e:
-            _log(f"[WARN] FII/DII NSE API attempt {attempt+1} failed: {e}")
-            if attempt < max_retries - 1:
-                _time.sleep(5)
-            continue
+            _log(f"  [FII/DII] {name} failed: {e}")
 
-        # ATTEMPT 2: moneycontrol RSS fallback
-        try:
-            if _FEEDPARSER_OK:
-                import re as _re
-                feed = feedparser.parse("https://www.moneycontrol.com/rss/marketstats.xml")
-                for entry in feed.entries[:5]:
-                    title = entry.get("title", "").lower()
-                    if "fii" in title and "crore" in title:
-                        fii_m = _re.search(r"fii.*?([\d,]+)\s*crore", title)
-                        dii_m = _re.search(r"dii.*?([\d,]+)\s*crore", title)
-                        if fii_m:
-                            val = float(fii_m.group(1).replace(",", ""))
-                            result["fii_flow_cr"] = val if "bought" in title else -val
-                        if dii_m:
-                            val = float(dii_m.group(1).replace(",", ""))
-                            result["dii_flow_cr"] = val if "bought" in title else -val
-                        result["is_provisional"] = now_ist.time() < dtime(18, 0)
-                        result["available"]      = True
-                        return result
-        except Exception:
-            pass
-        break   # no point retrying RSS
+    # If market just closed, wait 60s and retry top 2 sources once
+    if just_closed:
+        _log("  [FII/DII] All sources returned nothing — waiting 60s (data may not be published yet)")
+        _time.sleep(60)
+        for name, fn in sources[:2]:
+            try:
+                data = fn()
+                if data and (data["fii_flow_cr"] != 0 or data["dii_flow_cr"] != 0):
+                    result.update(data)
+                    result["is_provisional"] = True
+                    result["available"]      = True
+                    _log(f"  [FII/DII] Got data from {name} (retry): FII {result['fii_flow_cr']:+.0f}Cr")
+                    return result
+            except Exception:
+                pass
 
+    _log("  [FII/DII] All sources unavailable — data not yet published")
     return result
 
 
 def fetch_fii_dii_fallback() -> dict:
-    """
-    Secondary NSE endpoint fallback.
-    Used when primary fiidiiTradeReact returns zeros.
-    """
-    try:
-        session = requests.Session()
-        session.get("https://www.nseindia.com",
-                    headers={"User-Agent": "Mozilla/5.0"}, timeout=8)
-        r = session.get(
-            "https://www.nseindia.com/api/market-data-pre-open?key=FO",
-            headers={
-                "User-Agent": "Mozilla/5.0",
-                "Referer":    "https://www.nseindia.com",
-            }, timeout=10)
-        if r.status_code == 200:
-            data = r.json()
-            for key in ["fiiNet", "fii_net", "fiiNetPurchase"]:
-                if key in data:
-                    return {
-                        "fii_flow_cr":    float(data[key]),
-                        "dii_flow_cr":    float(data.get("diiNet", data.get("dii_net", 0))),
-                        "available":      True,
-                        "is_provisional": False,
-                    }
-    except Exception as e:
-        _log(f"[WARN] FII/DII fallback failed: {e}")
-    return {"fii_flow_cr": 0.0, "dii_flow_cr": 0.0, "available": False, "is_provisional": False}
+    """Legacy stub — now handled inside fetch_fii_dii_flows."""
+    return fetch_fii_dii_flows(max_retries=1)
 
 
 def get_fii_dii_data() -> dict:
-    """Master function — primary fetch then fallback if unavailable."""
-    result = fetch_fii_dii_flows(max_retries=2)
-    if not result["available"]:
-        _log("[INFO] Trying FII/DII fallback source")
-        result = fetch_fii_dii_fallback()
-    return result
+    """Master function — single entry point for all FII/DII fetching."""
+    return fetch_fii_dii_flows(max_retries=2)
 
 
 def format_fii_dii_line(fii_data: dict) -> str:
