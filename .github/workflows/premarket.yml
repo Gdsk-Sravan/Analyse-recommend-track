@@ -24,6 +24,7 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
           TRADE_TRACKER_V2_FILE: trade_tracker.json
+          SCHEDULED_RUN: ${{ github.event_name == 'schedule' && 'true' || 'false' }}
 
       - name: Download tracker artifact (if available)
         uses: dawidd6/action-download-artifact@v3
