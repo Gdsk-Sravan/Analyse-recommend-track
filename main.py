@@ -865,73 +865,200 @@ def _call_ai(prompt: str, max_tokens: int = 100) -> str | None:
     return None
 
 
-def _rule_based_summary(regime: str, buy_count: int, near_miss_count: int,
-                         top_symbol: str, portfolio_alerts: list,
-                         ema_bear: bool) -> str:
-    """Rule-based fallback for daily summary."""
+def _clean_ai_output(text: str) -> str:
+    """
+    Cleans common AI output artifacts.
+    Fixes spaces inside decimals: "13. 6" → "13.6"
+    Removes markdown, bullets, leading/trailing junk.
+    """
+    import re
+    text = re.sub(r'(\d+)\.\s+(\d+)', r'\1.\2', text)   # "13. 6" → "13.6"
+    text = re.sub(r'(\d)\.\s+(\d)', r'\1.\2', text)       # "0. 49%" → "0.49%"
+    text = re.sub(r'\*+', '', text)                          # remove markdown bold
+    text = re.sub(r'^\s*[-•*]\s*', '', text, flags=re.MULTILINE)  # remove bullets
+    text = " ".join(text.split())                            # normalise whitespace
+    return text.strip()
+
+
+def _rule_based_summary(
+    regime: str, regime_label: str, buy_count: int,
+    near_miss_count: int, top_symbol: str,
+    portfolio_alerts: list, ema_bear: bool,
+    upcoming_event: str
+) -> str:
+    """Fallback — always correct, never has AI artifacts."""
     parts = []
-    if regime in ("STRONG_BULL", "BULL"):
-        parts.append("Market is in a bullish phase with broad participation.")
-    elif regime == "TRANSITION":
-        parts.append("Market is in transition with mixed signals.")
-    elif regime == "SIDEWAYS":
-        parts.append("Market is range-bound — patience required.")
-    else:
-        parts.append("Market is in a bearish phase — preserve capital.")
+    parts.append(
+        f"Market is {regime_label} with price "
+        f"{'below' if ema_bear else 'above'} key moving averages."
+    )
     if buy_count > 0:
-        parts.append(f"{buy_count} institutional-quality setup(s) identified today.")
+        parts.append(
+            f"{buy_count} institutional-quality setup(s) met all conditions today."
+        )
     else:
-        parts.append("No institutional-quality setup met all required conditions today.")
-    if near_miss_count > 0:
-        parts.append(f"{near_miss_count} stock(s) within striking distance — {top_symbol} is closest.")
-    exits = [a for a in portfolio_alerts if "EXIT" in a.get("action", "")]
-    if exits:
-        parts.append(f"{len(exits)} position(s) require exit review.")
-    elif ema_bear:
-        parts.append("Avoid aggressive positioning until NIFTY reclaims EMA200.")
+        parts.append(
+            "No setup met all required conditions today — "
+            "quality over quantity remains the priority."
+        )
+    if near_miss_count > 0 and top_symbol and top_symbol != "none":
+        parts.append(
+            f"{near_miss_count} stock(s) are close to qualifying — "
+            f"watch {top_symbol.replace('.NS', '')} most closely."
+        )
     else:
-        parts.append("Existing positions on track.")
+        exits = [a for a in portfolio_alerts if "EXIT" in a.get("action", "")]
+        if exits:
+            parts.append(
+                f"{len(exits)} position(s) require exit review — act before next session."
+            )
+        else:
+            parts.append("Existing positions are on track — no action needed today.")
+    if upcoming_event:
+        parts.append(
+            f"With {upcoming_event} approaching, reduce position sizes and keep stops tight."
+        )
+    elif ema_bear and buy_count == 0:
+        parts.append(
+            "Avoid forcing new trades until the market reclaims its key moving averages."
+        )
+    elif buy_count > 0:
+        parts.append(
+            "Execute today's signal with strict position sizing — do not average down."
+        )
+    else:
+        parts.append(
+            "Stay patient — let the setups come to you rather than chasing momentum."
+        )
     return " ".join(parts)
 
 
 def ai_daily_summary(
-    regime: str, regime_score: float, nifty_pct: float,
-    vix_in: float, breadth_pct: float,
-    fii_flow_cr: float, dii_flow_cr: float,
-    buy_count: int, near_miss_count: int,
-    top_near_miss_symbol: str, top_near_miss_conf_gap: float,
-    portfolio_alerts: list, ema_bear: bool,
+    regime: str,
+    regime_score: float,
+    nifty_pct: float,
+    vix_in: float,
+    breadth_pct: float,
+    fii_flow_cr: float,
+    dii_flow_cr: float,
+    buy_count: int,
+    near_miss_count: int,
+    top_near_miss_symbol: str,
+    top_near_miss_conf_gap: float,
+    portfolio_alerts: list,
+    ema_bear: bool,
     upcoming_event: str = "",
 ) -> str:
-    """4-sentence AI market briefing. ~120 token input, ~80 token output."""
-    context = (
-        f"Regime: {regime} (score {regime_score:.0f}/100)\n"
-        f"NIFTY: {nifty_pct:+.2f}% | VIX-IN: {vix_in:.1f} | Breadth: {breadth_pct:.0f}%\n"
-        f"FII: Rs{fii_flow_cr:+.0f}Cr | DII: Rs{dii_flow_cr:+.0f}Cr\n"
-        f"Structure: {'below major EMAs - bearish' if ema_bear else 'above key EMAs - supportive'}\n"
-        f"BUY signals: {buy_count} | Near miss: {near_miss_count} "
-        f"(closest: {top_near_miss_symbol} needs +{top_near_miss_conf_gap:.1f})\n"
-        f"Portfolio exits needed: {len([a for a in portfolio_alerts if 'EXIT' in a.get('action','')])}\n"
-        f"Upcoming event: {upcoming_event if upcoming_event else 'none in next 7 days'}"
+    """
+    4-sentence AI market briefing. Strictly qualitative — no raw numbers sent to AI.
+    Falls back to rule-based if AI fails or output contains numbers / is too short.
+    """
+    import re
+
+    # Translate numbers to qualitative labels BEFORE sending to AI
+    regime_label = {
+        "STRONG_BULL":     "strongly bullish with broad participation",
+        "BULL":            "bullish with improving breadth",
+        "SIDEWAYS":        "range-bound with no clear direction",
+        "TRANSITION":      "transitioning with mixed signals",
+        "HIGH_VOLATILITY": "volatile with compressed opportunity",
+        "BEAR":            "weakening with institutional selling",
+        "STRONG_BEAR":     "in capital preservation mode",
+    }.get(regime, "uncertain")
+
+    nifty_label = (
+        "falling sharply" if nifty_pct < -1.0 else
+        "falling slightly" if nifty_pct < -0.2 else
+        "flat" if abs(nifty_pct) <= 0.2 else
+        "rising slightly" if nifty_pct < 0.8 else
+        "rising strongly"
     )
-    prompt = (
-        f"{context}\n\n"
-        "Write exactly 4 sentences for a swing trader's daily briefing:\n"
-        "1: What the market is doing today and why.\n"
-        "2: What this means for new trades today.\n"
-        "3: What to watch closely (portfolio risk OR nearest opportunity).\n"
-        "4: One actionable recommendation for tomorrow.\n"
-        "Rules: max 80 words total, no bullet points, no jargon, "
-        "sound like a senior trader, never say 'I' or 'as an AI'."
+    vix_label = (
+        "very calm" if vix_in < 12 else
+        "normal" if vix_in < 16 else
+        "elevated" if vix_in < 20 else
+        "high" if vix_in < 25 else
+        "very high"
     )
-    result = _call_ai(prompt, max_tokens=120)
+    breadth_label = (
+        "weak" if breadth_pct < 40 else
+        "mixed" if breadth_pct < 55 else
+        "healthy" if breadth_pct < 70 else
+        "strong"
+    )
+    fii_label = (
+        "buying aggressively" if fii_flow_cr > 2000 else
+        "buying"             if fii_flow_cr > 300  else
+        "neutral"            if abs(fii_flow_cr) <= 300 else
+        "selling"            if fii_flow_cr > -2000 else
+        "selling aggressively"
+    )
+    dii_label = (
+        "buying aggressively" if dii_flow_cr > 2000 else
+        "buying"             if dii_flow_cr > 300  else
+        "neutral"            if abs(dii_flow_cr) <= 300 else
+        "selling"
+    )
+    ema_label       = "below key moving averages" if ema_bear else "above key moving averages"
+    exits           = [a for a in portfolio_alerts if "EXIT" in a.get("action", "")]
+    portfolio_label = (
+        f"{len(exits)} position(s) need exit review" if exits else
+        "all positions on track"
+    )
+    near_miss_label = (
+        "no stocks close to qualifying" if near_miss_count == 0 else
+        f"{near_miss_count} stock(s) close to qualifying"
+    )
+    event_label = (
+        f"upcoming {upcoming_event} adds uncertainty" if upcoming_event else
+        "no major events this week"
+    )
+
+    prompt = f"""You are writing 4 sentences for a swing trader's daily briefing.
+
+Market conditions today:
+- Overall market: {regime_label}
+- NIFTY direction: {nifty_label}
+- Volatility (VIX): {vix_label}
+- Market breadth: {breadth_label}
+- FII (foreign institutions): {fii_label}
+- DII (domestic institutions): {dii_label}
+- Price structure: {ema_label}
+- Buy signals today: {buy_count}
+- Watchlist status: {near_miss_label}
+- Portfolio: {portfolio_label}
+- Events: {event_label}
+
+Write EXACTLY 4 sentences. Rules:
+1. Do NOT use any numbers, percentages, or rupee amounts
+2. Use only the qualitative labels provided above
+3. Sentence 1: Overall market condition and why
+4. Sentence 2: What this means for new trades today
+5. Sentence 3: What to watch most closely right now
+6. Sentence 4: One specific actionable recommendation for tomorrow
+7. Total: 60-80 words maximum
+8. Plain English — senior trader tone, not a report
+9. Never say "I" or "as an AI"
+10. Never use the word "bearish" or "bullish" — use plain words"""
+
+    result = _call_ai(prompt, max_tokens=150)
     if result:
-        sentences = [s.strip() for s in result.split(".") if s.strip()]
-        if len(sentences) >= 2:
+        clean = _clean_ai_output(result)
+        sentences = [s.strip() for s in clean.split(".") if len(s.strip()) > 15]
+        has_numbers = bool(re.search(r'\d', clean))
+        if len(sentences) >= 3 and not has_numbers:
             return ". ".join(sentences[:4]) + "."
+        if len(sentences) >= 3:
+            # Strip any numbers that crept through
+            clean_no_nums = re.sub(r'\d+\.?\d*%?', '', clean)
+            clean_no_nums = re.sub(r'Rs\.?\s*\d+', '', clean_no_nums)
+            clean_no_nums = " ".join(clean_no_nums.split())
+            if len(clean_no_nums) > 50:
+                return clean_no_nums
+
     return _rule_based_summary(
-        regime, buy_count, near_miss_count,
-        top_near_miss_symbol, portfolio_alerts, ema_bear
+        regime, regime_label, buy_count, near_miss_count,
+        top_near_miss_symbol, portfolio_alerts, ema_bear, upcoming_event
     )
 
 
@@ -981,22 +1108,38 @@ def ai_buy_thesis(
 def _rule_based_near_miss_insight(
     symbol: str, conf_gap: float, conf_only: bool,
     rr_fail: bool, tq_fail: bool, conf_trend: str, days_watching: int,
+    sector_status: str = "NEUTRAL",
 ) -> str:
-    """Rule-based fallback for near miss insight."""
-    if conf_only:
-        if conf_trend and "rising" in conf_trend.lower():
-            return (f"Confidence rising — needs {conf_gap:.1f} more points, "
-                    f"likely 2-3 sessions at current pace.")
-        return (f"Only blocker is confidence gap of {conf_gap:.1f} — "
-                f"watch for volume surge above 20-day average.")
-    if rr_fail:
-        return "R/R too low — needs price to pull back slightly to improve entry level."
+    """Fallback — specific and useful without AI."""
+    if conf_trend and "rising" in conf_trend.lower() and conf_only:
+        return (
+            "Confidence building steadily — needs one strong "
+            "volume day above the 20-day average to close the gap."
+        )
+    if days_watching >= 5 and conf_only:
+        return (
+            f"Stuck on confidence for {days_watching} sessions — "
+            "if no improvement in 2 more days, remove from watchlist."
+        )
+    if rr_fail and not conf_only:
+        return (
+            "Risk/reward too low at current price — "
+            "wait for a pullback to improve entry before confidence qualifies."
+        )
     if tq_fail:
-        return "Chart pattern not clean enough yet — wait for consolidation above entry."
-    if days_watching >= 5:
-        return (f"Stuck on watchlist {days_watching} days — "
-                f"remove if no progress in 2 more sessions.")
-    return "Watch for volume confirmation above entry level."
+        return (
+            "Chart pattern needs to tighten — "
+            "wait for consolidation above entry before acting."
+        )
+    if sector_status in ("LAGGING", "WEAKENING"):
+        return (
+            "Sector headwind slowing progress — "
+            "monitor sector rotation before committing."
+        )
+    return (
+        f"Needs confidence gap of {conf_gap:.1f} points closed — "
+        "watch for volume surge above the 20-day average as trigger."
+    )
 
 
 def ai_near_miss_insight(
@@ -1005,31 +1148,51 @@ def ai_near_miss_insight(
     gate_pattern: str, sector_status: str, risk_pct: float,
     days_watching: int,
 ) -> str:
-    """1 sentence: what must happen for this near miss to become a BUY. ~80 token input."""
+    """1 sentence: what must happen for this near miss to become a BUY."""
     primary_fail = fail_reasons[0] if fail_reasons else "CONFIDENCE_FAIL"
     conf_only    = len(fail_reasons) == 1 and "CONF" in primary_fail
     rr_fail      = any("RR" in f for f in fail_reasons)
     tq_fail      = any("TQ" in f for f in fail_reasons)
 
-    prompt = (
-        f"Near miss stock:\n"
-        f"Symbol: {symbol} | Sector: {sector}\n"
-        f"Confidence: {confidence:.1f} (needs {confidence+conf_gap:.1f}, gap: {conf_gap:.1f})\n"
-        f"TQ: {tq:.1f} | R/R: {rr:.2f}x\n"
-        f"Confidence trend (3d): {conf_trend if conf_trend else 'not enough data'}\n"
-        f"Primary blocker: {primary_fail} | Days watching: {days_watching}\n"
-        f"Gate pattern: {gate_pattern if gate_pattern else 'first appearance'}\n\n"
-        f"Write ONE sentence (max 25 words) answering: "
-        f"'What specifically needs to happen in the next 1-3 days for {symbol} to become a BUY?' "
-        "Mention the actual blocker and a concrete trigger. No bullet points."
+    trend_label = (
+        "confidence rising steadily"  if conf_trend and "rising"  in conf_trend.lower() else
+        "confidence falling"          if conf_trend and "falling" in conf_trend.lower() else
+        "confidence flat"             if conf_trend and "flat"    in conf_trend.lower() else
+        "first appearance on watchlist"
     )
-    result = _call_ai(prompt, max_tokens=60)
-    if result and len(result) > 15:
-        clean = result.strip().replace("\n", " ")
-        sentences = [s.strip() for s in clean.split(".") if s.strip()]
-        return sentences[0] + "." if sentences else clean
+    blocker_label = (
+        "only confidence is missing — all other factors pass" if conf_only else
+        "both confidence and risk/reward need improvement"     if rr_fail and not tq_fail else
+        "confidence, risk/reward, and trade quality all need work" if rr_fail and tq_fail else
+        "multiple factors below threshold"
+    )
+
+    prompt = f"""Near miss stock: {symbol} in {sector} sector.
+Situation: {blocker_label}.
+Trend: {trend_label}.
+Days on watchlist: {days_watching}.
+Sector condition: {sector_status}.
+
+Write ONE complete sentence (minimum 20 words, maximum 30 words)
+answering: "What must happen in the next 1-3 sessions for {symbol}
+to become a tradeable BUY signal?"
+Be specific to this stock's actual blocker.
+Do not start with "For {symbol}" — start with a verb or condition."""
+
+    result = _call_ai(prompt, max_tokens=80)
+    if result:
+        clean = _clean_ai_output(result)
+        # FIXED PARSER: minimum 20 chars to avoid fragments like "For SETL"
+        sentences = [
+            s.strip() for s in clean.replace("!", ".").split(".")
+            if len(s.strip()) >= 20
+        ]
+        if sentences:
+            return sentences[0] + "."
+
     return _rule_based_near_miss_insight(
-        symbol, conf_gap, conf_only, rr_fail, tq_fail, conf_trend, days_watching
+        symbol, conf_gap, conf_only, rr_fail, tq_fail,
+        conf_trend, days_watching, sector_status
     )
 
 
@@ -1883,18 +2046,17 @@ def macro_regime_adjustment(macro: dict) -> int:
     return max(-20, min(10, adj))
 
 
-def fetch_fii_dii_flows() -> dict:
+def fetch_fii_dii_flows(max_retries: int = 2) -> dict:
     """
-    Fetches FII/DII flows from NSE.
-    Available from ~10 AM IST as provisional data, final after 6 PM IST.
-    NEVER blocked by time — always attempts fetch.
-    Returns {fii_flow_cr, dii_flow_cr, is_provisional, available}.
+    Fetches FII/DII flows from NSE with retry for post-market timing.
+    available=True ONLY when real non-zero data is returned.
+    Rs0+Rs0 = data not published yet — treated as unavailable, not zero flows.
     """
     from datetime import time as dtime
+    import time as _time
+
     now_ist      = datetime.datetime.now()
-    market_open  = dtime(9, 15)
-    market_close = dtime(15, 30)
-    is_market_hours = market_open <= now_ist.time() <= market_close
+    just_closed  = dtime(15, 30) <= now_ist.time() <= dtime(16, 15)
 
     result = {
         "fii_flow_cr":    0.0,
@@ -1903,73 +2065,128 @@ def fetch_fii_dii_flows() -> dict:
         "available":      False,
     }
 
-    # ATTEMPT 1: NSE fiidiiTradeReact API
+    for attempt in range(max_retries):
+        # ATTEMPT 1: NSE fiidiiTradeReact API
+        try:
+            session = requests.Session()
+            session.get("https://www.nseindia.com",
+                        headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
+                        timeout=10)
+            r = session.get(
+                "https://www.nseindia.com/api/fiidiiTradeReact",
+                headers={
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+                    "Referer":    "https://www.nseindia.com",
+                    "Accept":     "application/json",
+                }, timeout=12)
+            if r.status_code == 200:
+                data = r.json()
+                if isinstance(data, list) and len(data) > 0:
+                    latest   = data[0]
+                    fii_buy  = float(str(latest.get("fiiBuy",  "0")).replace(",", ""))
+                    fii_sell = float(str(latest.get("fiiSell", "0")).replace(",", ""))
+                    dii_buy  = float(str(latest.get("diiBuy",  "0")).replace(",", ""))
+                    dii_sell = float(str(latest.get("diiSell", "0")).replace(",", ""))
+                    total_activity = fii_buy + fii_sell + dii_buy + dii_sell
+                    if total_activity > 0:   # real data
+                        result["fii_flow_cr"]    = round(fii_buy - fii_sell, 2)
+                        result["dii_flow_cr"]    = round(dii_buy - dii_sell, 2)
+                        result["is_provisional"] = now_ist.time() < dtime(18, 0)
+                        result["available"]      = True
+                        return result
+                    # Zeros — data not published yet
+                    if just_closed and attempt < max_retries - 1:
+                        _log("[INFO] FII/DII zeros (market just closed) — retrying in 60s")
+                        _time.sleep(60)
+                        continue
+        except Exception as e:
+            _log(f"[WARN] FII/DII NSE API attempt {attempt+1} failed: {e}")
+            if attempt < max_retries - 1:
+                _time.sleep(5)
+            continue
+
+        # ATTEMPT 2: moneycontrol RSS fallback
+        try:
+            if _FEEDPARSER_OK:
+                import re as _re
+                feed = feedparser.parse("https://www.moneycontrol.com/rss/marketstats.xml")
+                for entry in feed.entries[:5]:
+                    title = entry.get("title", "").lower()
+                    if "fii" in title and "crore" in title:
+                        fii_m = _re.search(r"fii.*?([\d,]+)\s*crore", title)
+                        dii_m = _re.search(r"dii.*?([\d,]+)\s*crore", title)
+                        if fii_m:
+                            val = float(fii_m.group(1).replace(",", ""))
+                            result["fii_flow_cr"] = val if "bought" in title else -val
+                        if dii_m:
+                            val = float(dii_m.group(1).replace(",", ""))
+                            result["dii_flow_cr"] = val if "bought" in title else -val
+                        result["is_provisional"] = now_ist.time() < dtime(18, 0)
+                        result["available"]      = True
+                        return result
+        except Exception:
+            pass
+        break   # no point retrying RSS
+
+    return result
+
+
+def fetch_fii_dii_fallback() -> dict:
+    """
+    Secondary NSE endpoint fallback.
+    Used when primary fiidiiTradeReact returns zeros.
+    """
     try:
         session = requests.Session()
         session.get("https://www.nseindia.com",
-                    headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
-                    timeout=10)
+                    headers={"User-Agent": "Mozilla/5.0"}, timeout=8)
         r = session.get(
-            "https://www.nseindia.com/api/fiidiiTradeReact",
+            "https://www.nseindia.com/api/market-data-pre-open?key=FO",
             headers={
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+                "User-Agent": "Mozilla/5.0",
                 "Referer":    "https://www.nseindia.com",
-                "Accept":     "application/json",
-            }, timeout=12)
+            }, timeout=10)
         if r.status_code == 200:
             data = r.json()
-            if isinstance(data, list) and len(data) > 0:
-                latest   = data[0]
-                fii_buy  = float(str(latest.get("fiiBuy",  "0")).replace(",", ""))
-                fii_sell = float(str(latest.get("fiiSell", "0")).replace(",", ""))
-                dii_buy  = float(str(latest.get("diiBuy",  "0")).replace(",", ""))
-                dii_sell = float(str(latest.get("diiSell", "0")).replace(",", ""))
-                result["fii_flow_cr"]    = round(fii_buy - fii_sell, 2)
-                result["dii_flow_cr"]    = round(dii_buy - dii_sell, 2)
-                result["is_provisional"] = is_market_hours
-                result["available"]      = True
-                return result
+            for key in ["fiiNet", "fii_net", "fiiNetPurchase"]:
+                if key in data:
+                    return {
+                        "fii_flow_cr":    float(data[key]),
+                        "dii_flow_cr":    float(data.get("diiNet", data.get("dii_net", 0))),
+                        "available":      True,
+                        "is_provisional": False,
+                    }
     except Exception as e:
-        _log(f"[WARN] FII/DII NSE API failed: {e}")
+        _log(f"[WARN] FII/DII fallback failed: {e}")
+    return {"fii_flow_cr": 0.0, "dii_flow_cr": 0.0, "available": False, "is_provisional": False}
 
-    # ATTEMPT 2: moneycontrol RSS fallback
-    try:
-        if _FEEDPARSER_OK:
-            import re as _re
-            feed = feedparser.parse("https://www.moneycontrol.com/rss/marketstats.xml")
-            for entry in feed.entries[:5]:
-                title = entry.get("title", "").lower()
-                if "fii" in title and "crore" in title:
-                    fii_m = _re.search(r"fii.*?([\d,]+)\s*crore", title)
-                    dii_m = _re.search(r"dii.*?([\d,]+)\s*crore", title)
-                    if fii_m:
-                        val = float(fii_m.group(1).replace(",", ""))
-                        result["fii_flow_cr"] = val if "bought" in title else -val
-                    if dii_m:
-                        val = float(dii_m.group(1).replace(",", ""))
-                        result["dii_flow_cr"] = val if "bought" in title else -val
-                    result["is_provisional"] = is_market_hours
-                    result["available"]      = True
-                    break
-    except Exception:
-        pass
 
+def get_fii_dii_data() -> dict:
+    """Master function — primary fetch then fallback if unavailable."""
+    result = fetch_fii_dii_flows(max_retries=2)
+    if not result["available"]:
+        _log("[INFO] Trying FII/DII fallback source")
+        result = fetch_fii_dii_fallback()
     return result
 
 
 def format_fii_dii_line(fii_data: dict) -> str:
     """
-    Formats FII/DII line for Telegram.
-    Shows 'provisional' during market hours, never 'unavailable' while market is open.
+    Timing-aware FII/DII formatter.
+    Never shows Rs0Cr — shows a timing explanation when data isn't published yet.
     """
     from datetime import time as dtime
+    now_ist     = datetime.datetime.now()
+    just_closed = dtime(15, 30) <= now_ist.time() <= dtime(16, 30)
+    market_open = dtime(9, 15)  <= now_ist.time() <  dtime(15, 30)
+
     if not fii_data.get("available"):
-        now_ist   = datetime.datetime.now()
-        mkt_open  = dtime(9, 15)
-        mkt_close = dtime(15, 30)
-        if mkt_open <= now_ist.time() <= mkt_close:
-            return "FII/DII: Provisional data pending (try after 10:30 AM)"
-        return "FII/DII: Data unavailable (post-market or holiday)"
+        if just_closed:
+            return "FII/DII: Provisional data publishing (available ~4:30 PM)"
+        elif market_open:
+            return "FII/DII: Intraday provisional data pending (~10:30 AM)"
+        else:
+            return "FII/DII: Data unavailable"
 
     fii  = fii_data["fii_flow_cr"]
     dii  = fii_data["dii_flow_cr"]
@@ -1991,8 +2208,10 @@ def format_fii_dii_line(fii_data: dict) -> str:
     else:
         sentiment = "➡️ Neutral flows"
 
-    return (f"FII {fii_icon} Rs{abs(fii):.0f}Cr | "
-            f"DII {dii_icon} Rs{abs(dii):.0f}Cr | {sentiment}{prov}")
+    return (
+        f"FII {fii_icon} ₹{abs(fii):.0f}Cr · "
+        f"DII {dii_icon} ₹{abs(dii):.0f}Cr · {sentiment}{prov}"
+    )
 
 
 def format_fii_dii(fii: float, dii: float) -> str:
@@ -2509,8 +2728,46 @@ def build_events_calendar(lookahead_days: int = 30) -> list:
 
 
 def load_events_config() -> list:
-    """Entry point — always rebuilds from auto-sources. No manual editing needed."""
-    return build_events_calendar(lookahead_days=30)
+    """
+    Builds the events calendar, then deduplicates by type so recurring events
+    (e.g. weekly expiry) appear only ONCE (the nearest occurrence).
+    Shows max 3 total events, only within the next 14 days.
+    """
+    all_events = build_events_calendar(lookahead_days=30)
+    today = datetime.date.today()
+
+    # Step 1: sort by date (nearest first)
+    all_events.sort(key=lambda x: x.get("date", ""))
+
+    # Step 2: deduplicate — keep only the NEXT occurrence of each event type
+    seen_types: set = set()
+    deduplicated = []
+    for ev in all_events:
+        ev_type = ev.get("name", "").strip()
+        # Group all expiry variants under one key
+        if "expiry" in ev_type.lower() or "Expiry" in ev_type:
+            ev_type = "NSE_EXPIRY"
+        if ev_type not in seen_types:
+            deduplicated.append(ev)
+            seen_types.add(ev_type)
+        if len(deduplicated) >= 4:
+            break
+
+    # Step 3: only events within next 14 days are relevant today
+    relevant = []
+    for ev in deduplicated:
+        try:
+            days_away = (datetime.date.fromisoformat(ev["date"]) - today).days
+            if days_away <= 14:
+                relevant.append(ev)
+        except Exception:
+            pass
+
+    # If nothing within 14 days, show next 2 regardless
+    if not relevant and deduplicated:
+        relevant = deduplicated[:2]
+
+    return relevant
 
 
 def format_upcoming_events_compact(events_config: list, holdings: list) -> list:
@@ -2563,6 +2820,34 @@ def get_upcoming_events(lookahead_days: int = 7) -> list:
     return load_events_config()
 
 
+def score_to_regime(score: float, vix_in: float) -> str:
+    """
+    Maps score to regime with VIX sanity check.
+    VIX-IN < 16 = market is NOT in high volatility regardless of score.
+    """
+    if score >= 80:    base = "STRONG_BULL"
+    elif score >= 65:  base = "BULL"
+    elif score >= 52:  base = "SIDEWAYS"
+    elif score >= 40:  base = "TRANSITION"
+    elif score >= 28:  base = "HIGH_VOLATILITY"
+    elif score >= 15:  base = "BEAR"
+    else:              base = "STRONG_BEAR"
+
+    # VIX sanity check: calm VIX cannot be HIGH_VOLATILITY
+    if base == "HIGH_VOLATILITY" and vix_in < 16:
+        _log(
+            f"[INFO] Regime override: score {score:.1f} → HIGH_VOLATILITY "
+            f"but VIX-IN {vix_in:.1f} is calm → using TRANSITION instead"
+        )
+        return "TRANSITION"
+
+    # STRONG_BEAR with calm VIX is also suspicious
+    if base == "STRONG_BEAR" and vix_in < 18:
+        return "BEAR"
+
+    return base
+
+
 
 def detect_market_regime(nifty_df, breadth_data: dict, macro_signals: dict) -> dict:
     score = 50
@@ -2605,13 +2890,10 @@ def detect_market_regime(nifty_df, breadth_data: dict, macro_signals: dict) -> d
         score = 50
 
     score = max(0, min(100, score))
-    if score >= 80:   regime = "STRONG_BULL"
-    elif score >= 65: regime = "BULL"
-    elif score >= 50: regime = "SIDEWAYS"
-    elif score >= 40: regime = "TRANSITION"
-    elif score >= 30: regime = "HIGH_VOLATILITY"
-    elif score >= 20: regime = "BEAR"
-    else:             regime = "STRONG_BEAR"
+
+    # Use VIX-sanity-checked mapping instead of raw score boundaries
+    vix_for_regime = macro_signals.get("vix_in", 15)
+    regime = score_to_regime(score, vix_for_regime)
 
     return {
         "regime":     regime,
@@ -5596,7 +5878,7 @@ def _run_pipeline_inner():
 
     # ── 1b. FII/DII flows from NSE ──
     _log("[2/17] Fetching FII/DII flows from NSE...")
-    fii_dii = fetch_fii_dii_flows()
+    fii_dii = get_fii_dii_data()
     macro["fii_flow_cr"]      = fii_dii["fii_flow_cr"]
     macro["dii_flow_cr"]      = fii_dii["dii_flow_cr"]
     macro["fii_available"]    = fii_dii.get("available", False)
