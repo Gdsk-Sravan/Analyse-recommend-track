@@ -2283,12 +2283,15 @@ def _fetch_fii_dii_google_news() -> "dict | None":
         from urllib.parse import quote
         today_str = datetime.date.today().strftime("%d %b").lstrip("0")  # "29 Jun"
 
-        # Words that indicate a CUMULATIVE/MONTHLY figure — reject these headlines
-        _CUMULATIVE_WORDS = (
-            "so far", "lakh crore", "month", "year", "ytd", "cumulative",
-            "since", "january", "february", "march", "april", "may", "june",
-            "july", "august", "september", "october", "november", "december",
-            "quarter", "fy", "fiscal", "total", "2024", "2025", "2026",
+        # Phrases that unambiguously indicate a CUMULATIVE/PERIOD figure.
+        # Must be specific multi-word phrases — lone month/year names appear in daily headlines too.
+        _CUMULATIVE_PHRASES = (
+            "so far", "lakh crore", "ytd", "cumulative",
+            "month to date", "year to date", "this month", "this year",
+            "in the month", "for the month", "during the month",
+            "total outflow", "total inflow", "total 2024", "total 2025", "total 2026",
+            "since january", "since april",  # fiscal year start phrases
+            "outflows reach", "inflows reach",
         )
 
         fii_val = dii_val = None
@@ -2316,8 +2319,8 @@ def _fetch_fii_dii_google_news() -> "dict | None":
                     continue
                 if "crore" not in tl:
                     continue
-                # Reject cumulative/monthly headlines — we want today's daily figure only
-                if any(w in tl for w in _CUMULATIVE_WORDS):
+                # Reject cumulative/period headlines — we want today's daily figure only
+                if any(w in tl for w in _CUMULATIVE_PHRASES):
                     _log(f"    [Google News/{label}] skipped (cumulative/monthly) — title: {title!r}")
                     continue
                 _log(f"    [Google News/{label}] attempting parse — title: {title!r}")
