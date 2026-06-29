@@ -37,11 +37,19 @@ except ImportError:
 
 TRACKER_XLSX  = os.getenv("TRACKER_XLSX", "recommendation_tracker.xlsx")
 TRACKING_DAYS = 60  # track for 60 trading days after recommendation
+# Only write new tracking rows when triggered by GitHub Actions cron schedule
+IS_SCHEDULED  = os.getenv("SCHEDULED_RUN", "false").lower() == "true"
 
 
 def run_tracker():
     today_str = datetime.now().strftime("%Y-%m-%d")
     print(f"=== TRACKER JOB: {today_str} ===")
+    print(f"[INFO] Run mode: {'SCHEDULED — will write tracking rows' if IS_SCHEDULED else 'MANUAL — read-only, no rows written'}")
+
+    if not IS_SCHEDULED:
+        print("[INFO] Manual run detected. Tracker rows are NOT written to preserve accurate day counts.")
+        print("[INFO] Use the scheduled run (4:30 PM IST weekdays) for proper daily tracking.")
+        return
 
     if not _YF_OK or not _OPENPYXL_OK:
         print("[ERROR] Missing dependencies — aborting")
