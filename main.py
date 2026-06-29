@@ -1608,39 +1608,75 @@ def pcr_score(pcr: float) -> int:
 def fetch_bulk_deals(days_back: int = 3) -> dict:
     result = {}
     try:
+        # Warm the NSE session by visiting the bulk-deals page first (required to get cookies)
         session = _nse_session()
-        # NSE bulk-deals endpoint requires explicit date range
+        warm = session.get(
+            "https://www.nseindia.com/market-data/bulk-block-deals",
+            headers={"Accept": "text/html"},
+            timeout=10,
+        )
+        _log(f"  [Bulk Deals] Session warm-up HTTP {warm.status_code}")
+
         today   = datetime.date.today()
         from_dt = (today - datetime.timedelta(days=days_back)).strftime("%d-%m-%Y")
         to_dt   = today.strftime("%d-%m-%Y")
-        url     = f"https://www.nseindia.com/api/historical/bulk-deals?from={from_dt}&to={to_dt}"
-        _log(f"  [Bulk Deals] GET {url}")
-        resp = session.get(
-            url,
-            headers={
-                "Accept": "application/json",
-                "Referer": "https://www.nseindia.com/market-data/bulk-block-deals",
-            },
-            timeout=12,
-        )
-        _log(f"  [Bulk Deals] HTTP {resp.status_code}")
-        if resp.status_code == 200:
-            deals = resp.json().get("data", [])
+
+        # Try the historical endpoint first, fall back to the simple endpoint
+        for url in [
+            f"https://www.nseindia.com/api/historical/bulk-deals?from={from_dt}&to={to_dt}",
+            "https://www.nseindia.com/api/bulk-deals",
+        ]:
+            _log(f"  [Bulk Deals] GET {url}")
+            resp = session.get(
+                url,
+                headers={
+                    "Accept": "application/json, text/plain, */*",
+                    "Referer": "https://www.nseindia.com/market-data/bulk-block-deals",
+                    "X-Requested-With": "XMLHttpRequest",
+                },
+                timeout=12,
+            )
+            _log(f"  [Bulk Deals] HTTP {resp.status_code} | Content-Type: {resp.headers.get('Content-Type','?')} | Body len: {len(resp.content)}")
+
+            if resp.status_code in (403, 429):
+                _log(f"  [Bulk Deals] BLOCKED ({resp.status_code}) — Cloudflare/rate-limit")
+                break
+
+            if resp.status_code == 404:
+                _log(f"  [Bulk Deals] 404 on {url} — trying next endpoint")
+                continue
+
+            if resp.status_code != 200:
+                _log(f"  [Bulk Deals] Unexpected HTTP {resp.status_code} — skipping")
+                break
+
+            # 200 but NSE sometimes returns an HTML Cloudflare gate with 200 status
+            ct = resp.headers.get("Content-Type", "")
+            if not resp.content:
+                _log("  [Bulk Deals] Empty body (Cloudflare gate or no data) — trying next endpoint")
+                continue
+            if "html" in ct.lower() or resp.content[:1] == b"<":
+                _log(f"  [Bulk Deals] Got HTML instead of JSON (Cloudflare gate) — body snippet: {resp.text[:120]!r}")
+                break
+
+            try:
+                payload = resp.json()
+            except Exception as je:
+                _log(f"  [Bulk Deals] JSON parse failed: {je} — body snippet: {resp.text[:120]!r}")
+                break
+
+            deals = payload.get("data", [])
             if not deals:
-                _log(f"  [Bulk Deals] API OK — empty response (no bulk deals in last {days_back} days, quiet period)")
+                _log(f"  [Bulk Deals] API OK — no bulk deals in last {days_back} days (quiet period)")
             else:
                 for deal in deals:
                     sym    = deal.get("symbol", "").strip() + ".NS"
                     action = "BUY" if str(deal.get("buySell", "")).upper().startswith("B") else "SELL"
                     result[sym] = action
-        elif resp.status_code in (403, 429):
-            _log(f"  [Bulk Deals] BLOCKED by NSE ({resp.status_code}) — Cloudflare/rate-limit, data unavailable")
-        elif resp.status_code == 404:
-            _log("  [Bulk Deals] 404 — endpoint URL may have changed; check NSE API docs")
-        else:
-            _log(f"  [Bulk Deals] Unexpected HTTP {resp.status_code} from NSE — skipping")
+            break  # success — don't try next endpoint
+
     except Exception as e:
-        _log(f"  [Bulk Deals] Network/parse error — {e}")
+        _log(f"  [Bulk Deals] Network error — {e}")
     return result
 
 
@@ -2325,19 +2361,19 @@ def fetch_fii_dii_flows(max_retries: int = 2) -> dict:
     now_t       = now_ist.time()
     just_closed = dtime(15, 30) <= now_t <= dtime(16, 15)
     is_prov     = now_t < dtime(18, 0)
-    too_early   = now_t < dtime(17, 30)  # NSE publishes provisional data ~5:30 PM
+
+    # Timing context — informational only, we always attempt sources
+    if now_t < dtime(15, 30):
+        _log(f"  [FII/DII] {now_t.strftime('%H:%M')} IST — market still open, today's data not published yet (expected)")
+    elif now_t < dtime(17, 30):
+        _log(f"  [FII/DII] {now_t.strftime('%H:%M')} IST — market closed, NSE provisional data expected ~5:30 PM (may get 0)")
+    else:
+        _log(f"  [FII/DII] {now_t.strftime('%H:%M')} IST — data should be available, attempting all sources")
 
     result = {
         "fii_flow_cr": 0.0, "dii_flow_cr": 0.0,
         "is_provisional": False, "available": False,
     }
-
-    if too_early:
-        _log(
-            f"  [FII/DII] Run time {now_t.strftime('%H:%M')} IST — "
-            "NSE publishes provisional data ~5:30 PM; skipping source attempts"
-        )
-        return result
 
     sources = [
         ("NSE API",               _fetch_fii_dii_nse),
@@ -2383,7 +2419,12 @@ def fetch_fii_dii_flows(max_retries: int = 2) -> dict:
             except Exception:
                 pass
 
-    _log("  [FII/DII] All sources unavailable — data not yet published for today")
+    _log(
+        "  [FII/DII] All sources returned 0 — "
+        + ("data not published yet (normal before ~5:30 PM, no action needed)"
+           if now_t < dtime(17, 30)
+           else "data should be available but all sources failed (API/network issue — investigate)")
+    )
     return result
 
 
