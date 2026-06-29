@@ -75,12 +75,6 @@ on:
           - "evening"
           - "morning"
 
-  schedule:
-    # JOB 1 — Evening signal pipeline: 13:30 UTC = 7:00 PM IST, Mon–Fri
-    - cron: "30 13 * * 1-5"
-    # JOB 2 — Morning gap-open check: 03:50 UTC = 9:20 AM IST, Mon–Fri
-    - cron: "50 3 * * 1-5"
-
 permissions:
   contents: write
   actions: read
