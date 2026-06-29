@@ -2216,28 +2216,34 @@ def _fetch_fii_dii_et_rss() -> "dict | None":
             _log("    [ET RSS] feedparser not available — skipped")
             return None
         for feed_url in [
-            "https://economictimes.indiatimes.com/markets/stocks/rss.cms",
+            "https://economictimes.indiatimes.com/markets/stocks/news/rss.cms",
             "https://economictimes.indiatimes.com/markets/rss.cms",
+            "https://economictimes.indiatimes.com/rss/news/topic/fii",
         ]:
             feed    = feedparser.parse(feed_url)
             status  = getattr(feed, 'status', 'N/A')
             entries = feed.entries
             _log(f"    [ET RSS] {feed_url} → HTTP {status}, {len(entries)} entries")
+            if not entries:
+                continue
             fii_entries = [
                 e for e in entries[:20]
                 if ("fii" in (e.get("title","")+e.get("summary","")).lower()
                     or "fpi" in (e.get("title","")+e.get("summary","")).lower())
                 and "crore" in (e.get("title","")+e.get("summary","")).lower()
                 and any(w in (e.get("title","")+e.get("summary","")).lower()
-                        for w in ("bought", "sold", "net"))
+                        for w in ("bought", "sold", "net", "pull", "pour", "inflow", "outflow"))
             ]
             _log(f"    [ET RSS] {len(fii_entries)} FII-related entries")
             for entry in fii_entries:
                 text   = entry.get("title", "") + " " + entry.get("summary", "")
                 result = _parse_fii_dii_from_text(text)
                 if result:
+                    _log(f"    [ET RSS] matched — title: {entry.get('title','')!r}")
                     return result
-                _log(f"    [ET RSS] No parse match — title: {entry.get('title','')!r}")
+                _log(f"    [ET RSS] no parse match — title: {entry.get('title','')!r}")
+            if fii_entries:
+                break  # Found relevant entries but couldn't parse — don't try more URLs
     except Exception as e:
         _log(f"    [ET RSS] Error — {e}")
     return None
@@ -2412,7 +2418,7 @@ def fetch_fii_dii_flows(max_retries: int = 2) -> dict:
 
     result = {
         "fii_flow_cr": 0.0, "dii_flow_cr": 0.0,
-        "is_provisional": False, "available": False,
+        "is_provisional": False, "available": False, "dii_found": False,
     }
 
     sources = [
@@ -2430,11 +2436,13 @@ def fetch_fii_dii_flows(max_retries: int = 2) -> dict:
             if data and (data.get("fii_flow_cr", 0) != 0 or data.get("dii_flow_cr", 0) != 0):
                 result["fii_flow_cr"]    = data["fii_flow_cr"]
                 result["dii_flow_cr"]    = data["dii_flow_cr"]
+                result["dii_found"]      = data.get("dii_found", data.get("dii_flow_cr", 0) != 0)
                 result["is_provisional"] = is_prov
                 result["available"]      = True
+                dii_str = f"{result['dii_flow_cr']:+.0f}Cr" if result["dii_found"] else "N/A"
                 _log(
                     f"  [FII/DII] {name} ✓ — "
-                    f"FII {result['fii_flow_cr']:+.0f}Cr | DII {result['dii_flow_cr']:+.0f}Cr"
+                    f"FII {result['fii_flow_cr']:+.0f}Cr | DII {dii_str}"
                 )
                 return result
         except Exception as e:
@@ -2482,6 +2490,7 @@ def format_fii_dii_line(fii_data: dict) -> str:
     """
     Timing-aware FII/DII formatter.
     Never shows Rs0Cr — shows a timing explanation when data isn't published yet.
+    Shows 'N/A' for DII when it was not found (vs genuinely zero).
     """
     from datetime import time as dtime
     now_ist     = datetime.datetime.now()
@@ -2490,35 +2499,38 @@ def format_fii_dii_line(fii_data: dict) -> str:
 
     if not fii_data.get("available"):
         if just_closed:
-            return "FII/DII: Provisional data publishing (available ~4:30 PM)"
+            return "FII/DII: Provisional data publishing (available ~6:30 PM)"
         elif market_open:
             return "FII/DII: Intraday provisional data pending (~10:30 AM)"
         else:
             return "FII/DII: Data unavailable"
 
-    fii  = fii_data["fii_flow_cr"]
-    dii  = fii_data["dii_flow_cr"]
-    prov = " (provisional)" if fii_data.get("is_provisional") else ""
+    fii       = fii_data["fii_flow_cr"]
+    dii       = fii_data["dii_flow_cr"]
+    dii_found = fii_data.get("dii_found", dii != 0)  # backward-compat: if no flag, assume found if non-zero
+    prov      = " (provisional)" if fii_data.get("is_provisional") else ""
 
     fii_icon = "🟢" if fii > 0 else "🔴"
-    dii_icon = "🟢" if dii > 0 else "🔴"
+    dii_icon = "🟢" if dii > 0 else ("🔴" if dii < 0 else "⚪")
 
-    if fii > 500 and dii > 500:
+    if fii > 500 and dii_found and dii > 500:
         sentiment = "💪 Both buying"
-    elif fii < -500 and dii < -500:
+    elif fii < -500 and dii_found and dii < -500:
         sentiment = "⚠️ Both selling"
     elif fii > 500:
         sentiment = "🟢 FII buying"
-    elif dii > 500:
+    elif dii_found and dii > 500:
         sentiment = "🟡 DII supporting"
     elif fii < -500:
         sentiment = "🔴 FII selling"
     else:
         sentiment = "➡️ Neutral flows"
 
+    dii_str = f"{dii_icon} ₹{abs(dii):.0f}Cr" if dii_found else "N/A"
+
     return (
         f"FII {fii_icon} ₹{abs(fii):.0f}Cr · "
-        f"DII {dii_icon} ₹{abs(dii):.0f}Cr · {sentiment}{prov}"
+        f"DII {dii_str} · {sentiment}{prov}"
     )
 
 
@@ -6191,7 +6203,8 @@ def _run_pipeline_inner():
     macro["dii_flow_cr"]      = fii_dii["dii_flow_cr"]
     macro["fii_available"]    = fii_dii.get("available", False)
     macro["fii_provisional"]  = fii_dii.get("is_provisional", False)
-    _log(f"  FII: {fii_dii['fii_flow_cr']:+.0f}Cr | DII: {fii_dii['dii_flow_cr']:+.0f}Cr | Available: {fii_dii['available']}")
+    dii_log = f"{fii_dii['dii_flow_cr']:+.0f}Cr" if fii_dii.get("dii_found") else "N/A"
+    _log(f"  FII: {fii_dii['fii_flow_cr']:+.0f}Cr | DII: {dii_log} | Available: {fii_dii['available']}")
 
     # ── 3. Bulk/block deals ──
     _log("[3/17] Fetching bulk/block deals...")
