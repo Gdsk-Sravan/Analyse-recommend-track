@@ -63,8 +63,6 @@ except ImportError:
 PORTFOLIO_CAPITAL   = float(os.getenv("CAPITAL", "500000"))
 TELEGRAM_BOT_TOKEN  = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID    = os.getenv("TELEGRAM_CHAT_ID", "")
-TRACKER_BOT_TOKEN   = os.getenv("TRACKER_BOT_TOKEN", "")
-TRACKER_CHAT_ID     = os.getenv("TRACKER_CHAT_ID", "")
 # Dedicated BUY-signal channel — set BUY_BOT_TOKEN + BUY_CHAT_ID in GitHub Secrets
 BUY_BOT_TOKEN       = os.getenv("BUY_BOT_TOKEN", "")
 BUY_CHAT_ID         = os.getenv("BUY_CHAT_ID", "")
@@ -620,24 +618,6 @@ def send_telegram(message: str) -> None:
             break
 
 
-def send_tracker_telegram(message: str) -> None:
-    if not TRACKER_BOT_TOKEN or not TRACKER_CHAT_ID:
-        return
-    chunks = _split_telegram_message(message, TELEGRAM_MAX_CHARS)
-    for chunk in chunks:
-        try:
-            url = f"https://api.telegram.org/bot{TRACKER_BOT_TOKEN}/sendMessage"
-            resp = requests.post(url, json={
-                "chat_id": TRACKER_CHAT_ID,
-                "text": _sanitize_telegram_html(chunk),
-                "parse_mode": "HTML",
-            }, timeout=12)
-            if resp.status_code != 200:
-                _log(f"[WARN] Tracker Telegram: {resp.status_code} {resp.text[:80]}")
-        except Exception as e:
-            _log(f"[WARN] send_tracker_telegram failed: {e}")
-
-
 def send_buy_telegram(buys: list, regime: str, timestamp: str) -> None:
     """
     Sends BUY signals ONLY to a dedicated channel (BUY_BOT_TOKEN + BUY_CHAT_ID).
@@ -753,6 +733,9 @@ def save_csv(data: list, base_filename: str) -> None:
 # SECTION 3 — GROQ AI (3-KEY ROUND-ROBIN) — Bug 4 fix
 # ─────────────────────────────────────────────────────────────────────────────
 
+CLOUD_AI_ENDPOINT = os.getenv("CLOUD_AI_ENDPOINT", "")
+CLOUD_AI_KEY      = os.getenv("CLOUD_AI_KEY", "")
+
 _GROQ_KEYS_RAW = [
     os.getenv("GROQ_API_KEY_1", ""),
     os.getenv("GROQ_API_KEY_2", ""),
@@ -837,7 +820,320 @@ def _parse_ai_json(text: str) -> dict | None:
         return None
 
 
-def _rule_based_news_score(text: str) -> dict:
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 3b — SHARED AI CALLER + HIGH-VALUE AI FUNCTIONS
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _call_ai(prompt: str, max_tokens: int = 100) -> str | None:
+    """
+    Shared AI caller with 3-tier fallback.
+    Tier 1: SAP / Cloud AI  (CLOUD_AI_ENDPOINT + CLOUD_AI_KEY)
+    Tier 2: Groq llama-3.1-8b-instant  (existing key rotation)
+    Tier 3: Returns None — caller uses rule-based fallback.
+    prompt must be under 1500 chars (~300 tokens).
+    """
+    if len(prompt) > 1500:
+        prompt = prompt[:1500]
+        _log("[WARN] AI prompt truncated to 1500 chars")
+
+    # Tier 1: Cloud / SAP AI
+    if CLOUD_AI_ENDPOINT and CLOUD_AI_KEY:
+        try:
+            r = requests.post(
+                CLOUD_AI_ENDPOINT,
+                headers={"Authorization": f"Bearer {CLOUD_AI_KEY}",
+                         "Content-Type":  "application/json"},
+                json={"prompt": prompt, "max_tokens": max_tokens, "temperature": 0.3},
+                timeout=10,
+            )
+            if r.status_code == 200:
+                data = r.json()
+                text = (data.get("choices", [{}])[0].get("text", "") or
+                        data.get("content", [{}])[0].get("text", "") or
+                        data.get("response", "") or data.get("output", ""))
+                if text and len(text.strip()) > 10:
+                    return text.strip()
+        except Exception as e:
+            _log(f"[WARN] Cloud AI failed: {e}")
+
+    # Tier 2: Groq (uses existing key rotation)
+    text = _call_groq_with_rotation(prompt, max_tokens=max_tokens)
+    if text and len(text.strip()) > 10:
+        return text.strip()
+
+    # Tier 3: unavailable
+    return None
+
+
+def _rule_based_summary(regime: str, buy_count: int, near_miss_count: int,
+                         top_symbol: str, portfolio_alerts: list,
+                         ema_bear: bool) -> str:
+    """Rule-based fallback for daily summary."""
+    parts = []
+    if regime in ("STRONG_BULL", "BULL"):
+        parts.append("Market is in a bullish phase with broad participation.")
+    elif regime == "TRANSITION":
+        parts.append("Market is in transition with mixed signals.")
+    elif regime == "SIDEWAYS":
+        parts.append("Market is range-bound — patience required.")
+    else:
+        parts.append("Market is in a bearish phase — preserve capital.")
+    if buy_count > 0:
+        parts.append(f"{buy_count} institutional-quality setup(s) identified today.")
+    else:
+        parts.append("No institutional-quality setup met all required conditions today.")
+    if near_miss_count > 0:
+        parts.append(f"{near_miss_count} stock(s) within striking distance — {top_symbol} is closest.")
+    exits = [a for a in portfolio_alerts if "EXIT" in a.get("action", "")]
+    if exits:
+        parts.append(f"{len(exits)} position(s) require exit review.")
+    elif ema_bear:
+        parts.append("Avoid aggressive positioning until NIFTY reclaims EMA200.")
+    else:
+        parts.append("Existing positions on track.")
+    return " ".join(parts)
+
+
+def ai_daily_summary(
+    regime: str, regime_score: float, nifty_pct: float,
+    vix_in: float, breadth_pct: float,
+    fii_flow_cr: float, dii_flow_cr: float,
+    buy_count: int, near_miss_count: int,
+    top_near_miss_symbol: str, top_near_miss_conf_gap: float,
+    portfolio_alerts: list, ema_bear: bool,
+    upcoming_event: str = "",
+) -> str:
+    """4-sentence AI market briefing. ~120 token input, ~80 token output."""
+    context = (
+        f"Regime: {regime} (score {regime_score:.0f}/100)\n"
+        f"NIFTY: {nifty_pct:+.2f}% | VIX-IN: {vix_in:.1f} | Breadth: {breadth_pct:.0f}%\n"
+        f"FII: Rs{fii_flow_cr:+.0f}Cr | DII: Rs{dii_flow_cr:+.0f}Cr\n"
+        f"Structure: {'below major EMAs - bearish' if ema_bear else 'above key EMAs - supportive'}\n"
+        f"BUY signals: {buy_count} | Near miss: {near_miss_count} "
+        f"(closest: {top_near_miss_symbol} needs +{top_near_miss_conf_gap:.1f})\n"
+        f"Portfolio exits needed: {len([a for a in portfolio_alerts if 'EXIT' in a.get('action','')])}\n"
+        f"Upcoming event: {upcoming_event if upcoming_event else 'none in next 7 days'}"
+    )
+    prompt = (
+        f"{context}\n\n"
+        "Write exactly 4 sentences for a swing trader's daily briefing:\n"
+        "1: What the market is doing today and why.\n"
+        "2: What this means for new trades today.\n"
+        "3: What to watch closely (portfolio risk OR nearest opportunity).\n"
+        "4: One actionable recommendation for tomorrow.\n"
+        "Rules: max 80 words total, no bullet points, no jargon, "
+        "sound like a senior trader, never say 'I' or 'as an AI'."
+    )
+    result = _call_ai(prompt, max_tokens=120)
+    if result:
+        sentences = [s.strip() for s in result.split(".") if s.strip()]
+        if len(sentences) >= 2:
+            return ". ".join(sentences[:4]) + "."
+    return _rule_based_summary(
+        regime, buy_count, near_miss_count,
+        top_near_miss_symbol, portfolio_alerts, ema_bear
+    )
+
+
+def _rule_based_thesis(symbol: str, sector: str, rr: float,
+                        conf_trend: str, catalyst: list,
+                        sector_status: str) -> str:
+    """Rule-based fallback for BUY thesis."""
+    parts = []
+    if sector_status in ("LEADING", "IMPROVING"):
+        parts.append(f"{sector} sector showing strength")
+    if "VOL_SURGE" in catalyst:
+        parts.append("volume expansion confirming move")
+    if "UPTREND" in catalyst:
+        parts.append("price in clean uptrend")
+    if conf_trend and "rising" in conf_trend.lower():
+        parts.append("confidence building over 3 days")
+    reason = ", ".join(parts) if parts else "multi-factor confluence"
+    return f"{symbol}: {reason} with R/R {rr:.1f}x. Risk: stop must hold — no averaging down."
+
+
+def ai_buy_thesis(
+    symbol: str, sector: str, confidence: float, tq: float, rr: float,
+    conf_trend: str, catalyst: list, sector_status: str,
+    roe: float, pledge_pct: float, regime: str, risk_pct: float,
+) -> str:
+    """1-2 sentence specific trade thesis for a BUY signal. ~80 token input."""
+    prompt = (
+        f"Stock selected as BUY signal:\n"
+        f"Symbol: {symbol} | Sector: {sector}\n"
+        f"Confidence: {confidence:.1f}/100 | TQ: {tq:.1f} | R/R: {rr:.2f}x\n"
+        f"Confidence trend (3d): {conf_trend if conf_trend else 'first appearance'}\n"
+        f"Catalysts: {', '.join(catalyst) if catalyst else 'none'}\n"
+        f"Sector status: {sector_status} | ROE {roe:.1f}% | Pledge {pledge_pct:.0f}%\n"
+        f"Risk per trade: {risk_pct:.1f}% | Regime: {regime}\n\n"
+        "Write ONE sentence (max 25 words) on why this stock was selected today — "
+        "mention sector, R/R, and strongest signal. "
+        "Then ONE sentence (max 15 words) on the key risk. No bullets, no jargon."
+    )
+    result = _call_ai(prompt, max_tokens=80)
+    if result and len(result) > 20:
+        clean = result.strip().replace("\n", " ")
+        sentences = [s.strip() for s in clean.split(".") if s.strip()]
+        return ". ".join(sentences[:2]) + "." if sentences else clean
+    return _rule_based_thesis(symbol, sector, rr, conf_trend, catalyst, sector_status)
+
+
+def _rule_based_near_miss_insight(
+    symbol: str, conf_gap: float, conf_only: bool,
+    rr_fail: bool, tq_fail: bool, conf_trend: str, days_watching: int,
+) -> str:
+    """Rule-based fallback for near miss insight."""
+    if conf_only:
+        if conf_trend and "rising" in conf_trend.lower():
+            return (f"Confidence rising — needs {conf_gap:.1f} more points, "
+                    f"likely 2-3 sessions at current pace.")
+        return (f"Only blocker is confidence gap of {conf_gap:.1f} — "
+                f"watch for volume surge above 20-day average.")
+    if rr_fail:
+        return "R/R too low — needs price to pull back slightly to improve entry level."
+    if tq_fail:
+        return "Chart pattern not clean enough yet — wait for consolidation above entry."
+    if days_watching >= 5:
+        return (f"Stuck on watchlist {days_watching} days — "
+                f"remove if no progress in 2 more sessions.")
+    return "Watch for volume confirmation above entry level."
+
+
+def ai_near_miss_insight(
+    symbol: str, sector: str, confidence: float, conf_gap: float,
+    tq: float, rr: float, conf_trend: str, fail_reasons: list,
+    gate_pattern: str, sector_status: str, risk_pct: float,
+    days_watching: int,
+) -> str:
+    """1 sentence: what must happen for this near miss to become a BUY. ~80 token input."""
+    primary_fail = fail_reasons[0] if fail_reasons else "CONFIDENCE_FAIL"
+    conf_only    = len(fail_reasons) == 1 and "CONF" in primary_fail
+    rr_fail      = any("RR" in f for f in fail_reasons)
+    tq_fail      = any("TQ" in f for f in fail_reasons)
+
+    prompt = (
+        f"Near miss stock:\n"
+        f"Symbol: {symbol} | Sector: {sector}\n"
+        f"Confidence: {confidence:.1f} (needs {confidence+conf_gap:.1f}, gap: {conf_gap:.1f})\n"
+        f"TQ: {tq:.1f} | R/R: {rr:.2f}x\n"
+        f"Confidence trend (3d): {conf_trend if conf_trend else 'not enough data'}\n"
+        f"Primary blocker: {primary_fail} | Days watching: {days_watching}\n"
+        f"Gate pattern: {gate_pattern if gate_pattern else 'first appearance'}\n\n"
+        f"Write ONE sentence (max 25 words) answering: "
+        f"'What specifically needs to happen in the next 1-3 days for {symbol} to become a BUY?' "
+        "Mention the actual blocker and a concrete trigger. No bullet points."
+    )
+    result = _call_ai(prompt, max_tokens=60)
+    if result and len(result) > 15:
+        clean = result.strip().replace("\n", " ")
+        sentences = [s.strip() for s in clean.split(".") if s.strip()]
+        return sentences[0] + "." if sentences else clean
+    return _rule_based_near_miss_insight(
+        symbol, conf_gap, conf_only, rr_fail, tq_fail, conf_trend, days_watching
+    )
+
+
+def run_all_ai_calls(
+    regime_data: dict, macro: dict, breadth_data: dict,
+    nifty_state: dict, buys: list, watchlist: list,
+    portfolio_alerts: list, conf_history: dict,
+    gate_memory: dict, events: list,
+) -> dict:
+    """
+    Runs all AI calls in parallel via ThreadPoolExecutor.
+    Returns {daily_summary, buy_theses, near_miss_insights}.
+    Never fails — all have rule-based fallbacks.
+    Total: max 9 calls, typically ~3-5 seconds.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    results = {"daily_summary": "", "buy_theses": {}, "near_miss_insights": {}}
+    near_miss    = [w for w in watchlist if w.get("tier") == "NEAR_MISS"]
+    top_nm       = near_miss[0] if near_miss else {}
+    upcoming_ev  = events[0]["name"] if events else ""
+    regime       = regime_data["regime"]
+
+    futures = {}
+    try:
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            # Call 1: daily summary (always)
+            futures["daily_summary"] = executor.submit(
+                ai_daily_summary,
+                regime                = regime,
+                regime_score          = regime_data["score"],
+                nifty_pct             = macro.get("nifty_1d_pct", 0),
+                vix_in                = macro.get("vix_in", 15),
+                breadth_pct           = breadth_data.get("ema20_pct", 50),
+                fii_flow_cr           = macro.get("fii_flow_cr", 0),
+                dii_flow_cr           = macro.get("dii_flow_cr", 0),
+                buy_count             = len(buys),
+                near_miss_count       = len(near_miss),
+                top_near_miss_symbol  = top_nm.get("symbol", "none"),
+                top_near_miss_conf_gap= top_nm.get("conf_gap", 0),
+                portfolio_alerts      = portfolio_alerts,
+                ema_bear              = nifty_state.get("ema_bear", True),
+                upcoming_event        = upcoming_ev,
+            )
+            # Calls 2-6: BUY theses (max 5)
+            for stock in buys[:5]:
+                sym = stock["symbol"]
+                futures[f"buy_{sym}"] = executor.submit(
+                    ai_buy_thesis,
+                    symbol        = sym,
+                    sector        = stock.get("sector", "OTHERS"),
+                    confidence    = stock.get("final_confidence", 0),
+                    tq            = stock.get("trade_quality_score", 0),
+                    rr            = stock.get("rr_ratio", 0),
+                    conf_trend    = get_confidence_trend(sym, conf_history),
+                    catalyst      = stock.get("catalysts", []),
+                    sector_status = stock.get("sector_status", "NEUTRAL"),
+                    roe           = stock.get("roe", 0),
+                    pledge_pct    = stock.get("promoter_pledge_pct", 0),
+                    regime        = regime,
+                    risk_pct      = stock.get("risk_pct", 0),
+                )
+            # Calls 7-9: near miss insights (top 3 only)
+            for w in near_miss[:3]:
+                sym = w["symbol"]
+                futures[f"nm_{sym}"] = executor.submit(
+                    ai_near_miss_insight,
+                    symbol        = sym,
+                    sector        = w.get("sector", "OTHERS"),
+                    confidence    = w.get("conf", w.get("final_confidence", 0)),
+                    conf_gap      = w.get("conf_gap", 0),
+                    tq            = w.get("tq", w.get("trade_quality_score", 0)),
+                    rr            = w.get("rr_ratio", w.get("rr", 0)),
+                    conf_trend    = get_confidence_trend(sym, conf_history),
+                    fail_reasons  = w.get("fail_reasons", []),
+                    gate_pattern  = get_gate_pattern(sym, gate_memory),
+                    sector_status = w.get("sector_status", "NEUTRAL"),
+                    risk_pct      = w.get("risk_pct", 0),
+                    days_watching = w.get("days_watching", 0),
+                )
+            for key, future in futures.items():
+                try:
+                    text = future.result(timeout=15)
+                    if key == "daily_summary":
+                        results["daily_summary"] = text or ""
+                    elif key.startswith("buy_"):
+                        results["buy_theses"][key[4:]] = text or ""
+                    elif key.startswith("nm_"):
+                        results["near_miss_insights"][key[3:]] = text or ""
+                except Exception as e:
+                    _log(f"[WARN] AI call {key} timed out or failed: {e}")
+    except Exception as e:
+        _log(f"[WARN] run_all_ai_calls failed: {e}")
+
+    _log(
+        f"[INFO] AI calls complete: "
+        f"summary={'OK' if results['daily_summary'] else 'FALLBACK'} | "
+        f"buy theses={len(results['buy_theses'])} | "
+        f"near miss insights={len(results['near_miss_insights'])}"
+    )
+    return results
+
+
+
     tl = text.lower()
     for kw in BLACK_SWAN_KEYWORDS:
         if kw in tl:
@@ -1589,21 +1885,37 @@ def macro_regime_adjustment(macro: dict) -> int:
 
 def fetch_fii_dii_flows() -> dict:
     """
-    Fetches today's FII/DII provisional flows from NSE.
-    Returns dict with fii_flow_cr and dii_flow_cr. Never crashes.
+    Fetches FII/DII flows from NSE.
+    Available from ~10 AM IST as provisional data, final after 6 PM IST.
+    NEVER blocked by time — always attempts fetch.
+    Returns {fii_flow_cr, dii_flow_cr, is_provisional, available}.
     """
-    result = {"fii_flow_cr": 0.0, "dii_flow_cr": 0.0}
+    from datetime import time as dtime
+    now_ist      = datetime.datetime.now()
+    market_open  = dtime(9, 15)
+    market_close = dtime(15, 30)
+    is_market_hours = market_open <= now_ist.time() <= market_close
+
+    result = {
+        "fii_flow_cr":    0.0,
+        "dii_flow_cr":    0.0,
+        "is_provisional": False,
+        "available":      False,
+    }
+
+    # ATTEMPT 1: NSE fiidiiTradeReact API
     try:
         session = requests.Session()
         session.get("https://www.nseindia.com",
                     headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
                     timeout=10)
-        url = "https://www.nseindia.com/api/fiidiiTradeReact"
-        r = session.get(url, headers={
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-            "Referer":    "https://www.nseindia.com",
-            "Accept":     "application/json",
-        }, timeout=12)
+        r = session.get(
+            "https://www.nseindia.com/api/fiidiiTradeReact",
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+                "Referer":    "https://www.nseindia.com",
+                "Accept":     "application/json",
+            }, timeout=12)
         if r.status_code == 200:
             data = r.json()
             if isinstance(data, list) and len(data) > 0:
@@ -1612,13 +1924,15 @@ def fetch_fii_dii_flows() -> dict:
                 fii_sell = float(str(latest.get("fiiSell", "0")).replace(",", ""))
                 dii_buy  = float(str(latest.get("diiBuy",  "0")).replace(",", ""))
                 dii_sell = float(str(latest.get("diiSell", "0")).replace(",", ""))
-                result["fii_flow_cr"] = round(fii_buy - fii_sell, 2)
-                result["dii_flow_cr"] = round(dii_buy - dii_sell, 2)
+                result["fii_flow_cr"]    = round(fii_buy - fii_sell, 2)
+                result["dii_flow_cr"]    = round(dii_buy - dii_sell, 2)
+                result["is_provisional"] = is_market_hours
+                result["available"]      = True
                 return result
     except Exception as e:
-        _log(f"[WARN] FII/DII NSE fetch failed: {e}")
+        _log(f"[WARN] FII/DII NSE API failed: {e}")
 
-    # Fallback: moneycontrol RSS
+    # ATTEMPT 2: moneycontrol RSS fallback
     try:
         if _FEEDPARSER_OK:
             import re as _re
@@ -1634,6 +1948,8 @@ def fetch_fii_dii_flows() -> dict:
                     if dii_m:
                         val = float(dii_m.group(1).replace(",", ""))
                         result["dii_flow_cr"] = val if "bought" in title else -val
+                    result["is_provisional"] = is_market_hours
+                    result["available"]      = True
                     break
     except Exception:
         pass
@@ -1641,22 +1957,49 @@ def fetch_fii_dii_flows() -> dict:
     return result
 
 
-def format_fii_dii(fii: float, dii: float) -> str:
-    """Format FII/DII for Telegram. Handles zero gracefully."""
-    if fii == 0 and dii == 0:
-        return "FII/DII: Data unavailable (post-market)"
-    fii_lbl = f"Rs{abs(fii):.0f}Cr {'🟢 BUY' if fii > 0 else '🔴 SELL'}"
-    dii_lbl = f"Rs{abs(dii):.0f}Cr {'🟢 BUY' if dii > 0 else '🔴 SELL'}"
-    combined = fii + dii
+def format_fii_dii_line(fii_data: dict) -> str:
+    """
+    Formats FII/DII line for Telegram.
+    Shows 'provisional' during market hours, never 'unavailable' while market is open.
+    """
+    from datetime import time as dtime
+    if not fii_data.get("available"):
+        now_ist   = datetime.datetime.now()
+        mkt_open  = dtime(9, 15)
+        mkt_close = dtime(15, 30)
+        if mkt_open <= now_ist.time() <= mkt_close:
+            return "FII/DII: Provisional data pending (try after 10:30 AM)"
+        return "FII/DII: Data unavailable (post-market or holiday)"
+
+    fii  = fii_data["fii_flow_cr"]
+    dii  = fii_data["dii_flow_cr"]
+    prov = " (provisional)" if fii_data.get("is_provisional") else ""
+
+    fii_icon = "🟢" if fii > 0 else "🔴"
+    dii_icon = "🟢" if dii > 0 else "🔴"
+
     if fii > 500 and dii > 500:
         sentiment = "💪 Both buying"
-    elif fii * dii < 0:
-        sentiment = "🟡 Mixed flows"
     elif fii < -500 and dii < -500:
         sentiment = "⚠️ Both selling"
+    elif fii > 500:
+        sentiment = "🟢 FII buying"
+    elif dii > 500:
+        sentiment = "🟡 DII supporting"
+    elif fii < -500:
+        sentiment = "🔴 FII selling"
     else:
-        sentiment = "➡️ Neutral"
-    return f"FII {fii_lbl} | DII {dii_lbl} | {sentiment}"
+        sentiment = "➡️ Neutral flows"
+
+    return (f"FII {fii_icon} Rs{abs(fii):.0f}Cr | "
+            f"DII {dii_icon} Rs{abs(dii):.0f}Cr | {sentiment}{prov}")
+
+
+def format_fii_dii(fii: float, dii: float) -> str:
+    """Legacy wrapper — used internally where only float values are available."""
+    available = not (fii == 0 and dii == 0)
+    return format_fii_dii_line({"fii_flow_cr": fii, "dii_flow_cr": dii,
+                                "available": available, "is_provisional": False})
 
 
 def interpret_nifty_structure(close: float, ema20: float, ema50: float,
@@ -2037,103 +2380,185 @@ def is_near_event(symbol_clean: str, results_dates: list,
 
 
 # Known market events with sector impact (FEATURE 5)
-KNOWN_EVENTS = {
-    "Union Budget Presentation": {
-        "date":         "2026-07-01",
-        "sectors_up":   ["DEFENCE", "INFRA", "CAPITAL_GOODS", "RAILWAYS"],
-        "sectors_down": ["FMCG", "AUTO"],
-        "note":         "Historically: defence +3-6%, infra +2-4% post-budget"
-    },
-    "NSE Weekly Expiry": {
-        "date":         "",
-        "sectors_up":   [],
-        "sectors_down": [],
-        "note":         "Increased volatility on expiry day — tighten stops"
-    },
-    "NSE Monthly Expiry": {
-        "date":         "",
-        "sectors_up":   [],
-        "sectors_down": [],
-        "note":         "Monthly expiry — high volatility, avoid new entries"
-    },
-    "RBI MPC Decision": {
-        "date":         "",
-        "sectors_up":   ["BANKING", "FINANCE", "REALTY"],
-        "sectors_down": [],
-        "note":         "Rate decision — banking stocks react sharply"
-    },
-    "Financial Year End": {
-        "date":         "2026-03-31",
-        "sectors_up":   [],
-        "sectors_down": [],
-        "note":         "FY-end window dressing — watch for profit booking"
-    },
-}
+EVENTS_CONFIG_FILE = "events_config.json"
+
+# ── Known annual schedules (update once per year) ─────────────────────────────
+_RBI_MPC_DATES_2026 = [
+    "2026-02-07", "2026-04-09", "2026-06-06",
+    "2026-08-08", "2026-10-07", "2026-12-05",
+]
+_FOMC_DATES_2026 = [
+    "2026-01-29", "2026-03-19", "2026-05-07",
+    "2026-06-18", "2026-07-30", "2026-09-17",
+    "2026-11-05", "2026-12-17",
+]
+_INDIA_BUDGET_2027 = "2027-02-01"   # Union Budget always 1 Feb
 
 
-def format_upcoming_events(events: list, holdings: list) -> list:
-    """Shows upcoming events with impact on current holdings (FEATURE 5)."""
+def _nse_expiry_dates(lookahead_days: int = 60) -> list:
+    """
+    Returns all NSE weekly + monthly expiry dates in the next `lookahead_days`.
+    Weekly  = every Thursday.
+    Monthly = last Thursday of each month (when it falls in the window).
+    """
+    today  = datetime.date.today()
+    end    = today + datetime.timedelta(days=lookahead_days)
+    events = []
+    cur    = today
+    while cur <= end:
+        if cur.weekday() == 3:            # Thursday
+            # Is it the last Thursday of the month?
+            next_thu = cur + datetime.timedelta(weeks=1)
+            is_monthly = next_thu.month != cur.month
+            events.append({
+                "name":         "NSE Monthly Expiry" if is_monthly else "NSE Weekly Expiry",
+                "date":         cur.isoformat(),
+                "note":         ("Monthly expiry — high volatility, avoid new entries on expiry day"
+                                 if is_monthly else
+                                 "Weekly expiry — increased intraday volatility, tighten stops"),
+                "sectors_up":   [],
+                "sectors_down": [],
+                "_auto":        True,
+            })
+        cur += datetime.timedelta(days=1)
+    return events
+
+
+def _rbi_mpc_events(lookahead_days: int = 60) -> list:
+    """Returns upcoming RBI MPC decision dates from known 2026 schedule."""
+    today  = datetime.date.today()
+    end    = today + datetime.timedelta(days=lookahead_days)
+    events = []
+    for ds in _RBI_MPC_DATES_2026:
+        try:
+            d = datetime.date.fromisoformat(ds)
+            if today <= d <= end:
+                events.append({
+                    "name":         "RBI MPC Decision",
+                    "date":         ds,
+                    "note":         "Rate decision — banking/finance/realty stocks react sharply",
+                    "sectors_up":   ["BANKING", "FINANCE", "REALTY"],
+                    "sectors_down": [],
+                    "_auto":        True,
+                })
+        except Exception:
+            pass
+    return events
+
+
+def _fomc_events(lookahead_days: int = 60) -> list:
+    """Returns upcoming FOMC decision dates (impacts FII flows + DXY)."""
+    today  = datetime.date.today()
+    end    = today + datetime.timedelta(days=lookahead_days)
+    events = []
+    for ds in _FOMC_DATES_2026:
+        try:
+            d = datetime.date.fromisoformat(ds)
+            if today <= d <= end:
+                events.append({
+                    "name":         "US FOMC Decision",
+                    "date":         ds,
+                    "note":         "Fed rate decision — DXY/FII flows react, watch IT/PHARMA",
+                    "sectors_up":   ["IT", "PHARMA"],
+                    "sectors_down": ["REALTY", "FINANCE"],
+                    "_auto":        True,
+                })
+        except Exception:
+            pass
+    return events
+
+
+def build_events_calendar(lookahead_days: int = 30) -> list:
+    """
+    Auto-builds the full events calendar.
+    Sources: NSE expiry math + known RBI MPC + FOMC schedules.
+    Saves to events_config.json so it's auditable.
+    Returns only events within lookahead_days, sorted by date.
+    Called ONCE at pipeline start — no manual editing needed.
+    """
+    import json
     try:
-        if not events:
+        all_events = (
+            _nse_expiry_dates(lookahead_days) +
+            _rbi_mpc_events(lookahead_days) +
+            _fomc_events(lookahead_days)
+        )
+        # Sort by date
+        all_events.sort(key=lambda x: x.get("date", ""))
+
+        # Persist for auditability (strip _auto flag before saving)
+        saveable = [{k: v for k, v in ev.items() if k != "_auto"} for ev in all_events]
+        try:
+            with open(EVENTS_CONFIG_FILE, "w") as f:
+                json.dump(saveable, f, indent=2)
+        except Exception:
+            pass
+
+        today = datetime.date.today()
+        end   = today + datetime.timedelta(days=lookahead_days)
+        return [
+            ev for ev in all_events
+            if today <= datetime.date.fromisoformat(ev["date"]) <= end
+        ]
+    except Exception as e:
+        _log(f"[WARN] build_events_calendar failed: {e}")
+        return []
+
+
+def load_events_config() -> list:
+    """Entry point — always rebuilds from auto-sources. No manual editing needed."""
+    return build_events_calendar(lookahead_days=30)
+
+
+def format_upcoming_events_compact(events_config: list, holdings: list) -> list:
+    """
+    2 lines per event maximum (FIX 3G).
+    Line 1: Event name + date
+    Line 2: Impact on holdings (if any) or general note
+    """
+    try:
+        if not events_config:
             return []
         lines = ["UPCOMING EVENTS"]
-        holding_sectors = set()
+        hold_secs = set()
         for h in (holdings or []):
             sym = h.get("symbol", "")
             if sym:
-                holding_sectors.add(get_sector(sym))
+                hold_secs.add(get_sector(sym))
 
-        for ev in events:
-            # Strip date suffix if any (e.g. "RBI MPC Decision — 07 Aug")
-            ev_name = ev.split(" — ")[0].strip()
-            meta = KNOWN_EVENTS.get(ev_name, {"note": "", "sectors_up": [], "sectors_down": []})
-            lines.append(f"  {html.escape(ev)}")
-            if meta.get("note"):
-                lines.append(f"    {html.escape(meta['note'])}")
-            impacted_up   = holding_sectors & set(meta.get("sectors_up",   []))
-            impacted_down = holding_sectors & set(meta.get("sectors_down", []))
+        for event in events_config:
+            name    = event.get("name", "")
+            date    = event.get("date", "")
+            note    = event.get("note", "")
+            up_secs = set(event.get("sectors_up",   []))
+            dn_secs = set(event.get("sectors_down", []))
+
+            lines.append(f"  {html.escape(name)} \u2014 {html.escape(date)}")
+
+            impacted_up = hold_secs & up_secs
+            impacted_dn = hold_secs & dn_secs
             if impacted_up:
-                lines.append(f"    🟢 Your holdings may benefit: {', '.join(sorted(impacted_up))}")
-            if impacted_down:
-                lines.append(f"    🔴 Your holdings at risk: {', '.join(sorted(impacted_down))}")
-            if not impacted_up and not impacted_down and holdings:
-                lines.append("    ⚪ No direct impact on current holdings")
+                lines.append(f"    \ud83d\udfe2 Holdings may benefit: {', '.join(sorted(impacted_up))}")
+            elif impacted_dn:
+                lines.append(f"    \ud83d\udd34 Holdings at risk: {', '.join(sorted(impacted_dn))}")
+            elif note:
+                lines.append(f"    {html.escape(note[:80])}")
         return lines
     except Exception:
-        return ["UPCOMING EVENTS"] + [f"  {html.escape(str(ev))}" for ev in (events or [])]
+        return ["UPCOMING EVENTS"] + [f"  {html.escape(str(ev.get('name','')))} \u2014 {ev.get('date','')}" for ev in (events_config or [])]
+
+
+def format_upcoming_events(events: list, holdings: list) -> list:
+    """Legacy stub \u2014 redirects to format_upcoming_events_compact for any old callers."""
+    dicts = [{"name": str(e), "date": "", "note": "", "sectors_up": [], "sectors_down": []}
+             for e in events]
+    return format_upcoming_events_compact(dicts, holdings)
 
 
 def get_upcoming_events(lookahead_days: int = 7) -> list:
-    try:
-        events = []
-        today  = datetime.date.today()
-        end    = today + datetime.timedelta(days=lookahead_days)
-        RBI_MPC_DATES = [
-            "2026-02-07","2026-04-09","2026-06-06",
-            "2026-08-08","2026-10-07","2026-12-05",
-        ]
-        SPECIAL_DATES = {
-            "2026-07-01": "Union Budget Presentation",
-            "2026-03-31": "Financial Year End",
-        }
-        current = today
-        while current <= end:
-            date_str = current.strftime("%Y-%m-%d")
-            if date_str in RBI_MPC_DATES:
-                events.append(f"RBI MPC Decision — {current.strftime('%d %b')}")
-            if date_str in SPECIAL_DATES:
-                events.append(f"{SPECIAL_DATES[date_str]} — {current.strftime('%d %b')}")
-            if current.weekday() == 3:
-                next_thu = current + datetime.timedelta(weeks=1)
-                if next_thu.month != current.month:
-                    events.append(f"NSE Monthly Expiry — {current.strftime('%d %b')}")
-                else:
-                    events.append(f"NSE Weekly Expiry — {current.strftime('%d %b')}")
-            current += datetime.timedelta(days=1)
-        return events
-    except Exception as e:
-        _log(f"[WARN] get_upcoming_events failed: {e}")
-        return []
+    """Legacy stub \u2014 redirects to load_events_config()."""
+    return load_events_config()
+
 
 
 def detect_market_regime(nifty_df, breadth_data: dict, macro_signals: dict) -> dict:
@@ -3798,10 +4223,6 @@ def format_tracker_stats(all_entries: list) -> str:
     return "\n".join(lines)
 
 
-def maybe_send_weekly_stats(tracker_entries: list) -> None:
-    pass  # Weekly stats now stored in recommendation_tracker.xlsx via research_job.py
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # SECTION 9b — TRADE TRACKER V2 (new structured format)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -3985,81 +4406,6 @@ def update_tracker_v2_pnl(tracker: dict) -> dict:
     return tracker
 
 
-def format_tracker_for_telegram(tracker: dict) -> str:
-    """Format tracker v2 for embedding in main Telegram message. Empty string if nothing to show."""
-    active   = tracker.get("buys", [])
-    watching = tracker.get("watchlist", [])
-    perf     = tracker.get("performance", {})
-
-    # Don't show section if nothing to track
-    if not active and not watching and not perf.get("completed", 0):
-        return ""
-
-    lines = ["📈 TRADE TRACKER"]
-
-    if active:
-        lines.append("  ACTIVE:")
-        for pos in active:
-            hist    = pos.get("pnl_history", [])
-            cur_pnl = hist[-1]["pnl"]   if hist else 0.0
-            cur_px  = hist[-1]["price"] if hist else pos.get("entry", 0)
-            day_n   = pos.get("days_tracked", 1)
-            status  = html.escape(str(pos.get("status", "ACTIVE")))
-            entry   = pos.get("entry",   0)
-            stop    = pos.get("stop",    0)
-            t1      = pos.get("target1", 0)
-            t2      = pos.get("target2", 0)
-
-            # Progress bar [====>......] between stop and T2
-            total_range = (t2 - stop) if t2 > stop else 1
-            cur_pos     = (cur_px - stop)
-            fill        = int((cur_pos / total_range) * 10) if total_range > 0 else 0
-            fill        = max(0, min(10, fill))
-            bar         = "=" * fill + ">" + "." * (10 - fill)
-
-            dist_stop = round((cur_px - stop) / cur_px * 100, 1) if cur_px > 0 else 0
-            dist_t1   = round((t1 - cur_px) / cur_px * 100, 1) if cur_px > 0 and t1 > 0 else 0
-
-            lines.append(
-                f"  {html.escape(str(pos['symbol']))} | Day {day_n}/15 | "
-                f"PnL {cur_pnl:+.1f}% | {status}"
-            )
-            lines.append(f"  [{bar}] Rs{cur_px:.1f}")
-            lines.append(
-                f"  Stop Rs{stop:.1f} ({dist_stop:.1f}% below) | "
-                f"T1 Rs{t1:.1f} ({dist_t1:.1f}% away) | T2 Rs{t2:.1f}"
-            )
-
-    if watching:
-        lines.append("  WATCHING:")
-        for w in watching:
-            tier      = html.escape(str(w.get("tier", "MONITOR")))
-            day_n     = w.get("days_watching", 1)
-            conf_gap  = w.get("conf_gap_at_rec", w.get("conf_gap", 0))
-            direction = w.get("direction", "\u2014")  # populated by update_tracker_v2_pnl
-            cur_px    = w.get("current_price", 0)
-            entry     = w.get("entry", 0)
-            lines.append(
-                f"  {html.escape(str(w['symbol']))} [{tier}] Day {day_n}/14 | "
-                f"Gap was {conf_gap:.1f} | {direction}"
-            )
-            if entry > 0 and cur_px > 0:
-                lines.append(
-                    f"    Cur Rs{cur_px:.1f} | Entry Rs{entry:.1f} | "
-                    f"Stop Rs{w.get('stop', 0):.1f} | T1 Rs{w.get('target1', 0):.1f}"
-                )
-
-    if perf.get("completed", 0) > 0:
-        lines.append(
-            f"  SCORE: WinRate {perf.get('win_rate', 0):.0f}% | "
-            f"AvgW {perf.get('avg_win', 0):+.1f}% | "
-            f"AvgL {perf.get('avg_loss', 0):+.1f}% | "
-            f"Completed: {perf['completed']}"
-        )
-
-    return "\n".join(lines)
-
-
 def format_confidence_breakdown(factor_scores: dict, final_conf: float) -> list:
     """Returns lines showing what drove the confidence score (ENHANCEMENT 2)."""
     FACTOR_DISPLAY = [
@@ -4086,29 +4432,26 @@ def format_confidence_breakdown(factor_scores: dict, final_conf: float) -> list:
 
 
 def format_near_miss_failures(stock: dict, thresh: dict) -> list:
-    """Shows exactly what passed/failed for each near miss (ENHANCEMENT 3)."""
-    conf = float(stock.get("final_confidence", 0) or 0)
-    tq   = float(stock.get("trade_quality_score", 0) or 0)
-    rr   = float(stock.get("rr_ratio", 0) or stock.get("rr", 0) or 0)
-    opp  = float(stock.get("opportunity_score", 0) or 0)
-    lines = [f"     Opp Score: {opp:.1f} | Failed Checks:"]
+    """Shows ONLY failed checks — passed checks omitted (FIX 3B).
+    Trader needs to know what's MISSING, not what's already working."""
+    conf  = float(stock.get("final_confidence", 0) or 0)
+    tq    = float(stock.get("trade_quality_score", 0) or 0)
+    rr    = float(stock.get("rr_ratio", 0) or stock.get("rr", 0) or 0)
     min_c = thresh.get("min_confidence", 80)
     min_t = thresh.get("min_tq", 78)
     min_r = thresh.get("min_rr", 2.0)
-    if conf >= min_c:
-        lines.append(f"     ✓ Confidence {conf:.1f} — PASSED")
-    else:
+    lines = []
+    if conf < min_c:
         lines.append(f"     ✗ Confidence {conf:.1f} — need +{min_c - conf:.1f}")
-    if tq >= min_t:
-        lines.append(f"     ✓ TQ {tq:.1f} — PASSED")
-    else:
+    if tq < min_t:
         lines.append(f"     ✗ TQ {tq:.1f} — need +{min_t - tq:.1f}")
-    if rr >= min_r:
-        lines.append(f"     ✓ R/R {rr:.2f}x — PASSED")
-    else:
+    if rr < min_r:
         lines.append(f"     ✗ R/R {rr:.2f}x — need +{min_r - rr:.2f}x")
-    lines.append("     → Improve by: volume surge or price consolidation above entry")
+    lines.append("     → Watch for: volume surge or price consolidation above entry")
     return lines
+
+
+NEAR_MISS_LIMIT = 5  # show only top 5 near misses in Telegram; full list in Excel
 
 
 def format_conviction_meter(regime_score: float, breadth: float,
@@ -4213,8 +4556,9 @@ def format_breadth_dashboard(total_universe: int, total_tradable: int,
     return lines
 
 
-def format_buy_card(stock: dict, sizing: dict, regime: str) -> list:
-    """Enhanced BUY card with thesis, catalysts, and confidence breakdown (ENHANCEMENT 6)."""
+def format_buy_card(stock: dict, sizing: dict, regime: str,
+                    buy_thesis: str = "") -> list:
+    """Enhanced BUY card. buy_thesis is AI-generated when available."""
     try:
         opp    = float(stock.get("opportunity_score", 0) or 0)
         conf   = float(stock.get("final_confidence", 0) or 0)
@@ -4224,20 +4568,21 @@ def format_buy_card(stock: dict, sizing: dict, regime: str) -> list:
         cats   = stock.get("catalysts", []) or []
 
         # Conviction icon
-        if opp >= 85:   icon = "🔥"
-        elif opp >= 75: icon = "⚡"
-        else:           icon = "📈"
+        if opp >= 85:   icon = "\U0001f525"
+        elif opp >= 75: icon = "\u26a1"
+        else:           icon = "\U0001f4c8"
 
-        # One-line thesis
-        fs    = stock.get("factor_scores", {}) or {}
-        trend_s = float(fs.get("trend_quality", 0) or 0)
-        rs_s    = float(fs.get("rs_vs_nifty", 0) or 0)
-        thesis_parts = []
-        if trend_s > 70:              thesis_parts.append("strong uptrend")
-        if rs_s > 70:                 thesis_parts.append("outperforming NIFTY")
-        if "VOL_SURGE" in cats:       thesis_parts.append("volume expansion")
-        if "NEAR_52W_HIGH" in cats:   thesis_parts.append("near 52W high breakout")
-        thesis = ", ".join(thesis_parts) if thesis_parts else "multi-factor confluence"
+        # Thesis: use AI-generated if available, else rule-based
+        if not buy_thesis:
+            fs    = stock.get("factor_scores", {}) or {}
+            trend_s = float(fs.get("trend_quality", 0) or 0)
+            rs_s    = float(fs.get("rs_vs_nifty", 0) or 0)
+            thesis_parts = []
+            if trend_s > 70:              thesis_parts.append("strong uptrend")
+            if rs_s > 70:                 thesis_parts.append("outperforming NIFTY")
+            if "VOL_SURGE" in cats:       thesis_parts.append("volume expansion")
+            if "NEAR_52W_HIGH" in cats:   thesis_parts.append("near 52W high breakout")
+            buy_thesis = ", ".join(thesis_parts) if thesis_parts else "multi-factor confluence"
 
         sym     = html.escape(str(stock.get("symbol", "")))
         entry   = stock.get("entry", 0)
@@ -4258,17 +4603,18 @@ def format_buy_card(stock: dict, sizing: dict, regime: str) -> list:
             f"     T1     Rs{t1:.2f} | T2 Rs{t2:.2f}",
             f"     Size   Rs{pos_val:,.0f} ({pos_pct:.1f}%) | Shares {shares} | MaxLoss Rs{max_loss:,.0f}",
             f"     ROE {stock.get('roe', 0):.1f}% | D/E {stock.get('de_ratio', 0):.2f} | Pledge {stock.get('promoter_pledge_pct', 0):.0f}%",
-            f"     Thesis: {html.escape(str(thesis))}",
+            f"     Thesis: {html.escape(str(buy_thesis))}",
         ]
         if cats:
             lines.append(f"     Catalysts: {html.escape(' | '.join(str(c) for c in cats))}")
-        if news and news != "—":
+        if news and news != "\u2014":
             lines.append(f"     News: {html.escape(str(news))}")
         # Confidence breakdown
+        fs = stock.get("factor_scores", {}) or {}
         lines += format_confidence_breakdown(fs, conf)
         return lines
     except Exception:
-        return [f"  📈 <b>{html.escape(str(stock.get('symbol', '?')))}</b>"]
+        return [f"  \U0001f4c8 <b>{html.escape(str(stock.get('symbol', '?')))}</b>"]
 
 
 def format_portfolio_card(alert: dict, current_price: float) -> list:
@@ -4366,6 +4712,119 @@ def format_portfolio_dashboard(alerts: list, current_prices: dict,
         return ["  💼 Portfolio Health Dashboard (unavailable)"]
 
 
+# ── Compact Portfolio Card (FIX 3E) ──────────────────────────────────────────
+def format_portfolio_card_compact(alert: dict, current_price: float,
+                                   stop_warning_pct: float = 5.0) -> list:
+    """
+    Compact portfolio card.
+    Normal: 2 lines. Near stop: 3 lines (adds stop warning).
+    """
+    try:
+        symbol   = str(alert.get("symbol", ""))
+        entry    = float(alert.get("entry", 0) or 0)
+        stop     = float(alert.get("stop_loss", alert.get("stop", 0)) or 0)
+        t1       = float(alert.get("target1", 0) or 0)
+        t2       = float(alert.get("target2", 0) or 0)
+        days     = int(alert.get("days_held", 0) or 0)
+        pnl_p    = float(alert.get("pnl_pct", 0) or 0)
+        action   = str(alert.get("action", "HOLD"))
+
+        risk     = entry - stop
+        gain     = current_price - entry
+        r_mult   = round(gain / risk, 2) if risk > 0 else 0.0
+
+        dist_stop = round((current_price - stop) / current_price * 100, 1) \
+                    if current_price > 0 and stop > 0 else 999.0
+        near_stop = dist_stop <= stop_warning_pct
+
+        pnl_icon    = "🟢" if pnl_p > 0 else ("🔴" if pnl_p < -2 else "⚪")
+        action_icon = {"HOLD": "✅", "EXIT": "🔴", "EXIT_FULL": "🔴",
+                       "TRAIL_STOP": "🟡", "REVIEW": "🟠"}.get(action, "✅")
+
+        lines = [
+            f"  {action_icon} <b>{html.escape(symbol)}</b> | {action} | Day {days} | "
+            f"{pnl_icon} PnL {pnl_p:+.1f}% | {r_mult:+.2f}R",
+            f"     Rs{entry:.0f} → Rs{current_price:.0f} | T1 Rs{t1:.0f} | T2 Rs{t2:.0f}",
+        ]
+        if near_stop:
+            lines.append(
+                f"     ⚠️  STOP WATCH: Rs{stop:.0f} only {dist_stop:.1f}% away — monitor closely"
+            )
+        return lines
+    except Exception:
+        return [f"  ✅ <b>{html.escape(str(alert.get('symbol', '?')))}</b>"]
+
+
+# ── Compact Portfolio Summary (FIX 3F) ───────────────────────────────────────
+def format_portfolio_summary_compact(alerts: list, current_prices: dict,
+                                      total_capital: float) -> list:
+    """Replaces 6-line Portfolio Health Dashboard with 2 lines."""
+    try:
+        if not alerts:
+            return ["  No active holdings."]
+        qty_known = [a for a in alerts if a.get("quantity", 0) > 0]
+        total_invested = sum(
+            float(a.get("entry", 0)) * float(a.get("quantity", 0))
+            for a in qty_known
+        ) or sum(float(a.get("entry", 0)) for a in alerts)
+        total_current = sum(
+            current_prices.get(a["symbol"], float(a.get("entry", 0))) *
+            float(a.get("quantity", 1))
+            for a in alerts
+        )
+        total_pnl = round((total_current - total_invested) / total_invested * 100, 2) \
+                    if total_invested > 0 else 0.0
+        exposure  = round(total_invested / total_capital * 100, 1) if total_capital > 0 else 0.0
+        cash      = round(100 - exposure, 1)
+        return [
+            f"  💼 {len(alerts)} position(s) | "
+            f"Invested Rs{total_invested:,.0f} ({exposure:.1f}%) | Cash {cash:.1f}%",
+            f"     Portfolio PnL {total_pnl:+.2f}% | Full dashboard in Excel",
+        ]
+    except Exception:
+        return [f"  💼 {len(alerts)} position(s) | see Excel for details"]
+
+
+# ── Stop Watch Alert (FIX 5) ─────────────────────────────────────────────────
+STOP_WATCH_THRESHOLD_PCT = 5.0
+
+def format_stop_watch_alert(holdings: list, current_prices: dict) -> list:
+    """
+    Prominent STOP WATCH block at top of portfolio section.
+    Returns empty list if all positions are safe.
+    """
+    warnings = []
+    try:
+        for h in (holdings or []):
+            sym  = h.get("symbol", "")
+            stop = float(h.get("stop_loss", h.get("stop", 0)) or 0)
+            entry= float(h.get("entry", 0) or 0)
+            cur  = float(current_prices.get(sym, entry) or entry)
+            if stop <= 0 or cur <= 0:
+                continue
+            dist_pct = round((cur - stop) / cur * 100, 1)
+            if cur <= stop:
+                warnings.append(
+                    f"  🔴 STOP HIT — {html.escape(sym)} "
+                    f"Rs{cur:.1f} \u2264 Stop Rs{stop:.1f} | EXIT NOW"
+                )
+            elif dist_pct <= 1.0:
+                warnings.append(
+                    f"  🔴 CRITICAL — {html.escape(sym)} "
+                    f"Rs{cur:.1f} | Stop Rs{stop:.1f} only {dist_pct:.1f}% away"
+                )
+            elif dist_pct <= STOP_WATCH_THRESHOLD_PCT:
+                warnings.append(
+                    f"  ⚠️  STOP WATCH — {html.escape(sym)} "
+                    f"Rs{cur:.1f} | Stop Rs{stop:.1f} | {dist_pct:.1f}% away — watch closely"
+                )
+    except Exception:
+        pass
+    if not warnings:
+        return []
+    return ["", "🚨 STOP ALERTS"] + warnings
+
+
 def format_daily_summary(regime: str, buys: list, watchlist: list,
                           portfolio_alerts: list, macro: dict,
                           nifty_state: dict = None) -> list:
@@ -4457,7 +4916,8 @@ def format_system_snapshot(tracker_v2: dict, portfolio_count: int = 0) -> list:
 
 def format_watchlist_section(watchlist: list, regime: str,
                               conf_history: dict = None,
-                              gate_memory: dict = None) -> list:
+                              gate_memory: dict = None,
+                              near_miss_insights: dict = None) -> list:
     """
     NEAR MISS  — full detail, sorted by R/R descending (fully actionable)
     DEVELOPING — full levels top 3, rest collapsed (BUG FIX 3)
@@ -4474,10 +4934,13 @@ def format_watchlist_section(watchlist: list, regime: str,
 
     lines = [f"\U0001f441 WATCHLIST \u2014 {len(watchlist)} stocks (threshold {min_conf})"]
 
-    # -- NEAR MISS: full detail per stock, sorted by opportunity score then R/R ---------
+    # -- NEAR MISS: full detail per stock, top 5 only (FIX 3D) ----------------------
     if near:
-        lines.append(f"  \U0001f534 NEAR MISS ({len(near)} \u2014 within 8 pts of BUY, best R/R first):")
-        for w in near:
+        lines.append(
+            f"  \U0001f534 NEAR MISS ({len(near)} total \u2014 "
+            f"top {min(len(near), NEAR_MISS_LIMIT)} shown, best R/R first):"
+        )
+        for w in near[:NEAR_MISS_LIMIT]:
             sym      = html.escape(str(w["symbol"]))
             sector   = html.escape(str(w.get("sector", "DIVERSIFIED")))
             conf     = w.get("conf", w.get("final_confidence", 0))
@@ -4493,12 +4956,15 @@ def format_watchlist_section(watchlist: list, regime: str,
             lines.append(f"    <b>{sym}</b> [{sector}] | Opp {opp:.1f} | Conf {conf:.1f} | TQ {tq:.1f}")
             lines.append(f"    Entry Rs{entry:.2f} | Stop Rs{stop:.2f} ({risk:.1f}%) | T1 Rs{target1:.2f} | T2 Rs{target2:.2f} | R/R {rr:.1f}x")
             lines.append(f"    (Cur Rs{cur:.1f})")
-            # Near miss failure breakdown (ENHANCEMENT 3)
+            # Near miss failure breakdown + AI insight
             lines.extend(format_near_miss_failures(w, thresh))
+            insight = (near_miss_insights or {}).get(w.get("symbol", "") , "")
+            if insight:
+                lines.append(f"     \U0001f4a1 {html.escape(str(insight))}")
             if w.get("warnings"):
                 lines.append(f"    \u26a0\ufe0f  {html.escape(' | '.join(str(x) for x in w['warnings']))}")
-
-    # -- DEVELOPING: full levels, top 3 in Telegram (BUG FIX 3) ----------------
+        if len(near) > NEAR_MISS_LIMIT:
+            lines.append(f"  + {len(near) - NEAR_MISS_LIMIT} more in Excel tracker")
     if dev:
         lines.append(f"  \U0001f7e1 DEVELOPING ({len(dev)} \u2014 building, not ready yet):")
         for w in dev[:3]:
@@ -4524,20 +4990,14 @@ def format_watchlist_section(watchlist: list, regime: str,
                 f"T1 Rs{t1:.2f} | T2 Rs{t2:.2f} | R/R {rr:.1f}x"
             )
             lines.append(f"    (Cur Rs{cur:.1f})")
-            # Compact check summary
+            # Only show failed checks (FIX 3B/3C)
             lines.append(f"     Failed checks:")
             if conf < thresh["min_confidence"]:
                 lines.append(f"     \u2717 Confidence {conf:.1f} \u2014 need +{gap:.1f}")
-            else:
-                lines.append(f"     \u2713 Confidence {conf:.1f} \u2014 PASSED")
             if tq < thresh["min_tq"]:
                 lines.append(f"     \u2717 TQ {tq:.1f} \u2014 need +{thresh['min_tq']-tq:.1f}")
-            else:
-                lines.append(f"     \u2713 TQ {tq:.1f} \u2014 PASSED")
             if rr < thresh["min_rr"]:
                 lines.append(f"     \u2717 R/R {rr:.2f}x \u2014 need +{thresh['min_rr']-rr:.2f}x")
-            else:
-                lines.append(f"     \u2713 R/R {rr:.2f}x \u2014 PASSED")
             lines.append("     \u2192 Watch for: volume surge or consolidation above entry")
         if len(dev) > 3:
             rest_names = ", ".join(w["symbol"].replace(".NS", "") for w in dev[3:])
@@ -4747,7 +5207,8 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
                               universe_count: int = 0,
                               tradable_count: int = 0,
                               conf_history: dict = None,
-                              gate_memory: dict = None) -> str:
+                              gate_memory: dict = None,
+                              ai_results: dict = None) -> str:
     lines  = []
     regime = regime_data["regime"]
     score  = regime_data["score"]
@@ -4779,14 +5240,15 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
     # Regime explanation (Patch 4)
     fii_flow = macro.get("fii_flow_cr", 0.0)
     dii_flow = macro.get("dii_flow_cr", 0.0)
-    # Pass NIFTY EMA values so EMA structure is reflected in the Why line
+    # Use nifty_state as primary EMA source (FIX 1: single source of truth)
     _kl = key_levels or {}
+    _ns_early = nifty_state or {}
     reg_why = regime_explanation(
         score, regime, vix_in, breadth_20, fii_flow, dii_flow,
-        nifty_close = float(_kl.get("last",   0) or 0),
-        ema20       = float(_kl.get("ema20",  0) or 0),
-        ema50       = float(_kl.get("ema50",  0) or 0),
-        ema200      = float(_kl.get("ema200", 0) or 0),
+        nifty_close = float(_ns_early.get("close",  _kl.get("last",   0)) or 0),
+        ema20       = float(_ns_early.get("ema20",  _kl.get("ema20",  0)) or 0),
+        ema50       = float(_ns_early.get("ema50",  _kl.get("ema50",  0)) or 0),
+        ema200      = float(_ns_early.get("ema200", _kl.get("ema200", 0)) or 0),
     )
     lines.append(f"  Why: {html.escape(str(reg_why))}")
     lines.append(f"  {REGIME_RATIONALE.get(regime, '')}")
@@ -4806,8 +5268,14 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
         f"US10Y {macro.get('us10y', 0):.2f}%"
     )
 
-    # FII/DII (Patch 2)
-    fii_dii_line = format_fii_dii(fii_flow, dii_flow)
+    # FII/DII (FIX 2: always attempts, shows provisional)
+    _fii_data = {
+        "fii_flow_cr":    fii_flow,
+        "dii_flow_cr":    dii_flow,
+        "available":      macro.get("fii_available", not (fii_flow == 0 and dii_flow == 0)),
+        "is_provisional": macro.get("fii_provisional", False),
+    }
+    fii_dii_line = format_fii_dii_line(_fii_data)
     lines.append(f"  {fii_dii_line}")
 
     # ── Market Conviction Meter + Risk Meter (BUG FIX 1: single nifty_state) ──
@@ -4891,6 +5359,8 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
     # ── BUY Signals (Patch 6 for no-buy case) ──
     lines.append("✅ BUY SIGNALS")
     if buys:
+        _ai = ai_results or {}
+        _buy_theses = _ai.get("buy_theses", {})
         for b in buys:
             sizing = {
                 "position_value": b.get("position_value", 0),
@@ -4898,7 +5368,8 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
                 "shares":         b.get("shares", 0),
                 "max_loss":       b.get("max_loss", 0),
             }
-            lines.extend(format_buy_card(b, sizing, regime))
+            thesis = _buy_theses.get(b.get("symbol", ""), "")
+            lines.extend(format_buy_card(b, sizing, regime, buy_thesis=thesis))
             # Gap validity (morning price check)
             entry  = b.get("entry", 0)
             stop_p = b.get("stop", 0)
@@ -4951,13 +5422,22 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
         lines.append("")
 
     # ── Watchlist — ALL stocks, all tiers, with levels (Patch 1) ──
+    _nm_insights = (ai_results or {}).get("near_miss_insights", {})
     wl_lines = format_watchlist_section(
         watchlist, regime,
         conf_history=conf_history or {},
         gate_memory=gate_memory or {},
+        near_miss_insights=_nm_insights,
     )
     lines.extend(wl_lines)
     lines.append("")
+
+    # ── Stop Watch Alert (FIX 5: appears BEFORE portfolio, cannot be missed) ──
+    _cur_prices_port = {a["symbol"]: float(a.get("current", a.get("entry", 0)) or 0)
+                        for a in portfolio_alerts}
+    stop_alerts = format_stop_watch_alert(portfolio_alerts, _cur_prices_port)
+    if stop_alerts:
+        lines += stop_alerts
 
     # ── Portfolio ──
     exits   = [a for a in portfolio_alerts if a["action"] in ("EXIT", "EXIT_FULL")]
@@ -4966,15 +5446,13 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
     holds   = [a for a in portfolio_alerts if a["action"] == "HOLD"]
     lines.append("📁 PORTFOLIO")
     if portfolio_alerts:
-        # Portfolio health dashboard (ENHANCEMENT 8)
-        _cur_prices_port = {a["symbol"]: float(a.get("current", a.get("entry", 0)) or 0)
-                            for a in portfolio_alerts}
-        lines.extend(format_portfolio_dashboard(portfolio_alerts, _cur_prices_port, PORTFOLIO_CAPITAL))
+        # Compact 2-line portfolio summary (FIX 3F)
+        lines.extend(format_portfolio_summary_compact(portfolio_alerts, _cur_prices_port, PORTFOLIO_CAPITAL))
         lines.append("")
 
         def _fmt_alert_card(a: dict) -> list:
             cur = float(a.get("current", a.get("entry", 0)) or 0)
-            card = format_portfolio_card(a, cur)
+            card = format_portfolio_card_compact(a, cur)
             # Append exit reason if relevant
             if a.get("reason") and a["action"] not in ("HOLD",):
                 card.append(f"     Reason: {html.escape(str(a['reason']))}")
@@ -5000,18 +5478,21 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
         lines.append("  No active holdings.")
     lines.append("")
 
-    # ── Upcoming Events with holding impact (FEATURE 5) ──
+    # ── Upcoming Events (FIX 4: config-based, 2 lines per event max) ──
     if upcoming_events:
-        lines.extend(format_upcoming_events(upcoming_events, portfolio_alerts))
+        lines.extend(format_upcoming_events_compact(upcoming_events, portfolio_alerts))
         lines.append("")
 
-    # ── System Performance Snapshot ──
-    lines.extend(format_system_snapshot(tracker_v2, portfolio_count=len(portfolio_alerts)))
-
-    # ── Daily Summary (BUG FIX 6: use nifty_state) ──
-    lines.extend(format_daily_summary(
-        regime, buys, watchlist, portfolio_alerts, macro, nifty_state
-    ))
+    # ── Daily Summary (AI-written when available, rule-based fallback) ──
+    _ai_summary = (ai_results or {}).get("daily_summary", "")
+    if _ai_summary:
+        lines.append("")
+        lines.append("\U0001f4cb DAILY SUMMARY")
+        lines.append(f"  {html.escape(str(_ai_summary))}")
+    else:
+        lines.extend(format_daily_summary(
+            regime, buys, watchlist, portfolio_alerts, macro, nifty_state
+        ))
 
     # ── Footer ──
     lines.append("")
@@ -5164,7 +5645,7 @@ def _ensure_portfolio_json():
 def _run_pipeline_inner():
     import copy
     _log("=== NSE SWING TRADE PIPELINE v6.0 STARTING ===")
-    _log(f"  Capital: Rs{PORTFOLIO_CAPITAL:,.0f} | Groq keys: {len(GROQ_KEYS)} | Tracker: {'configured' if TRACKER_BOT_TOKEN else 'NOT configured'}")
+    _log(f"  Capital: Rs{PORTFOLIO_CAPITAL:,.0f} | Groq keys: {len(GROQ_KEYS)}")
     _log(f"  Run mode: {'SCHEDULED — day counters will advance' if IS_SCHEDULED else 'MANUAL — day counters frozen, history not written'}")
     _ensure_portfolio_json()
 
@@ -5198,9 +5679,11 @@ def _run_pipeline_inner():
     # ── 1b. FII/DII flows from NSE ──
     _log("[2/17] Fetching FII/DII flows from NSE...")
     fii_dii = fetch_fii_dii_flows()
-    macro["fii_flow_cr"] = fii_dii["fii_flow_cr"]
-    macro["dii_flow_cr"] = fii_dii["dii_flow_cr"]
-    _log(f"  FII: {fii_dii['fii_flow_cr']:+.0f}Cr | DII: {fii_dii['dii_flow_cr']:+.0f}Cr")
+    macro["fii_flow_cr"]      = fii_dii["fii_flow_cr"]
+    macro["dii_flow_cr"]      = fii_dii["dii_flow_cr"]
+    macro["fii_available"]    = fii_dii.get("available", False)
+    macro["fii_provisional"]  = fii_dii.get("is_provisional", False)
+    _log(f"  FII: {fii_dii['fii_flow_cr']:+.0f}Cr | DII: {fii_dii['dii_flow_cr']:+.0f}Cr | Available: {fii_dii['available']}")
 
     # ── 3. Bulk/block deals ──
     _log("[3/17] Fetching bulk/block deals...")
@@ -5358,8 +5841,8 @@ def _run_pipeline_inner():
         save_tracker_v2(tracker_v2)
     _log(f"  Tracker V2: {len(tracker_v2.get('buys',[]))} active | {len(tracker_v2.get('watchlist',[]))} watching | {tracker_v2.get('performance',{}).get('completed',0)} completed")
 
-    # ── 13b. Upcoming events (needed by Gate 13 before gate system runs) ──
-    upcoming_events = get_upcoming_events(lookahead_days=7)
+    # ── 13b. Upcoming events from config file (FIX 4: auto-filters past events) ──
+    upcoming_events = load_events_config()
 
     # ── 14. Gate system ──
     _log("[14/17] Running gate system (13 gates)...")
@@ -5492,6 +5975,21 @@ def _run_pipeline_inner():
     timestamp = datetime.datetime.now().strftime("%b %d, %Y %H:%M IST")
     # nifty_state already computed at step 6b — pass through (BUG FIX 1)
 
+    # ── 15a. Run AI calls in parallel (daily summary + buy theses + near miss insights) ──
+    _log("[15a/17] Running AI calls in parallel...")
+    ai_results = run_all_ai_calls(
+        regime_data      = regime_data,
+        macro            = macro,
+        breadth_data     = breadth,
+        nifty_state      = nifty_state,
+        buys             = buys,
+        watchlist        = watchlist_stocks,
+        portfolio_alerts = portfolio_alerts,
+        conf_history     = conf_history,
+        gate_memory      = gate_memory,
+        events           = upcoming_events,
+    )
+
     message = format_telegram_message(
         regime_data      = regime_data,
         buys             = buys,
@@ -5512,6 +6010,7 @@ def _run_pipeline_inner():
         tradable_count   = len(tradable),
         conf_history     = conf_history,
         gate_memory      = gate_memory,
+        ai_results       = ai_results,
     )
     _log("--- TELEGRAM PREVIEW (first 1500 chars) ---")
     _log(message[:1500])
