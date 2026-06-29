@@ -75,6 +75,8 @@ PORTFOLIO_FILE          = os.getenv("PORTFOLIO_FILE", "portfolio.json")
 WATCHLIST_FILE      = os.getenv("WATCHLIST_FILE", "watchlist_persist.json")
 CONF_HISTORY_FILE   = os.getenv("CONF_HISTORY_FILE", "confidence_history.json")
 GATE_MEMORY_FILE    = os.getenv("GATE_MEMORY_FILE", "gate_memory.json")
+# True only when triggered by GitHub Actions cron schedule — never for manual runs
+IS_SCHEDULED        = os.getenv("SCHEDULED_RUN", "false").lower() == "true"
 TELEGRAM_MAX_CHARS  = 3800  # buffer below 4096 hard limit
 
 # Regime thresholds — v6.0 calibrated (Bug 2 fix)
@@ -3899,7 +3901,8 @@ def update_tracker_v2_pnl(tracker: dict) -> dict:
                 datetime.date.fromisoformat(pos.get("rec_date", today_str))
             ).days + 1
             hist = pos.setdefault("pnl_history", [])
-            if not hist or hist[-1].get("date") != today_str:
+            # Only append a new daily entry on scheduled runs — manual runs must not pollute history
+            if IS_SCHEDULED and (not hist or hist[-1].get("date") != today_str):
                 hist.append({"date": today_str, "price": cur_px, "pnl": pnl})
 
             stop = float(pos.get("stop", 0) or 0)
@@ -5162,13 +5165,18 @@ def _run_pipeline_inner():
     import copy
     _log("=== NSE SWING TRADE PIPELINE v6.0 STARTING ===")
     _log(f"  Capital: Rs{PORTFOLIO_CAPITAL:,.0f} | Groq keys: {len(GROQ_KEYS)} | Tracker: {'configured' if TRACKER_BOT_TOKEN else 'NOT configured'}")
+    _log(f"  Run mode: {'SCHEDULED — day counters will advance' if IS_SCHEDULED else 'MANUAL — day counters frozen, history not written'}")
     _ensure_portfolio_json()
 
     # ── Sector map (must be first — used by all scoring) ──
     _init_sector_map()
 
     # ── 0. Market holiday guard ──
-    if not is_market_open():
+    # Scheduled runs respect the holiday calendar.
+    # Manual runs bypass it so you can test on weekends/holidays.
+    if not IS_SCHEDULED and not is_market_open():
+        _log("[INFO] Market closed today, but running anyway (manual run — holiday guard bypassed).")
+    elif not is_market_open():
         _log("[INFO] Market closed today (holiday or weekend). Skipping pipeline.")
         return
 
@@ -5346,7 +5354,8 @@ def _run_pipeline_inner():
     # ── 13b. Tracker V2 — load, update PnL, close completed positions ──
     tracker_v2 = initialize_tracker_if_new()
     tracker_v2 = update_tracker_v2_pnl(tracker_v2)
-    save_tracker_v2(tracker_v2)
+    if IS_SCHEDULED:
+        save_tracker_v2(tracker_v2)
     _log(f"  Tracker V2: {len(tracker_v2.get('buys',[]))} active | {len(tracker_v2.get('watchlist',[]))} watching | {tracker_v2.get('performance',{}).get('completed',0)} completed")
 
     # ── 13b. Upcoming events (needed by Gate 13 before gate system runs) ──
@@ -5422,14 +5431,20 @@ def _run_pipeline_inner():
     _today_str_h = datetime.date.today().isoformat()
     conf_history = load_confidence_history()
     conf_history = update_confidence_history(conf_history, top_40, _today_str_h)
-    save_confidence_history(conf_history)
-    _log(f"  Confidence history: {len(conf_history)} symbols tracked")
+    if IS_SCHEDULED:
+        save_confidence_history(conf_history)
+        _log(f"  Confidence history: {len(conf_history)} symbols tracked (saved)")
+    else:
+        _log(f"  Confidence history: {len(conf_history)} symbols tracked (NOT saved — manual run)")
 
     # ── 14c. Gate memory update (FEATURE 7) ──
     gate_memory = load_gate_memory()
     gate_memory = update_gate_memory(gate_memory, watchlist_stocks, _today_str_h)
-    save_gate_memory(gate_memory)
-    _log(f"  Gate memory: {len(gate_memory)} symbols tracked")
+    if IS_SCHEDULED:
+        save_gate_memory(gate_memory)
+        _log(f"  Gate memory: {len(gate_memory)} symbols tracked (saved)")
+    else:
+        _log(f"  Gate memory: {len(gate_memory)} symbols tracked (NOT saved — manual run)")
     buys = tag_repeat_buy_signals(buys, tracker_entries)
 
     # ── 14c. Position sizing — Kelly + Heat-aware ──
@@ -5467,7 +5482,10 @@ def _run_pipeline_inner():
     # ── 14f. Watchlist persistence ──
     wl_history = load_persistent_watchlist()
     watchlist_stocks, wl_history = merge_watchlist_with_history(watchlist_stocks, wl_history)
-    save_persistent_watchlist(wl_history)
+    if IS_SCHEDULED:
+        save_persistent_watchlist(wl_history)
+    else:
+        _log("  Watchlist history NOT saved (manual run)")
 
     # ── 15. Format and send main Telegram message ──
     _log("[15/17] Sending main Telegram report...")
@@ -5498,6 +5516,14 @@ def _run_pipeline_inner():
     _log("--- TELEGRAM PREVIEW (first 1500 chars) ---")
     _log(message[:1500])
     _log("--- END PREVIEW ---")
+    # Prepend a visible test banner on manual runs so you instantly know it's not the real report
+    if not IS_SCHEDULED:
+        banner = (
+            "⚠️  MANUAL TEST RUN — NOT the scheduled report\n"
+            "State was NOT saved. Day counters NOT advanced.\n"
+            + "─" * 40 + "\n"
+        )
+        message = banner + message
     send_telegram(message)
     # Send BUY signals to dedicated buy channel
     send_buy_telegram(buys, regime, timestamp)
@@ -5518,7 +5544,10 @@ def _run_pipeline_inner():
     if closed_today:
         _log(f"  Tracker: {len(closed_today)} trade(s) closed today")
 
-    save_tracker(tracker_entries)
+    if IS_SCHEDULED:
+        save_tracker(tracker_entries)
+    else:
+        _log("  Trade tracker NOT saved (manual run)")
 
     # ── 17. Save CSVs + Excel ──
     _log("[17/17] Saving output CSVs + Excel...")
@@ -5532,11 +5561,14 @@ def _run_pipeline_inner():
 
     # Save recommendations to Excel tracker (PART C)
     today_str_pipe = datetime.date.today().isoformat()
-    save_recommendations_to_excel(
-        buys, watchlist_stocks,
-        {"regime": regime, "score": regime_data.get("score", 0)},
-        today_str_pipe
-    )
+    if IS_SCHEDULED:
+        save_recommendations_to_excel(
+            buys, watchlist_stocks,
+            {"regime": regime, "score": regime_data.get("score", 0)},
+            today_str_pipe
+        )
+    else:
+        _log("  Excel recommendations NOT saved (manual run)")
 
     # ── 18. Done ──
     _log("[DONE] Pipeline complete.")
