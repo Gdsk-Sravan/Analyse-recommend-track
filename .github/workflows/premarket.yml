@@ -1,8 +1,6 @@
 name: Pre-Market Brief
 
 on:
-  schedule:
-    - cron: '30 3 * * 1-5'   # 9:00 AM IST Mon-Fri (3:30 UTC)
   workflow_dispatch:
 
 jobs:
