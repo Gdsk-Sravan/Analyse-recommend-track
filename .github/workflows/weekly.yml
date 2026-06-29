@@ -2,10 +2,20 @@ name: Weekly Summary
 
 on:
   workflow_dispatch:
+    inputs:
+      run_mode:
+        description: "Run mode"
+        required: false
+        default: "manual"
+        type: choice
+        options:
+          - "manual"
+          - "scheduled"
 
 jobs:
   weekly:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
 
@@ -28,8 +38,8 @@ jobs:
       - name: Run weekly summary
         run: python weekly_summary_job.py
         env:
-          TELEGRAM_BOT_TOKEN:  ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID:    ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TRADE_TRACKER_V2_FILE: trade_tracker.json
-          CONF_HISTORY_FILE:   confidence_history.json
-          SCHEDULED_RUN: ${{ github.event_name == 'schedule' && 'true' || 'false' }}
+          CONF_HISTORY_FILE: confidence_history.json
+          SCHEDULED_RUN: ${{ github.event.inputs.run_mode == 'scheduled' && 'true' || 'false' }}
