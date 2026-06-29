@@ -1,4 +1,4 @@
-name: Weekly Summary
+name: Stop Loss Monitor
 
 on:
   workflow_dispatch:
@@ -13,7 +13,7 @@ on:
           - "scheduled"
 
 jobs:
-  weekly:
+  stopwatch:
     runs-on: ubuntu-latest
 
     steps:
@@ -24,9 +24,9 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install yfinance requests numpy
+        run: pip install yfinance requests
 
-      - name: Download tracker artifact (for active positions + conf history)
+      - name: Download tracker artifact
         uses: dawidd6/action-download-artifact@v3
         continue-on-error: true
         with:
@@ -35,11 +35,28 @@ jobs:
           path: .
           workflow_conclusion: success
 
-      - name: Run weekly summary
-        run: python weekly_summary_job.py
+      - name: Download stop alerts state
+        uses: dawidd6/action-download-artifact@v3
+        continue-on-error: true
+        with:
+          workflow: stopwatch.yml
+          name: stop-alerts
+          path: .
+          workflow_conclusion: success
+
+      - name: Run stop loss monitor
+        run: python stopwatch_job.py
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TRADE_TRACKER_V2_FILE: trade_tracker.json
-          CONF_HISTORY_FILE: confidence_history.json
           SCHEDULED_RUN: ${{ github.event.inputs.run_mode == 'scheduled' && 'true' || 'false' }}
+
+      - name: Upload stop alerts state
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stop-alerts
+          path: stop_alerts_sent.json
+          retention-days: 7
+          overwrite: true
