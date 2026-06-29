@@ -2080,8 +2080,160 @@ def _nse_session_get(path: str, timeout: int = 12) -> "requests.Response | None"
         return None
 
 
-def _fetch_fii_dii_nse() -> dict | None:
-    """Try NSE fiidiiTradeReact with proper session."""
+def _parse_fii_dii_from_text(text: str) -> "dict | None":
+    """
+    Shared regex parser for FII/DII numbers from any text source.
+    Handles patterns like:
+      "FII net sellers of Rs 1,234.56 crore"
+      "FIIs bought Rs 384 crore; DIIs bought Rs 5748 crore"
+      "FPI net purchase: 1234.56"
+    Returns {"fii_flow_cr": float, "dii_flow_cr": float} or None.
+    """
+    import re as _re
+    text = text.replace("\n", " ").replace("\u00a0", " ")
+
+    # Pattern A: "FII/FPI bought/sold/net Rs X crore"
+    fii_patterns = [
+        r'(?:FII|FPI)s?\s+(?:net\s+)?(?:bought|purchased|inflow)[^\d]{0,30}([\d,]+(?:\.\d+)?)',
+        r'(?:FII|FPI)s?\s+(?:net\s+)?(?:sold|outflow|sellers?)[^\d]{0,30}([\d,]+(?:\.\d+)?)',
+        r'(?:FII|FPI)\s+net[^\d]{0,30}([-]?[\d,]+(?:\.\d+)?)',
+        r'(?:FII|FPI)[^\d]{0,30}net\s+(?:buy|sell|purchase)[^\d]{0,30}([\d,]+(?:\.\d+)?)',
+    ]
+    dii_patterns = [
+        r'DII[sS]?\s+(?:net\s+)?(?:bought|purchased|inflow)[^\d]{0,30}([\d,]+(?:\.\d+)?)',
+        r'DII[sS]?\s+(?:net\s+)?(?:sold|outflow|sellers?)[^\d]{0,30}([\d,]+(?:\.\d+)?)',
+        r'DII\s+net[^\d]{0,30}([-]?[\d,]+(?:\.\d+)?)',
+    ]
+
+    fii_val = dii_val = None
+
+    # Try positive (bought) patterns first
+    for pat in fii_patterns[:2]:
+        m = _re.search(pat, text, _re.I)
+        if m:
+            v = float(m.group(1).replace(",", ""))
+            # Negative if "sold"
+            fii_val = -v if _re.search(r'sold|outflow|seller', pat, _re.I) else v
+            break
+    if fii_val is None:
+        m = _re.search(fii_patterns[2], text, _re.I)
+        if m:
+            fii_val = float(m.group(1).replace(",", ""))
+
+    for pat in dii_patterns[:2]:
+        m = _re.search(pat, text, _re.I)
+        if m:
+            v = float(m.group(1).replace(",", ""))
+            dii_val = -v if _re.search(r'sold|outflow|seller', pat, _re.I) else v
+            break
+    if dii_val is None:
+        m = _re.search(dii_patterns[2], text, _re.I)
+        if m:
+            dii_val = float(m.group(1).replace(",", ""))
+
+    if fii_val is not None or dii_val is not None:
+        return {
+            "fii_flow_cr": fii_val or 0.0,
+            "dii_flow_cr": dii_val or 0.0,
+        }
+    return None
+
+
+def _fetch_fii_dii_mc_rss() -> "dict | None":
+    """
+    Moneycontrol marketstats RSS — plain HTTP, no cookies, works from CI.
+    Entries: 'FII/DII activity: FIIs net sellers Rs 1,234 crore; DIIs buyers Rs 567 crore'
+    """
+    import re as _re
+    try:
+        if not _FEEDPARSER_OK:
+            return None
+        feed = feedparser.parse("https://www.moneycontrol.com/rss/marketstats.xml")
+        for entry in feed.entries[:10]:
+            text = entry.get("title", "") + " " + entry.get("summary", "")
+            if ("fii" in text.lower() or "fpi" in text.lower()) and "crore" in text.lower():
+                result = _parse_fii_dii_from_text(text)
+                if result:
+                    return result
+    except Exception as e:
+        _log(f"[WARN] MC RSS FII/DII failed: {e}")
+    return None
+
+
+def _fetch_fii_dii_et_rss() -> "dict | None":
+    """
+    Economic Times markets RSS — plain HTTP, no cookies, works from CI.
+    ET publishes FII/DII summaries as market news items.
+    """
+    import re as _re
+    try:
+        if not _FEEDPARSER_OK:
+            return None
+        for feed_url in [
+            "https://economictimes.indiatimes.com/markets/stocks/rss.cms",
+            "https://economictimes.indiatimes.com/markets/rss.cms",
+        ]:
+            feed = feedparser.parse(feed_url)
+            for entry in feed.entries[:20]:
+                text = entry.get("title", "") + " " + entry.get("summary", "")
+                tl = text.lower()
+                if ("fii" in tl or "fpi" in tl) and ("crore" in tl) and \
+                   ("bought" in tl or "sold" in tl or "net" in tl):
+                    result = _parse_fii_dii_from_text(text)
+                    if result:
+                        return result
+    except Exception as e:
+        _log(f"[WARN] ET RSS FII/DII failed: {e}")
+    return None
+
+
+def _fetch_fii_dii_bs_rss() -> "dict | None":
+    """
+    Business Standard markets RSS — plain HTTP, no cookies, works from CI.
+    """
+    try:
+        if not _FEEDPARSER_OK:
+            return None
+        feed = feedparser.parse("https://www.business-standard.com/rss/markets-106.rss")
+        for entry in feed.entries[:20]:
+            text = entry.get("title", "") + " " + entry.get("summary", "")
+            tl = text.lower()
+            if ("fii" in tl or "fpi" in tl) and "crore" in tl:
+                result = _parse_fii_dii_from_text(text)
+                if result:
+                    return result
+    except Exception as e:
+        _log(f"[WARN] BS RSS FII/DII failed: {e}")
+    return None
+
+
+def _fetch_fii_dii_google_news() -> "dict | None":
+    """
+    Google News RSS — works from CI (plain HTTP GET, no cookies).
+    Fixed: URL-encode the date so spaces don't break the URL.
+    """
+    import re as _re
+    try:
+        if not _FEEDPARSER_OK:
+            return None
+        from urllib.parse import quote
+        today_str = datetime.date.today().strftime("%d %b").lstrip("0")  # "29 Jun"
+        query     = quote(f"FII DII crore NSE {today_str}")
+        url       = f"https://news.google.com/rss/search?q={query}&hl=en-IN&gl=IN&ceid=IN:en"
+        feed      = feedparser.parse(url)
+        for entry in feed.entries[:15]:
+            text = entry.get("title", "") + " " + entry.get("summary", "")
+            if ("fii" in text.lower() or "fpi" in text.lower()) and "crore" in text.lower():
+                result = _parse_fii_dii_from_text(text)
+                if result:
+                    return result
+    except Exception as e:
+        _log(f"[WARN] Google News FII/DII failed: {e}")
+    return None
+
+
+def _fetch_fii_dii_nse() -> "dict | None":
+    """Try NSE fiidiiTradeReact with proper session (works on local, may fail on CI)."""
     try:
         r = _nse_session_get("/api/fiidiiTradeReact")
         if not r:
@@ -2104,123 +2256,19 @@ def _fetch_fii_dii_nse() -> dict | None:
         return None
 
 
-def _fetch_fii_dii_moneycontrol() -> dict | None:
-    """
-    Moneycontrol internal price API — works from server IPs, no cookies needed.
-    Returns JSON with daily FII/DII buy/sell values.
-    """
-    try:
-        _UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-               "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
-        # Moneycontrol's internal market stats API (no auth, no cookies)
-        r = requests.get(
-            "https://priceapi.moneycontrol.com/techCharts/indianMarket/stock/fiidii"
-            "?page=1&pageSize=3",
-            headers={"User-Agent": _UA, "Referer": "https://www.moneycontrol.com"},
-            timeout=10,
-        )
-        if r.status_code == 200:
-            data = r.json()
-            # Response: {"data": [{"fiiBuy": "...", "fiiSell": "...", ...}, ...]}
-            rows = data.get("data", data if isinstance(data, list) else [])
-            if rows:
-                row = rows[0]
-                fii_buy  = float(str(row.get("fiiBuy",  row.get("fii_buy",  "0"))).replace(",",""))
-                fii_sell = float(str(row.get("fiiSell", row.get("fii_sell", "0"))).replace(",",""))
-                dii_buy  = float(str(row.get("diiBuy",  row.get("dii_buy",  "0"))).replace(",",""))
-                dii_sell = float(str(row.get("diiSell", row.get("dii_sell", "0"))).replace(",",""))
-                if fii_buy + fii_sell + dii_buy + dii_sell > 0:
-                    return {
-                        "fii_flow_cr": round(fii_buy - fii_sell, 2),
-                        "dii_flow_cr": round(dii_buy - dii_sell, 2),
-                    }
-    except Exception as e:
-        _log(f"[WARN] Moneycontrol FII/DII API failed: {e}")
-    return None
-
-
-def _fetch_fii_dii_mc_scrape() -> dict | None:
-    """
-    Scrapes Moneycontrol FII/DII activity page with regex.
-    Works from server IPs — no JS rendering needed for these numbers.
-    """
-    import re as _re
-    try:
-        _UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-               "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
-        r = requests.get(
-            "https://www.moneycontrol.com/stocks/marketstats/fii_dii_activity/index.php",
-            headers={"User-Agent": _UA,
-                     "Accept": "text/html,application/xhtml+xml",
-                     "Accept-Language": "en-IN,en;q=0.9"},
-            timeout=12,
-        )
-        if r.status_code != 200:
-            return None
-        html = r.text
-        # Moneycontrol renders numbers like: "Net: -1,234.56" in the FII/DII table
-        # Pattern captures net values from the data table
-        fii_m = _re.search(
-            r'(?:FII|FPI)[^<]{0,200}?Net[^<]{0,50}?([-+]?[\d,]+\.?\d*)',
-            html, _re.IGNORECASE | _re.DOTALL
-        )
-        dii_m = _re.search(
-            r'DII[^<]{0,200}?Net[^<]{0,50}?([-+]?[\d,]+\.?\d*)',
-            html, _re.IGNORECASE | _re.DOTALL
-        )
-        if fii_m or dii_m:
-            fii_val = float(fii_m.group(1).replace(",","")) if fii_m else 0.0
-            dii_val = float(dii_m.group(1).replace(",","")) if dii_m else 0.0
-            if fii_val != 0 or dii_val != 0:
-                return {"fii_flow_cr": fii_val, "dii_flow_cr": dii_val}
-    except Exception as e:
-        _log(f"[WARN] Moneycontrol scrape FII/DII failed: {e}")
-    return None
-
-
-def _fetch_fii_dii_google_news() -> dict | None:
-    """
-    Last-resort: parse Google News RSS for FII/DII headlines with crore amounts.
-    Covers the 7 PM scheduled run when all API sources may be exhausted.
-    """
-    import re as _re
-    try:
-        if not _FEEDPARSER_OK:
-            return None
-        today_str = datetime.date.today().strftime("%d %b").lstrip("0")  # e.g. "29 Jun"
-        feed = feedparser.parse(
-            "https://news.google.com/rss/search"
-            f"?q=FII+DII+crore+NSE+{today_str}&hl=en-IN&gl=IN&ceid=IN:en"
-        )
-        for entry in feed.entries[:10]:
-            title = entry.get("title", "")
-            # Match: "FII bought/sold XXXX crore, DII bought YYYY crore"
-            fii_m = _re.search(r'FII\s+(bought|sold)\s+([\d,]+(?:\.\d+)?)\s*crore', title, _re.I)
-            dii_m = _re.search(r'DII\s+(bought|sold)\s+([\d,]+(?:\.\d+)?)\s*crore', title, _re.I)
-            if fii_m and dii_m:
-                fii_val = float(fii_m.group(2).replace(",",""))
-                dii_val = float(dii_m.group(2).replace(",",""))
-                if "sold" in fii_m.group(1).lower():
-                    fii_val = -fii_val
-                if "sold" in dii_m.group(1).lower():
-                    dii_val = -dii_val
-                return {"fii_flow_cr": fii_val, "dii_flow_cr": dii_val}
-    except Exception as e:
-        _log(f"[WARN] Google News FII/DII parse failed: {e}")
-    return None
-
-
 def fetch_fii_dii_flows(max_retries: int = 2) -> dict:
     """
-    Fetches FII/DII flows — tries 4 independent sources in order.
-    available=True ONLY when real non-zero data is returned.
+    Fetches FII/DII flows — 5 sources tried in order.
+    RSS-based sources (MC, ET, BS, Google) work reliably from GitHub Actions CI.
+    NSE API is tried first (works locally) then RSS fallbacks for CI.
+    available=True only when non-zero data is returned.
     """
     from datetime import time as dtime
     import time as _time
 
-    now_ist      = datetime.datetime.now()
-    just_closed  = dtime(15, 30) <= now_ist.time() <= dtime(16, 15)
-    is_prov      = now_ist.time() < dtime(18, 0)
+    now_ist     = datetime.datetime.now()
+    just_closed = dtime(15, 30) <= now_ist.time() <= dtime(16, 15)
+    is_prov     = now_ist.time() < dtime(18, 0)
 
     result = {
         "fii_flow_cr": 0.0, "dii_flow_cr": 0.0,
@@ -2228,43 +2276,50 @@ def fetch_fii_dii_flows(max_retries: int = 2) -> dict:
     }
 
     sources = [
-        ("NSE API",              _fetch_fii_dii_nse),
-        ("Moneycontrol API",     _fetch_fii_dii_moneycontrol),
-        ("Moneycontrol Scrape",  _fetch_fii_dii_mc_scrape),
-        ("Google News",          _fetch_fii_dii_google_news),
+        ("NSE API",               _fetch_fii_dii_nse),
+        ("Moneycontrol RSS",      _fetch_fii_dii_mc_rss),
+        ("Economic Times RSS",    _fetch_fii_dii_et_rss),
+        ("Business Standard RSS", _fetch_fii_dii_bs_rss),
+        ("Google News RSS",       _fetch_fii_dii_google_news),
     ]
 
     for name, fn in sources:
         try:
             _log(f"  [FII/DII] Trying {name}...")
             data = fn()
-            if data and (data["fii_flow_cr"] != 0 or data["dii_flow_cr"] != 0):
+            if data and (data.get("fii_flow_cr", 0) != 0 or data.get("dii_flow_cr", 0) != 0):
                 result["fii_flow_cr"]    = data["fii_flow_cr"]
                 result["dii_flow_cr"]    = data["dii_flow_cr"]
                 result["is_provisional"] = is_prov
                 result["available"]      = True
-                _log(f"  [FII/DII] Got data from {name}: FII {result['fii_flow_cr']:+.0f}Cr | DII {result['dii_flow_cr']:+.0f}Cr")
+                _log(
+                    f"  [FII/DII] {name} ✓ — "
+                    f"FII {result['fii_flow_cr']:+.0f}Cr | DII {result['dii_flow_cr']:+.0f}Cr"
+                )
                 return result
         except Exception as e:
-            _log(f"  [FII/DII] {name} failed: {e}")
+            _log(f"  [FII/DII] {name} error: {e}")
 
-    # If market just closed, wait 60s and retry top 2 sources once
+    # If just after market close, wait 60s and retry RSS sources
     if just_closed:
-        _log("  [FII/DII] All sources returned nothing — waiting 60s (data may not be published yet)")
+        _log("  [FII/DII] All sources returned nothing — waiting 60s for data to publish...")
         _time.sleep(60)
-        for name, fn in sources[:2]:
+        for name, fn in [
+            ("Moneycontrol RSS",   _fetch_fii_dii_mc_rss),
+            ("Economic Times RSS", _fetch_fii_dii_et_rss),
+        ]:
             try:
                 data = fn()
-                if data and (data["fii_flow_cr"] != 0 or data["dii_flow_cr"] != 0):
+                if data and (data.get("fii_flow_cr", 0) != 0 or data.get("dii_flow_cr", 0) != 0):
                     result.update(data)
                     result["is_provisional"] = True
                     result["available"]      = True
-                    _log(f"  [FII/DII] Got data from {name} (retry): FII {result['fii_flow_cr']:+.0f}Cr")
+                    _log(f"  [FII/DII] {name} (retry) ✓ — FII {result['fii_flow_cr']:+.0f}Cr")
                     return result
             except Exception:
                 pass
 
-    _log("  [FII/DII] All sources unavailable — data not yet published")
+    _log("  [FII/DII] All sources unavailable — data not yet published for today")
     return result
 
 
