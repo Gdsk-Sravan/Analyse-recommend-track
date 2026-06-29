@@ -4435,23 +4435,19 @@ def format_confidence_breakdown(factor_scores: dict, final_conf: float) -> list:
 
 
 def format_near_miss_failures(stock: dict, thresh: dict) -> list:
-    """Shows ONLY failed checks — passed checks omitted (FIX 3B).
-    Trader needs to know what's MISSING, not what's already working."""
+    """Compact 1-line failure summary for mobile."""
     conf  = float(stock.get("final_confidence", 0) or 0)
     tq    = float(stock.get("trade_quality_score", 0) or 0)
     rr    = float(stock.get("rr_ratio", 0) or stock.get("rr", 0) or 0)
     min_c = thresh.get("min_confidence", 80)
     min_t = thresh.get("min_tq", 78)
     min_r = thresh.get("min_rr", 2.0)
-    lines = []
-    if conf < min_c:
-        lines.append(f"     ✗ Confidence {conf:.1f} — need +{min_c - conf:.1f}")
-    if tq < min_t:
-        lines.append(f"     ✗ TQ {tq:.1f} — need +{min_t - tq:.1f}")
-    if rr < min_r:
-        lines.append(f"     ✗ R/R {rr:.2f}x — need +{min_r - rr:.2f}x")
-    lines.append("     → Watch for: volume surge or price consolidation above entry")
-    return lines
+    fails = []
+    if conf < min_c: fails.append(f"Conf+{min_c - conf:.1f}")
+    if tq   < min_t: fails.append(f"TQ+{min_t - tq:.1f}")
+    if rr   < min_r: fails.append(f"RR+{min_r - rr:.2f}x")
+    fail_str = " · ".join(fails) if fails else "near threshold"
+    return [f"  ✗ Needs: {fail_str} → Watch: vol surge or consol above entry"]
 
 
 NEAR_MISS_LIMIT = 5  # show only top 5 near misses in Telegram; full list in Excel
@@ -4459,7 +4455,7 @@ NEAR_MISS_LIMIT = 5  # show only top 5 near misses in Telegram; full list in Exc
 
 def format_conviction_meter(regime_score: float, breadth: float,
                              fii: float, dii: float) -> list:
-    """Visual conviction bar (ENHANCEMENT 4)."""
+    """Visual conviction bar — compact 1-line version for mobile."""
     try:
         combined_flow = fii + dii
         conviction = round(
@@ -4469,65 +4465,39 @@ def format_conviction_meter(regime_score: float, breadth: float,
         , 1)
         filled = int(conviction / 10)
         bar    = "█" * filled + "░" * (10 - filled)
-        if conviction >= 75:   label = "🟢 Strong Buying Environment"
-        elif conviction >= 55: label = "🟡 Moderate — Selective Only"
-        elif conviction >= 40: label = "🟠 Weak — Caution Required"
-        else:                  label = "🔴 Poor — Avoid New Positions"
-        return [
-            f"  Market Conviction: [{bar}] {conviction:.0f}%",
-            f"  {label}",
-        ]
+        if conviction >= 75:   label = "🟢 Strong"
+        elif conviction >= 55: label = "🟡 Moderate"
+        elif conviction >= 40: label = "🟠 Weak"
+        else:                  label = "🔴 Poor"
+        return [f"  Conviction [{bar}] {conviction:.0f}% · {label}"]
     except Exception:
         return []
 
 
 def format_risk_meter(nifty_state: dict, vix_in: float, breadth: float) -> list:
-    """Shows current market risk level with reasons (ENHANCEMENT 4 / BUG FIX 1).
-    Uses single nifty_state dict as source of truth."""
+    """Compact 1-line risk meter for mobile."""
     try:
         ns = nifty_state or {}
-        checks = []
         risk_score = 0
-
-        if ns.get("above_ema20"):
-            checks.append("✓ Above EMA20")
-        else:
-            checks.append("✗ Below EMA20")
-            risk_score += 25
-
-        if ns.get("above_ema50"):
-            checks.append("✓ Above EMA50")
-        else:
-            checks.append("✗ Below EMA50")
-            risk_score += 25
-
-        if ns.get("above_ema200"):
-            checks.append("✓ Above EMA200")
-        else:
-            checks.append("✗ Below EMA200")
-            risk_score += 25
-
-        if vix_in > 20:
-            checks.append(f"✗ VIX elevated {vix_in:.1f}")
-            risk_score += 15
-        else:
-            checks.append(f"✓ VIX normal {vix_in:.1f}")
-
-        if breadth < 40:
-            checks.append(f"✗ Weak breadth {breadth:.0f}%")
-            risk_score += 10
-        else:
-            checks.append(f"✓ Breadth ok {breadth:.0f}%")
-
+        if ns.get("above_ema20"):  e20 = "✓"
+        else:                      e20 = "✗"; risk_score += 25
+        if ns.get("above_ema50"):  e50 = "✓"
+        else:                      e50 = "✗"; risk_score += 25
+        if ns.get("above_ema200"): e200 = "✓"
+        else:                      e200 = "✗"; risk_score += 25
+        vix_ok = vix_in <= 20
+        if not vix_ok: risk_score += 15
+        brd_ok = breadth >= 40
+        if not brd_ok: risk_score += 10
         if risk_score >= 75:   label = "🔴 EXTREME"
         elif risk_score >= 50: label = "🟠 HIGH"
         elif risk_score >= 25: label = "🟡 MEDIUM"
         else:                  label = "🟢 LOW"
-
-        lines = [f"  Market Risk: {label}"]
-        for c in checks:
-            lines.append(f"    {c}")
-        return lines
+        vix_tag = f"VIX {'✓' if vix_ok else '✗'}{vix_in:.1f}"
+        brd_tag = f"Breadth {'✓' if brd_ok else '✗'}{breadth:.0f}%"
+        return [
+            f"  Risk {label} · EMA20{e20} EMA50{e50} EMA200{e200} · {vix_tag} · {brd_tag}"
+        ]
     except Exception:
         return []
 
@@ -4536,27 +4506,12 @@ def format_breadth_dashboard(total_universe: int, total_tradable: int,
                               qualified: int, near_buy: int,
                               developing: int, monitor: int,
                               yesterday: dict = None) -> list:
-    """Universe breadth stats with full counts (ENHANCEMENT 5 / BUG FIX 2)."""
-    lines = ["  Market Breadth:"]
+    """Compact 2-line breadth dashboard for mobile."""
     rejected = total_universe - qualified
-    stats = [
-        ("Universe",   total_universe),
-        ("Tradable",   total_tradable),
-        ("Qualified",  qualified),
-        ("Near Buy",   near_buy),
-        ("Developing", developing),
-        ("Monitor",    monitor),
-        ("Rejected",   rejected),
+    return [
+        f"  📈 Breadth · Universe {total_universe} · Tradable {total_tradable} · Qualified {qualified}",
+        f"  Near Buy {near_buy} · Developing {developing} · Monitor {monitor} · Rejected {rejected}",
     ]
-    for label, val in stats:
-        if yesterday:
-            prev  = yesterday.get(label.lower().replace(" ", "_"), val)
-            delta = val - prev
-            arrow = f" ▲+{delta}" if delta > 0 else (f" ▼{delta}" if delta < 0 else " →")
-        else:
-            arrow = ""
-        lines.append(f"    {label:<12} {val:>6}{arrow}")
-    return lines
 
 
 def format_buy_card(stock: dict, sizing: dict, regime: str,
@@ -4599,20 +4554,20 @@ def format_buy_card(stock: dict, sizing: dict, regime: str,
         max_loss= sizing.get("max_loss", stock.get("max_loss", 0))
         news    = truncate_display(stock.get("news_summary", ""), 120)
 
+        pos_val_k = pos_val / 1000  # display in K
+        max_loss_k = max_loss / 1000
         lines = [
-            f"  {icon} <b>{sym}</b> [{html.escape(str(sector))}]",
-            f"     Opp Score: {opp:.1f} | Conf: {conf:.1f} | TQ: {tq:.1f} | R/R: {rr:.2f}x",
-            f"     Entry  Rs{entry:.2f} | Stop Rs{stop_p:.2f} ({risk_p:.1f}%)",
-            f"     T1     Rs{t1:.2f} | T2 Rs{t2:.2f}",
-            f"     Size   Rs{pos_val:,.0f} ({pos_pct:.1f}%) | Shares {shares} | MaxLoss Rs{max_loss:,.0f}",
-            f"     ROE {stock.get('roe', 0):.1f}% | D/E {stock.get('de_ratio', 0):.2f} | Pledge {stock.get('promoter_pledge_pct', 0):.0f}%",
-            f"     Thesis: {html.escape(str(buy_thesis))}",
+            f"  {icon} <b>{sym}</b> · {html.escape(str(sector))}",
+            f"  Opp {opp:.0f} · Conf {conf:.1f} · TQ {tq:.1f} · R/R {rr:.2f}x",
+            f"  Entry ₹{entry:.1f} · Stop ₹{stop_p:.1f} ({risk_p:.1f}%) · T1 ₹{t1:.1f} · T2 ₹{t2:.1f}",
+            f"  Size ₹{pos_val_k:.0f}K ({pos_pct:.1f}%) · {shares} shares · MaxLoss ₹{max_loss_k:.1f}K",
+            f"  ROE {stock.get('roe', 0):.1f}% · D/E {stock.get('de_ratio', 0):.2f} · Pledge {stock.get('promoter_pledge_pct', 0):.0f}%",
+            f"  📝 {html.escape(str(buy_thesis))}",
         ]
         if cats:
-            lines.append(f"     Catalysts: {html.escape(' | '.join(str(c) for c in cats))}")
+            lines.append(f"  🏷 {html.escape(' · '.join(str(c) for c in cats))}")
         if news and news != "\u2014":
-            lines.append(f"     News: {html.escape(str(news))}")
-        # Confidence breakdown
+            lines.append(f"  📰 {html.escape(str(news))}")
         fs = stock.get("factor_scores", {}) or {}
         lines += format_confidence_breakdown(fs, conf)
         return lines
@@ -4745,14 +4700,11 @@ def format_portfolio_card_compact(alert: dict, current_price: float,
                        "TRAIL_STOP": "🟡", "REVIEW": "🟠"}.get(action, "✅")
 
         lines = [
-            f"  {action_icon} <b>{html.escape(symbol)}</b> | {action} | Day {days} | "
-            f"{pnl_icon} PnL {pnl_p:+.1f}% | {r_mult:+.2f}R",
-            f"     Rs{entry:.0f} → Rs{current_price:.0f} | T1 Rs{t1:.0f} | T2 Rs{t2:.0f}",
+            f"  {action_icon} <b>{html.escape(symbol)}</b> · {action} · D{days} · {pnl_icon}{pnl_p:+.1f}% · {r_mult:+.2f}R",
+            f"  ₹{entry:.0f}→₹{current_price:.0f} · T1 ₹{t1:.0f} · T2 ₹{t2:.0f}",
         ]
         if near_stop:
-            lines.append(
-                f"     ⚠️  STOP WATCH: Rs{stop:.0f} only {dist_stop:.1f}% away — monitor closely"
-            )
+            lines.append(f"  ⚠️ Stop ₹{stop:.0f} only {dist_stop:.1f}% away")
         return lines
     except Exception:
         return [f"  ✅ <b>{html.escape(str(alert.get('symbol', '?')))}</b>"]
@@ -4780,12 +4732,10 @@ def format_portfolio_summary_compact(alerts: list, current_prices: dict,
         exposure  = round(total_invested / total_capital * 100, 1) if total_capital > 0 else 0.0
         cash      = round(100 - exposure, 1)
         return [
-            f"  💼 {len(alerts)} position(s) | "
-            f"Invested Rs{total_invested:,.0f} ({exposure:.1f}%) | Cash {cash:.1f}%",
-            f"     Portfolio PnL {total_pnl:+.2f}% | Full dashboard in Excel",
+            f"  💼 {len(alerts)} pos · ₹{total_invested:,.0f} ({exposure:.1f}%) · Cash {cash:.1f}% · PnL {total_pnl:+.2f}%",
         ]
     except Exception:
-        return [f"  💼 {len(alerts)} position(s) | see Excel for details"]
+        return [f"  💼 {len(alerts)} pos · see Excel for details"]
 
 
 # ── Stop Watch Alert (FIX 5) ─────────────────────────────────────────────────
@@ -4935,17 +4885,16 @@ def format_watchlist_section(watchlist: list, regime: str,
                   key=lambda x: x.get("conf", x.get("final_confidence", 0)), reverse=True)
     mon  = [w for w in watchlist if w.get("tier") == "MONITOR"]
 
-    lines = [f"\U0001f441 WATCHLIST \u2014 {len(watchlist)} stocks (threshold {min_conf})"]
+    lines = [f"👁 <b>WATCHLIST</b> — {len(watchlist)} stocks (min conf {min_conf})"]
 
-    # -- NEAR MISS: full detail per stock, top 5 only (FIX 3D) ----------------------
+    # -- NEAR MISS: 3 lines per stock, top 5 only --------------------------------
     if near:
         lines.append(
-            f"  \U0001f534 NEAR MISS ({len(near)} total \u2014 "
-            f"top {min(len(near), NEAR_MISS_LIMIT)} shown, best R/R first):"
+            f"🔴 <b>NEAR MISS</b> ({len(near)} total, top {min(len(near), NEAR_MISS_LIMIT)})"
         )
         for w in near[:NEAR_MISS_LIMIT]:
             sym      = html.escape(str(w["symbol"]))
-            sector   = html.escape(str(w.get("sector", "DIVERSIFIED")))
+            sector   = html.escape(str(w.get("sector", "DIV")))
             conf     = w.get("conf", w.get("final_confidence", 0))
             tq       = w.get("tq", w.get("trade_quality_score", 0))
             entry    = w.get("entry", 0)
@@ -4954,22 +4903,19 @@ def format_watchlist_section(watchlist: list, regime: str,
             target2  = w.get("target2", 0)
             rr       = w.get("rr_ratio", w.get("rr", 0))
             risk     = w.get("risk_pct", 0)
-            cur      = w.get("current", w.get("price", entry))
             opp      = w.get("opportunity_score", 0)
-            lines.append(f"    <b>{sym}</b> [{sector}] | Opp {opp:.1f} | Conf {conf:.1f} | TQ {tq:.1f}")
-            lines.append(f"    Entry Rs{entry:.2f} | Stop Rs{stop:.2f} ({risk:.1f}%) | T1 Rs{target1:.2f} | T2 Rs{target2:.2f} | R/R {rr:.1f}x")
-            lines.append(f"    (Cur Rs{cur:.1f})")
-            # Near miss failure breakdown + AI insight
+            lines.append(f"  <b>{sym}</b> [{sector}] · Opp{opp:.0f} Conf{conf:.1f} TQ{tq:.1f} RR{rr:.1f}x")
+            lines.append(f"  ₹{entry:.1f} entry · Stop ₹{stop:.1f}({risk:.1f}%) · T1 ₹{target1:.1f} · T2 ₹{target2:.1f}")
             lines.extend(format_near_miss_failures(w, thresh))
-            insight = (near_miss_insights or {}).get(w.get("symbol", "") , "")
+            insight = (near_miss_insights or {}).get(w.get("symbol", ""), "")
             if insight:
-                lines.append(f"     \U0001f4a1 {html.escape(str(insight))}")
-            if w.get("warnings"):
-                lines.append(f"    \u26a0\ufe0f  {html.escape(' | '.join(str(x) for x in w['warnings']))}")
+                lines.append(f"  💡 {html.escape(str(insight))}")
         if len(near) > NEAR_MISS_LIMIT:
-            lines.append(f"  + {len(near) - NEAR_MISS_LIMIT} more in Excel tracker")
+            lines.append(f"  +{len(near) - NEAR_MISS_LIMIT} more in Excel tracker")
+
+    # -- DEVELOPING: 2 lines per stock, top 3 expanded --------------------------
     if dev:
-        lines.append(f"  \U0001f7e1 DEVELOPING ({len(dev)} \u2014 building, not ready yet):")
+        lines.append(f"🟡 <b>DEVELOPING</b> ({len(dev)} building)")
         for w in dev[:3]:
             sym    = html.escape(str(w["symbol"]))
             sector = html.escape(str(w.get("sector", "OTHERS")))
@@ -4982,29 +4928,19 @@ def format_watchlist_section(watchlist: list, regime: str,
             t2     = w.get("target2", 0)
             rr     = w.get("rr_ratio", w.get("rr", 0))
             risk   = w.get("risk_pct", 0)
-            cur    = w.get("current", w.get("price", entry))
             opp    = w.get("opportunity_score", 0)
-            lines.append(
-                f"    {sym} [{sector}] | "
-                f"Opp {opp:.1f} | Conf {conf:.1f} [gap {gap:.1f}] | TQ {tq:.1f}"
-            )
-            lines.append(
-                f"    Entry Rs{entry:.2f} | Stop Rs{stop:.2f} ({risk:.1f}%) | "
-                f"T1 Rs{t1:.2f} | T2 Rs{t2:.2f} | R/R {rr:.1f}x"
-            )
-            lines.append(f"    (Cur Rs{cur:.1f})")
-            # Only show failed checks (FIX 3B/3C)
-            lines.append(f"     Failed checks:")
-            if conf < thresh["min_confidence"]:
-                lines.append(f"     \u2717 Confidence {conf:.1f} \u2014 need +{gap:.1f}")
-            if tq < thresh["min_tq"]:
-                lines.append(f"     \u2717 TQ {tq:.1f} \u2014 need +{thresh['min_tq']-tq:.1f}")
-            if rr < thresh["min_rr"]:
-                lines.append(f"     \u2717 R/R {rr:.2f}x \u2014 need +{thresh['min_rr']-rr:.2f}x")
-            lines.append("     \u2192 Watch for: volume surge or consolidation above entry")
+            # Show only failing checks inline
+            thresh2 = thresh
+            fails  = []
+            if conf < thresh2["min_confidence"]: fails.append(f"Conf+{gap:.1f}")
+            if tq   < thresh2["min_tq"]:         fails.append(f"TQ+{thresh2['min_tq']-tq:.1f}")
+            if rr   < thresh2["min_rr"]:         fails.append(f"RR+{thresh2['min_rr']-rr:.2f}x")
+            fail_str = " · ".join(fails) if fails else "—"
+            lines.append(f"  {sym} [{sector}] · Opp{opp:.0f} Conf{conf:.1f} TQ{tq:.1f} RR{rr:.1f}x")
+            lines.append(f"  ₹{entry:.1f} · Stop ₹{stop:.1f} · T1 ₹{t1:.1f} · T2 ₹{t2:.1f} · Needs: {fail_str}")
         if len(dev) > 3:
             rest_names = ", ".join(w["symbol"].replace(".NS", "") for w in dev[3:])
-            lines.append(f"    + {len(dev)-3} more: {rest_names}")
+            lines.append(f"  +{len(dev)-3} more: {rest_names}")
 
     # -- MONITOR: collapsed to one line only (BUG FIX 4) --------------------
     if mon:
@@ -5253,10 +5189,9 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
     score  = regime_data["score"]
     thresh = regime_data["thresholds"]
 
-    # ── Header ──
-    lines.append("═" * 40)
-    lines.append(f"NSE SWING BRIEF — {timestamp}")
-    lines.append("═" * 40)
+    # ── Header ──────────────────────────────────────────────────────────────
+    lines.append(f"📊 <b>NSE SWING BRIEF</b> · {timestamp}")
+    lines.append("─" * 22)
     lines.append("")
 
     # ── Market Regime ──
@@ -5273,8 +5208,8 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
         "BEAR":            "Downtrend — no new longs, manage exits only.",
         "STRONG_BEAR":     "Severe downtrend — cash only, no new positions.",
     }
-    lines.append("📊 MARKET REGIME")
-    lines.append(f"  🟡 {regime} | Score: {score:.0f}/100 | MaxBuys: {thresh['max_buys']}")
+    lines.append("📊 <b>MARKET REGIME</b>")
+    lines.append(f"  {regime} · Score {score:.0f}/100 · MaxBuys {thresh['max_buys']}")
 
     # Regime explanation (Patch 4)
     fii_flow = macro.get("fii_flow_cr", 0.0)
@@ -5289,21 +5224,19 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
         ema50       = float(_ns_early.get("ema50",  _kl.get("ema50",  0)) or 0),
         ema200      = float(_ns_early.get("ema200", _kl.get("ema200", 0)) or 0),
     )
-    lines.append(f"  Why: {html.escape(str(reg_why))}")
+    lines.append(f"  {html.escape(str(reg_why))}")
     lines.append(f"  {REGIME_RATIONALE.get(regime, '')}")
-
-    vix_ratio = macro.get("vix_term_ratio", 1.0)
     lines.append(
-        f"  VIX-IN {vix_in:.1f} ({vix_in_flag}) | VIX-US {vix_us:.1f} ({vix_us_flag})"
+        f"  VIX-IN {vix_in:.1f}({vix_in_flag}) · VIX-US {vix_us:.1f}({vix_us_flag})"
     )
     lines.append(
-        f"  NIFTY {macro.get('nifty_1d_pct', 0):+.2f}% | "
-        f"S&P {macro.get('sp500_1d_pct', 0):+.2f}% | "
+        f"  NIFTY {macro.get('nifty_1d_pct', 0):+.2f}% · "
+        f"S&P {macro.get('sp500_1d_pct', 0):+.2f}% · "
         f"DXY {macro.get('dxy', 0):.1f}"
     )
     lines.append(
-        f"  USD/INR {macro.get('usdinr', 0):.2f} | "
-        f"Crude ${macro.get('crude_usd', 0):.1f} | "
+        f"  ₹/$ {macro.get('usdinr', 0):.2f} · "
+        f"Crude ${macro.get('crude_usd', 0):.1f} · "
         f"US10Y {macro.get('us10y', 0):.2f}%"
     )
 
@@ -5317,32 +5250,20 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
     fii_dii_line = format_fii_dii_line(_fii_data)
     lines.append(f"  {fii_dii_line}")
 
-    # ── Market Conviction Meter + Risk Meter (BUG FIX 1: single nifty_state) ──
+    # ── Conviction + Risk (single lines) ──
     _kl2 = key_levels or {}
     _ns  = nifty_state or {}
     lines.extend(format_conviction_meter(score, breadth_20, fii_flow, dii_flow))
     lines.extend(format_risk_meter(_ns, vix_in, breadth_20))
-    lines.append("")
+    lines.append(f"  Min Conf {thresh['min_confidence']} · TQ {thresh['min_tq']} · R/R {thresh['min_rr']} · Max {thresh['max_buys']} buy(s)")
 
-    lines.append(
-        f"  Min Conf {thresh['min_confidence']} | "
-        f"Min TQ {thresh['min_tq']} | "
-        f"Min R/R {thresh['min_rr']} | "
-        f"Max Buys {thresh['max_buys']}"
-    )
-
-    # Portfolio heat
     if heat:
         heat_emoji = "🔴" if not heat["heat_ok"] else ("🟡" if heat["heat_pct"] > heat["max_heat_pct"] * 0.6 else "🟢")
-        lines.append(
-            f"  {heat_emoji} Portfolio Heat: {heat['heat_pct']:.1f}% / {heat['max_heat_pct']:.0f}%"
-        )
-
-    # Platt calibration stats
+        lines.append(f"  {heat_emoji} Heat {heat['heat_pct']:.1f}%/{heat['max_heat_pct']:.0f}%")
     if platt and platt.get("calibrated"):
         lines.append(
-            f"  📊 System WR: {platt['win_rate']:.0%} ({platt['total_closed']} trades) | "
-            f"Avg W: +{platt['avg_win_pct']:.1f}% / L: -{platt['avg_loss_pct']:.1f}%"
+            f"  WR {platt['win_rate']:.0%} ({platt['total_closed']}T) · "
+            f"Avg W +{platt['avg_win_pct']:.1f}% / L -{platt['avg_loss_pct']:.1f}%"
         )
     lines.append("")
 
@@ -5396,7 +5317,7 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
     lines.append("")
 
     # ── BUY Signals (Patch 6 for no-buy case) ──
-    lines.append("✅ BUY SIGNALS")
+    lines.append("✅ <b>BUY SIGNALS</b>")
     if buys:
         _ai = ai_results or {}
         _buy_theses = _ai.get("buy_theses", {})
@@ -5418,30 +5339,29 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
             max_entry = gap_check.get("max_valid_entry", 0)
             if max_entry > 0 and max_entry > entry:
                 gap_max_pct = round((max_entry - entry) / entry * 100, 1)
-                lines.append(f"  ⚡ Max valid entry: Rs{max_entry:.2f} (+{gap_max_pct:.1f}%)")
-                lines.append(f"     If open > Rs{max_entry:.2f} → SKIP. Wait for pullback.")
+                lines.append(f"  ⚡ Max entry ₹{max_entry:.1f} (+{gap_max_pct:.1f}%) — skip if opens above")
             sizing_method = b.get("sizing_method", "")
             if sizing_method:
-                lines.append(f"  Sizing: {html.escape(str(sizing_method))}")
+                lines.append(f"  💰 {html.escape(str(sizing_method))}")
             rs_diff = b.get("rs_diff21", 0)
-            lines.append(f"  RS vs Nifty (21d): {rs_diff:+.1f}%")
+            lines.append(f"  RS vs Nifty {rs_diff:+.1f}%")
             weekly_ok = b.get("weekly_trend_ok", True)
             if not weekly_ok:
-                lines.append("  ⚠️ Weekly trend: DOWN — reduced conviction")
+                lines.append("  ⚠️ Weekly DOWN — reduced conviction")
             pattern = b.get("price_pattern", "NONE")
             if pattern != "NONE":
-                lines.append(f"  Pattern: {html.escape(str(pattern))}")
+                lines.append(f"  📐 {html.escape(str(pattern))}")
             accum = b.get("accum_signal", "NEUTRAL")
             if accum != "NEUTRAL":
-                lines.append(f"  Volume: {html.escape(str(accum))}")
+                lines.append(f"  📊 Vol: {html.escape(str(accum))}")
             ai_sum = truncate_display(b.get("ai_commentary", ""), 90)
             if ai_sum and ai_sum != "—":
-                lines.append(f"  AI: {html.escape(str(ai_sum))}")
+                lines.append(f"  🤖 {html.escape(str(ai_sum))}")
             if b.get("repeat_tag"):
-                lines.append(f"  [{html.escape(str(b['repeat_tag']))}]")
+                lines.append(f"  🔁 {html.escape(str(b['repeat_tag']))}")
             if b.get("warnings"):
-                lines.append(f"  WARN: {html.escape(', '.join(b['warnings'][:3]))}")
-            lines.append("  " + "─" * 36)
+                lines.append(f"  ⚠️ {html.escape(', '.join(b['warnings'][:3]))}")
+            lines.append("  ···")
     else:
         # Patch 6: detailed no-buy explanation (includes watchlist as closer candidates)
         no_buy_lines = format_no_buy_explanation(rejected_stocks or [], regime,
@@ -5451,14 +5371,13 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
 
     # ── SHORT Signals ──
     if shorts:
-        lines.append("SHORT SIGNALS")
+        lines.append("🔽 <b>SHORT SIGNALS</b>")
         for s in shorts:
-            lines.append(f"  >> {html.escape(str(s.get('symbol','?')))} [SHORT]")
+            lines.append(f"  <b>{html.escape(str(s.get('symbol','?')))}</b> [SHORT]")
             lines.append(
-                f"     Entry Rs{s.get('entry',0):.2f} | Stop Rs{s.get('stop',0):.2f} | "
-                f"T1 Rs{s.get('target1',0):.2f} | T2 Rs{s.get('target2',0):.2f}"
+                f"  Entry ₹{s.get('entry',0):.1f} · Stop ₹{s.get('stop',0):.1f} · T1 ₹{s.get('target1',0):.1f} · T2 ₹{s.get('target2',0):.1f} · RR {s.get('rr',0):.2f}x"
             )
-            lines.append(f"     R/R {s.get('rr',0):.2f}x | {html.escape(str(s.get('reason','')))}")
+            lines.append(f"  {html.escape(str(s.get('reason','')))}")  
         lines.append("")
 
     # ── Watchlist — ALL stocks, all tiers, with levels (Patch 1) ──
@@ -5484,7 +5403,7 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
     trails  = [a for a in portfolio_alerts if a["action"] == "TRAIL_STOP"]
     reviews = [a for a in portfolio_alerts if a["action"] == "REVIEW"]
     holds   = [a for a in portfolio_alerts if a["action"] == "HOLD"]
-    lines.append("📁 PORTFOLIO")
+    lines.append("📁 <b>PORTFOLIO</b>")
     if portfolio_alerts:
         # Compact 2-line portfolio summary (FIX 3F)
         lines.extend(format_portfolio_summary_compact(portfolio_alerts, _cur_prices_port, PORTFOLIO_CAPITAL))
@@ -5499,19 +5418,19 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
             return card
 
         if exits:
-            lines.append("  🚨 EXIT:")
+            lines.append("  🚨 <b>EXIT</b>")
             for e in exits:
                 lines.extend(_fmt_alert_card(e))
         if trails:
-            lines.append("  ⚡ TRAIL STOP (T1 hit):")
+            lines.append("  ⚡ <b>TRAIL STOP</b>")
             for t in trails:
                 lines.extend(_fmt_alert_card(t))
         if reviews:
-            lines.append("  🔍 REVIEW:")
+            lines.append("  🔍 <b>REVIEW</b>")
             for r in reviews:
                 lines.extend(_fmt_alert_card(r))
         if holds:
-            lines.append("  ✅ HOLD:")
+            lines.append("  ✅ <b>HOLD</b>")
             for h in holds[:6]:
                 lines.extend(_fmt_alert_card(h))
     else:
@@ -5536,9 +5455,8 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
 
     # ── Footer ──
     lines.append("")
-    lines.append("─" * 40)
-    lines.append("⚠️  Recommendation only. Execute manually.")
-    lines.append("═" * 40)
+    lines.append("─" * 22)
+    lines.append("⚠️ Recommendation only. Execute manually.")
     return "\n".join(lines)
 
 
