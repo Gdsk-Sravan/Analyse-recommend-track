@@ -1133,7 +1133,7 @@ def run_all_ai_calls(
     return results
 
 
-
+def _rule_based_news_score(text: str) -> dict:
     tl = text.lower()
     for kw in BLACK_SWAN_KEYWORDS:
         if kw in tl:
