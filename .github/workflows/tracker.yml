@@ -2,6 +2,15 @@ name: Recommendation Tracker
 
 on:
   workflow_dispatch:
+    inputs:
+      run_mode:
+        description: "Run mode"
+        required: false
+        default: "manual"
+        type: choice
+        options:
+          - "manual"
+          - "scheduled"
 
 jobs:
   track:
@@ -30,7 +39,7 @@ jobs:
       - name: Run tracker job
         env:
           TRACKER_XLSX: recommendation_tracker.xlsx
-          SCHEDULED_RUN: ${{ github.event_name == 'schedule' && 'true' || 'false' }}
+          SCHEDULED_RUN: ${{ github.event.inputs.run_mode == 'scheduled' && 'true' || 'false' }}
         run: python tracker_job.py
 
       - uses: actions/upload-artifact@v4
