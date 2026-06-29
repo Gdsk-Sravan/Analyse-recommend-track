@@ -1,11 +1,21 @@
-name: Stop Loss Monitor
+name: Weekly Summary
 
 on:
   workflow_dispatch:
+    inputs:
+      run_mode:
+        description: "Run mode"
+        required: false
+        default: "manual"
+        type: choice
+        options:
+          - "manual"
+          - "scheduled"
 
 jobs:
-  stopwatch:
+  weekly:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
 
@@ -14,9 +24,9 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install yfinance requests
+        run: pip install yfinance requests numpy
 
-      - name: Download tracker artifact
+      - name: Download tracker artifact (for active positions + conf history)
         uses: dawidd6/action-download-artifact@v3
         continue-on-error: true
         with:
@@ -25,28 +35,11 @@ jobs:
           path: .
           workflow_conclusion: success
 
-      - name: Download stop alerts state
-        uses: dawidd6/action-download-artifact@v3
-        continue-on-error: true
-        with:
-          workflow: stopwatch.yml
-          name: stop-alerts
-          path: .
-          workflow_conclusion: success
-
-      - name: Run stop loss monitor
-        run: python stopwatch_job.py
+      - name: Run weekly summary
+        run: python weekly_summary_job.py
         env:
-          TELEGRAM_BOT_TOKEN:    ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID:      ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TRADE_TRACKER_V2_FILE: trade_tracker.json
-          SCHEDULED_RUN: ${{ github.event_name == 'schedule' && 'true' || 'false' }}
-
-      - name: Upload stop alerts state
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: stop-alerts
-          path: stop_alerts_sent.json
-          retention-days: 7
-          overwrite: true
+          CONF_HISTORY_FILE: confidence_history.json
+          SCHEDULED_RUN: ${{ github.event.inputs.run_mode == 'scheduled' && 'true' || 'false' }}
