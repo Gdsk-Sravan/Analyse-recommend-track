@@ -3,7 +3,7 @@ name: Stock Reviewer
 on:
   workflow_dispatch:
     inputs:
-        run_mode:
+      run_mode:
         description: "Run mode"
         required: false
         default: "manual"
@@ -12,7 +12,6 @@ on:
           - "manual"
           - "scheduled"
 
-      force_price_refresh:
       force_price_refresh:
         description: "Force re-download latest prices (use after 4:30 PM IST for fresh EOD data)"
         required: false
