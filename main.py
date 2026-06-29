@@ -4942,15 +4942,18 @@ def format_watchlist_section(watchlist: list, regime: str,
             rest_names = ", ".join(w["symbol"].replace(".NS", "") for w in dev[3:])
             lines.append(f"  +{len(dev)-3} more: {rest_names}")
 
-    # -- MONITOR: collapsed to one line only (BUG FIX 4) --------------------
+    # -- MONITOR: header + all names in rows of 5 ---------------------------
     if mon:
         best     = max(mon, key=lambda x: x.get("rr_ratio", x.get("rr", 0)))
         best_sym = best["symbol"].replace(".NS", "")
         best_rr  = best.get("rr_ratio", best.get("rr", 0))
         lines.append(
-            f"  \U0001f535 MONITOR ({len(mon)} early-stage) \u2014 "
-            f"best R/R: {best_sym} {best_rr:.1f}x | full list in Excel tracker"
+            f"\U0001f535 <b>MONITOR</b> ({len(mon)} early-stage) \u00b7 best R/R: {best_sym} {best_rr:.1f}x"
         )
+        names = [m["symbol"].replace(".NS", "") for m in mon]
+        # print 5 names per line
+        for i in range(0, len(names), 5):
+            lines.append("  " + " \u00b7 ".join(names[i:i+5]))
 
     if not near and not dev and not mon:
         lines.append("  None today.")
@@ -4961,69 +4964,26 @@ def format_watchlist_section(watchlist: list, regime: str,
 def format_no_buy_explanation(top_rejected: list, regime: str,
                                watchlist: list = None) -> list:
     """
-    When buys=0, show top 3 closest candidates.
-    Merges watchlist (NEAR_MISS + DEVELOPING) with rejected — watchlist stocks
-    are always closer to qualifying than fully-rejected stocks.
+    When buys=0, show a single clean summary line pointing to the watchlist.
+    Never duplicates stocks already shown in the WATCHLIST section below.
     """
     thresh = REGIME_THRESHOLDS[regime]
-    lines  = ["  None — no setup cleared all gates today."]
-    lines.append(
-        f"  (Need: Conf≥{thresh['min_confidence']} | "
-        f"TQ≥{thresh['min_tq']} | R/R≥{thresh['min_rr']})"
-    )
+    wl     = watchlist or []
+    nm     = len([s for s in wl if s.get("tier") == "NEAR_MISS"])
+    dev    = len([s for s in wl if s.get("tier") == "DEVELOPING"])
+    mon    = len([s for s in wl if s.get("tier") == "MONITOR"])
 
-    # Watchlist stocks (DEVELOPING / NEAR_MISS) are closer to qualifying;
-    # normalise their field names then merge with fully-rejected stocks.
-    candidates = []
-    for s in (watchlist or []):
-        if s.get("tier") in ("NEAR_MISS", "DEVELOPING"):
-            entry = dict(s)
-            entry.setdefault("final_confidence",  s.get("conf",  s.get("final_confidence", 0)))
-            entry.setdefault("trade_quality_score", s.get("tq",  s.get("trade_quality_score", 0)))
-            entry.setdefault("rr_ratio",            s.get("rr",  s.get("rr_ratio", 0)))
-            entry.setdefault("fail_reasons",        s.get("fail_reasons", []))
-            candidates.append(entry)
-    for s in (top_rejected or []):
-        candidates.append(s)
-
-    if not candidates:
-        return lines
-    lines.append("")
-    lines.append("  Closest candidates:")
-
-    # Sort by confidence desc, deduplicate by symbol, take top 3
-    seen: set = set()
-    top3 = []
-    for s in sorted(candidates, key=lambda x: x.get("final_confidence", 0), reverse=True):
-        sym = s.get("symbol", "?")
-        if sym not in seen:
-            seen.add(sym)
-            top3.append(s)
-        if len(top3) == 3:
-            break
-
-    for i, s in enumerate(top3):
-        conf     = s.get("final_confidence", 0)
-        tq       = s.get("trade_quality_score", 0)
-        rr       = s.get("rr_ratio", 0)
-        conf_gap = thresh["min_confidence"] - conf
-        tq_gap   = max(0, thresh["min_tq"] - tq)
-        rr_gap   = max(0, thresh["min_rr"] - rr)
-        fails    = s.get("fail_reasons", [])
-        tier_tag = f" [{s['tier']}]" if s.get("tier") else ""
-        lines.append(
-            f"  #{i+1} {html.escape(str(s.get('symbol','?')))}"
-            f"{html.escape(tier_tag)} [{html.escape(str(s.get('sector','?')))}]"
-        )
-        lines.append(
-            f"     Conf {conf:.1f} (need +{conf_gap:.1f}) | "
-            f"TQ {tq:.1f} (need +{tq_gap:.1f}) | "
-            f"R/R {rr:.2f}x (need +{rr_gap:.2f})"
-        )
-        if fails:
-            lines.append(
-                f"     Blockers: {html.escape(', '.join(str(f) for f in fails))}"
-            )
+    lines = [
+        f"  None \u2014 no setup cleared all gates "
+        f"(need Conf\u2265{thresh['min_confidence']} \u00b7 TQ\u2265{thresh['min_tq']} \u00b7 R/R\u2265{thresh['min_rr']})"
+    ]
+    if nm or dev or mon:
+        parts = []
+        if nm:  parts.append(f"\U0001f534 {nm} Near Miss")
+        if dev: parts.append(f"\U0001f7e1 {dev} Developing")
+        if mon: parts.append(f"\U0001f535 {mon} Monitor")
+        joined = " \u00b7 ".join(parts)
+        lines.append(f"  \u2193 {joined} \u2014 details in WATCHLIST \u2193")
     return lines
 
 
