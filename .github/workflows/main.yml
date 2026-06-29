@@ -3,6 +3,16 @@ name: Stock Reviewer
 on:
   workflow_dispatch:
     inputs:
+        run_mode:
+        description: "Run mode"
+        required: false
+        default: "manual"
+        type: choice
+        options:
+          - "manual"
+          - "scheduled"
+
+      force_price_refresh:
       force_price_refresh:
         description: "Force re-download latest prices (use after 4:30 PM IST for fresh EOD data)"
         required: false
@@ -90,7 +100,7 @@ env:
   PYTHONUNBUFFERED: "1"
   TZ: "Asia/Kolkata"
   # true only when triggered by cron schedule — manual dispatch sets this false
-  SCHEDULED_RUN: ${{ github.event_name == 'schedule' && 'true' || 'false' }}
+  SCHEDULED_RUN: ${{ github.event_name == 'scheduled' && 'true' || 'false' }}
 
   TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
   TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
