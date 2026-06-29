@@ -1,8 +1,6 @@
 name: Weekly Summary
 
 on:
-  schedule:
-    - cron: '30 4 * * 6'     # Saturday 10:00 AM IST (4:30 UTC)
   workflow_dispatch:
 
 jobs:
