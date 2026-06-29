@@ -89,7 +89,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: stock-reviewer-${{ github.ref }}-${{ github.event.schedule || 'manual' }}
+  group: stock-reviewer-${{ github.ref }}-${{ github.event.inputs.run_job }}
   cancel-in-progress: false
 
 # ═══════════════════════════════════════════════════════════════════════════════
