@@ -32,6 +32,7 @@ jobs:
       - name: Run research analytics job
         env:
           TRACKER_XLSX: recommendation_tracker.xlsx
+          SCHEDULED_RUN: ${{ github.event_name == 'schedule' && 'true' || 'false' }}
         run: python research_job.py
 
       - uses: actions/upload-artifact@v4
