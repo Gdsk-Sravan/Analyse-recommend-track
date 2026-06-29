@@ -34,3 +34,4 @@ jobs:
           TELEGRAM_CHAT_ID:    ${{ secrets.TELEGRAM_CHAT_ID }}
           TRADE_TRACKER_V2_FILE: trade_tracker.json
           CONF_HISTORY_FILE:   confidence_history.json
+          SCHEDULED_RUN: ${{ github.event_name == 'schedule' && 'true' || 'false' }}
