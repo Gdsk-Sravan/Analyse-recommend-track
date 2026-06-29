@@ -2153,9 +2153,9 @@ def _parse_fii_dii_from_text(text: str) -> "dict | None":
     fii_pat_buy  = rf'(?:FII|FPI)s?\s+(?:net\s+)?(?:{_BUY_WORDS})[^\d{{}}]{{0,40}}{_AMT}'
     fii_pat_sell = rf'(?:FII|FPI)s?\s+(?:net\s+)?(?:{_SELL_WORDS})[^\d{{}}]{{0,40}}{_AMT}'
     fii_pat_net  = rf'(?:FII|FPI)\s+net[^\d]{{0,30}}([-]?[\d,]+(?:\.\d+)?)'
-    dii_pat_buy  = rf'DII[sS]?\s+(?:net\s+)?(?:{_BUY_WORDS})[^\d{{}}]{{0,40}}{_AMT}'
-    dii_pat_sell = rf'DII[sS]?\s+(?:net\s+)?(?:{_SELL_WORDS})[^\d{{}}]{{0,40}}{_AMT}'
-    dii_pat_net  = rf'DII\s+net[^\d]{{0,30}}([-]?[\d,]+(?:\.\d+)?)'
+    dii_pat_buy  = rf'(?:DII[sS]?|[Dd]omestic\s+[Ii]nstitutional\s+[Ii]nvestors?)\s+(?:net\s+)?(?:{_BUY_WORDS})[^\d{{}}]{{0,40}}{_AMT}'
+    dii_pat_sell = rf'(?:DII[sS]?|[Dd]omestic\s+[Ii]nstitutional\s+[Ii]nvestors?)\s+(?:net\s+)?(?:{_SELL_WORDS})[^\d{{}}]{{0,40}}{_AMT}'
+    dii_pat_net  = rf'(?:DII[sS]?|[Dd]omestic\s+[Ii]nstitutional)\s+net[^\d]{{0,30}}([-]?[\d,]+(?:\.\d+)?)'
 
     def _extract(buy_pat, sell_pat, net_pat):
         m = _re.search(buy_pat, text, _re.I)
@@ -2297,8 +2297,8 @@ def _fetch_fii_dii_google_news() -> "dict | None":
         fii_val = dii_val = None
 
         queries = [
-            (f"FII FPI crore NSE {today_str}",  "FII"),
-            (f"DII crore NSE India {today_str}", "DII"),
+            (f"FII FPI crore NSE {today_str}",                    "FII"),
+            (f"DII domestic institutional crore NSE {today_str}", "DII"),
         ]
         for raw_q, label in queries:
             url  = f"https://news.google.com/rss/search?q={quote(raw_q)}&hl=en-IN&gl=IN&ceid=IN:en"
@@ -2313,9 +2313,10 @@ def _fetch_fii_dii_google_news() -> "dict | None":
                 text  = title + " " + entry.get("summary", "")
                 tl    = text.lower()
                 # Must mention the right entity and a crore amount
-                if label == "FII" and ("fii" not in tl and "fpi" not in tl):
+                if label == "FII" and ("fii" not in tl and "fpi" not in tl and "foreign institutional" not in tl):
                     continue
-                if label == "DII" and "dii" not in tl:
+                if label == "DII" and ("dii" not in tl and "domestic institutional" not in tl and "domestic investor" not in tl):
+                    _log(f"    [Google News/{label}] skipped (no DII keyword) — title: {title!r}")
                     continue
                 if "crore" not in tl:
                     continue
