@@ -1619,14 +1619,19 @@ def fetch_bulk_deals(days_back: int = 3) -> dict:
         )
         if resp.status_code == 200:
             deals = resp.json().get("data", [])
-            for deal in deals:
-                sym    = deal.get("symbol", "").strip() + ".NS"
-                action = "BUY" if str(deal.get("buySell", "")).upper().startswith("B") else "SELL"
-                result[sym] = action
+            if not deals:
+                _log("  [Bulk Deals] API responded OK — no bulk deals reported today (quiet day)")
+            else:
+                for deal in deals:
+                    sym    = deal.get("symbol", "").strip() + ".NS"
+                    action = "BUY" if str(deal.get("buySell", "")).upper().startswith("B") else "SELL"
+                    result[sym] = action
         elif resp.status_code in (403, 429):
-            _log(f"[WARN] NSE bulk deals blocked ({resp.status_code}) — skipping")
+            _log(f"  [Bulk Deals] BLOCKED by NSE ({resp.status_code}) — Cloudflare/rate-limit, data unavailable")
+        else:
+            _log(f"  [Bulk Deals] Unexpected HTTP {resp.status_code} from NSE — skipping")
     except Exception as e:
-        _log(f"[WARN] fetch_bulk_deals failed: {e}")
+        _log(f"  [Bulk Deals] Network/parse error — {e}")
     return result
 
 
@@ -2267,13 +2272,22 @@ def fetch_fii_dii_flows(max_retries: int = 2) -> dict:
     import time as _time
 
     now_ist     = datetime.datetime.now()
-    just_closed = dtime(15, 30) <= now_ist.time() <= dtime(16, 15)
-    is_prov     = now_ist.time() < dtime(18, 0)
+    now_t       = now_ist.time()
+    just_closed = dtime(15, 30) <= now_t <= dtime(16, 15)
+    is_prov     = now_t < dtime(18, 0)
+    too_early   = now_t < dtime(17, 30)  # NSE publishes provisional data ~5:30 PM
 
     result = {
         "fii_flow_cr": 0.0, "dii_flow_cr": 0.0,
         "is_provisional": False, "available": False,
     }
+
+    if too_early:
+        _log(
+            f"  [FII/DII] Run time {now_t.strftime('%H:%M')} IST — "
+            "NSE publishes provisional data ~5:30 PM; skipping source attempts"
+        )
+        return result
 
     sources = [
         ("NSE API",               _fetch_fii_dii_nse),
@@ -2300,7 +2314,7 @@ def fetch_fii_dii_flows(max_retries: int = 2) -> dict:
         except Exception as e:
             _log(f"  [FII/DII] {name} error: {e}")
 
-    # If just after market close, wait 60s and retry RSS sources
+    # If market just closed, wait 60s and retry RSS sources
     if just_closed:
         _log("  [FII/DII] All sources returned nothing — waiting 60s for data to publish...")
         _time.sleep(60)
