@@ -99,7 +99,7 @@ env:
   PYTHONUNBUFFERED: "1"
   TZ: "Asia/Kolkata"
   # true only when triggered by cron schedule — manual dispatch sets this false
-  SCHEDULED_RUN: ${{ github.event_name == 'scheduled' && 'true' || 'false' }}
+  SCHEDULED_RUN: ${{ github.event.inputs.run_mode == 'scheduled' && 'true' || 'false' }}
 
   TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
   TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -122,9 +122,7 @@ jobs:
     timeout-minutes: 180
 
     # Run when: manually triggered  OR  it is the 13:30 UTC schedule
-    if: >
-        github.event.inputs.run_job == 'evening' ||
-        github.event.inputs.run_job == ''
+    if: ${{ github.event.inputs.run_job == 'evening' }}
 
     env:
       UNIVERSE_MODE:                ${{ github.event.inputs.universe_mode || vars.UNIVERSE_MODE || 'NSE_ALL' }}
@@ -324,8 +322,7 @@ jobs:
     timeout-minutes: 15
 
     # Run when: manually with run_job=morning  OR  it is the 03:50 UTC schedule
-    if: >
-       github.event.inputs.run_job == 'morning'
+    if: ${{ github.event.inputs.run_job == 'morning' }}
 
     steps:
       - name: Checkout repository
