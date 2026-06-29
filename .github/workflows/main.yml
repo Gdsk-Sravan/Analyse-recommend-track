@@ -124,8 +124,8 @@ jobs:
 
     # Run when: manually triggered  OR  it is the 13:30 UTC schedule
     if: >
-      (github.event_name == 'workflow_dispatch' && (github.event.inputs.run_job == 'evening' || github.event.inputs.run_job == '')) ||
-      (github.event_name == 'schedule' && github.event.schedule == '30 13 * * 1-5')
+        github.event.inputs.run_job == 'evening' ||
+        github.event.inputs.run_job == ''
 
     env:
       UNIVERSE_MODE:                ${{ github.event.inputs.universe_mode || vars.UNIVERSE_MODE || 'NSE_ALL' }}
@@ -326,8 +326,7 @@ jobs:
 
     # Run when: manually with run_job=morning  OR  it is the 03:50 UTC schedule
     if: >
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.run_job == 'morning') ||
-      (github.event_name == 'schedule' && github.event.schedule == '50 3 * * 1-5')
+       github.event.inputs.run_job == 'morning'
 
     steps:
       - name: Checkout repository
