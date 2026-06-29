@@ -1608,14 +1608,8 @@ def pcr_score(pcr: float) -> int:
 def fetch_bulk_deals(days_back: int = 3) -> dict:
     result = {}
     try:
-        # Warm the NSE session by visiting the bulk-deals page first (required to get cookies)
+        # _nse_session() already visits the NSE homepage to warm cookies — no extra page hit needed
         session = _nse_session()
-        warm = session.get(
-            "https://www.nseindia.com/market-data/bulk-block-deals",
-            headers={"Accept": "text/html"},
-            timeout=10,
-        )
-        _log(f"  [Bulk Deals] Session warm-up HTTP {warm.status_code}")
 
         today   = datetime.date.today()
         from_dt = (today - datetime.timedelta(days=days_back)).strftime("%d-%m-%Y")
@@ -2286,6 +2280,14 @@ def _fetch_fii_dii_google_news() -> "dict | None":
         from urllib.parse import quote
         today_str = datetime.date.today().strftime("%d %b").lstrip("0")  # "29 Jun"
 
+        # Words that indicate a CUMULATIVE/MONTHLY figure — reject these headlines
+        _CUMULATIVE_WORDS = (
+            "so far", "lakh crore", "month", "year", "ytd", "cumulative",
+            "since", "january", "february", "march", "april", "may", "june",
+            "july", "august", "september", "october", "november", "december",
+            "quarter", "fy", "fiscal", "total", "2024", "2025", "2026",
+        )
+
         fii_val = dii_val = None
 
         queries = [
@@ -2310,6 +2312,10 @@ def _fetch_fii_dii_google_news() -> "dict | None":
                 if label == "DII" and "dii" not in tl:
                     continue
                 if "crore" not in tl:
+                    continue
+                # Reject cumulative/monthly headlines — we want today's daily figure only
+                if any(w in tl for w in _CUMULATIVE_WORDS):
+                    _log(f"    [Google News/{label}] skipped (cumulative/monthly) — title: {title!r}")
                     continue
                 result = _parse_fii_dii_from_text(text)
                 if result:
