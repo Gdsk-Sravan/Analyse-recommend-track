@@ -1609,18 +1609,25 @@ def fetch_bulk_deals(days_back: int = 3) -> dict:
     result = {}
     try:
         session = _nse_session()
+        # NSE bulk-deals endpoint requires explicit date range
+        today   = datetime.date.today()
+        from_dt = (today - datetime.timedelta(days=days_back)).strftime("%d-%m-%Y")
+        to_dt   = today.strftime("%d-%m-%Y")
+        url     = f"https://www.nseindia.com/api/historical/bulk-deals?from={from_dt}&to={to_dt}"
+        _log(f"  [Bulk Deals] GET {url}")
         resp = session.get(
-            "https://www.nseindia.com/api/bulk-deals",
+            url,
             headers={
                 "Accept": "application/json",
                 "Referer": "https://www.nseindia.com/market-data/bulk-block-deals",
             },
             timeout=12,
         )
+        _log(f"  [Bulk Deals] HTTP {resp.status_code}")
         if resp.status_code == 200:
             deals = resp.json().get("data", [])
             if not deals:
-                _log("  [Bulk Deals] API responded OK — no bulk deals reported today (quiet day)")
+                _log(f"  [Bulk Deals] API OK — empty response (no bulk deals in last {days_back} days, quiet period)")
             else:
                 for deal in deals:
                     sym    = deal.get("symbol", "").strip() + ".NS"
@@ -1628,6 +1635,8 @@ def fetch_bulk_deals(days_back: int = 3) -> dict:
                     result[sym] = action
         elif resp.status_code in (403, 429):
             _log(f"  [Bulk Deals] BLOCKED by NSE ({resp.status_code}) — Cloudflare/rate-limit, data unavailable")
+        elif resp.status_code == 404:
+            _log("  [Bulk Deals] 404 — endpoint URL may have changed; check NSE API docs")
         else:
             _log(f"  [Bulk Deals] Unexpected HTTP {resp.status_code} from NSE — skipping")
     except Exception as e:
@@ -2145,95 +2154,128 @@ def _parse_fii_dii_from_text(text: str) -> "dict | None":
 
 
 def _fetch_fii_dii_mc_rss() -> "dict | None":
-    """
-    Moneycontrol marketstats RSS — plain HTTP, no cookies, works from CI.
-    Entries: 'FII/DII activity: FIIs net sellers Rs 1,234 crore; DIIs buyers Rs 567 crore'
-    """
+    """Moneycontrol marketstats RSS — plain HTTP, no cookies, works from CI."""
     import re as _re
+    url = "https://www.moneycontrol.com/rss/marketstats.xml"
     try:
         if not _FEEDPARSER_OK:
+            _log("    [MC RSS] feedparser not available — skipped")
             return None
-        feed = feedparser.parse("https://www.moneycontrol.com/rss/marketstats.xml")
-        for entry in feed.entries[:10]:
+        feed    = feedparser.parse(url)
+        status  = getattr(feed, 'status', 'N/A')
+        entries = feed.entries
+        _log(f"    [MC RSS] HTTP {status} — {len(entries)} entries")
+        fii_entries = [e for e in entries[:10]
+                       if ("fii" in (e.get("title","")+e.get("summary","")).lower()
+                           or "fpi" in (e.get("title","")+e.get("summary","")).lower())
+                       and "crore" in (e.get("title","")+e.get("summary","")).lower()]
+        _log(f"    [MC RSS] {len(fii_entries)} FII-related entries found")
+        for entry in fii_entries:
             text = entry.get("title", "") + " " + entry.get("summary", "")
-            if ("fii" in text.lower() or "fpi" in text.lower()) and "crore" in text.lower():
-                result = _parse_fii_dii_from_text(text)
-                if result:
-                    return result
+            result = _parse_fii_dii_from_text(text)
+            if result:
+                return result
+        if fii_entries:
+            _log("    [MC RSS] FII entries found but regex could not parse crore amounts")
     except Exception as e:
-        _log(f"[WARN] MC RSS FII/DII failed: {e}")
+        _log(f"    [MC RSS] Error — {e}")
     return None
 
 
 def _fetch_fii_dii_et_rss() -> "dict | None":
-    """
-    Economic Times markets RSS — plain HTTP, no cookies, works from CI.
-    ET publishes FII/DII summaries as market news items.
-    """
+    """Economic Times markets RSS — plain HTTP, no cookies, works from CI."""
     import re as _re
     try:
         if not _FEEDPARSER_OK:
+            _log("    [ET RSS] feedparser not available — skipped")
             return None
         for feed_url in [
             "https://economictimes.indiatimes.com/markets/stocks/rss.cms",
             "https://economictimes.indiatimes.com/markets/rss.cms",
         ]:
-            feed = feedparser.parse(feed_url)
-            for entry in feed.entries[:20]:
-                text = entry.get("title", "") + " " + entry.get("summary", "")
-                tl = text.lower()
-                if ("fii" in tl or "fpi" in tl) and ("crore" in tl) and \
-                   ("bought" in tl or "sold" in tl or "net" in tl):
-                    result = _parse_fii_dii_from_text(text)
-                    if result:
-                        return result
+            feed    = feedparser.parse(feed_url)
+            status  = getattr(feed, 'status', 'N/A')
+            entries = feed.entries
+            _log(f"    [ET RSS] {feed_url} → HTTP {status}, {len(entries)} entries")
+            fii_entries = [
+                e for e in entries[:20]
+                if ("fii" in (e.get("title","")+e.get("summary","")).lower()
+                    or "fpi" in (e.get("title","")+e.get("summary","")).lower())
+                and "crore" in (e.get("title","")+e.get("summary","")).lower()
+                and any(w in (e.get("title","")+e.get("summary","")).lower()
+                        for w in ("bought", "sold", "net"))
+            ]
+            _log(f"    [ET RSS] {len(fii_entries)} FII-related entries")
+            for entry in fii_entries:
+                text   = entry.get("title", "") + " " + entry.get("summary", "")
+                result = _parse_fii_dii_from_text(text)
+                if result:
+                    return result
+            if fii_entries:
+                _log("    [ET RSS] FII entries found but regex could not parse crore amounts")
     except Exception as e:
-        _log(f"[WARN] ET RSS FII/DII failed: {e}")
+        _log(f"    [ET RSS] Error — {e}")
     return None
 
 
 def _fetch_fii_dii_bs_rss() -> "dict | None":
-    """
-    Business Standard markets RSS — plain HTTP, no cookies, works from CI.
-    """
+    """Business Standard markets RSS — plain HTTP, no cookies, works from CI."""
+    url = "https://www.business-standard.com/rss/markets-106.rss"
     try:
         if not _FEEDPARSER_OK:
+            _log("    [BS RSS] feedparser not available — skipped")
             return None
-        feed = feedparser.parse("https://www.business-standard.com/rss/markets-106.rss")
-        for entry in feed.entries[:20]:
-            text = entry.get("title", "") + " " + entry.get("summary", "")
-            tl = text.lower()
-            if ("fii" in tl or "fpi" in tl) and "crore" in tl:
-                result = _parse_fii_dii_from_text(text)
-                if result:
-                    return result
+        feed    = feedparser.parse(url)
+        status  = getattr(feed, 'status', 'N/A')
+        entries = feed.entries
+        _log(f"    [BS RSS] HTTP {status} — {len(entries)} entries")
+        fii_entries = [e for e in entries[:20]
+                       if ("fii" in (e.get("title","")+e.get("summary","")).lower()
+                           or "fpi" in (e.get("title","")+e.get("summary","")).lower())
+                       and "crore" in (e.get("title","")+e.get("summary","")).lower()]
+        _log(f"    [BS RSS] {len(fii_entries)} FII-related entries")
+        for entry in fii_entries:
+            text   = entry.get("title", "") + " " + entry.get("summary", "")
+            result = _parse_fii_dii_from_text(text)
+            if result:
+                return result
+        if fii_entries:
+            _log("    [BS RSS] FII entries found but regex could not parse crore amounts")
     except Exception as e:
-        _log(f"[WARN] BS RSS FII/DII failed: {e}")
+        _log(f"    [BS RSS] Error — {e}")
     return None
 
 
 def _fetch_fii_dii_google_news() -> "dict | None":
-    """
-    Google News RSS — works from CI (plain HTTP GET, no cookies).
-    Fixed: URL-encode the date so spaces don't break the URL.
-    """
+    """Google News RSS — URL-encoded date, works from CI."""
     import re as _re
     try:
         if not _FEEDPARSER_OK:
+            _log("    [Google News] feedparser not available — skipped")
             return None
         from urllib.parse import quote
         today_str = datetime.date.today().strftime("%d %b").lstrip("0")  # "29 Jun"
         query     = quote(f"FII DII crore NSE {today_str}")
         url       = f"https://news.google.com/rss/search?q={query}&hl=en-IN&gl=IN&ceid=IN:en"
-        feed      = feedparser.parse(url)
-        for entry in feed.entries[:15]:
-            text = entry.get("title", "") + " " + entry.get("summary", "")
-            if ("fii" in text.lower() or "fpi" in text.lower()) and "crore" in text.lower():
-                result = _parse_fii_dii_from_text(text)
-                if result:
-                    return result
+        _log(f"    [Google News] fetching: {url}")
+        feed    = feedparser.parse(url)
+        status  = getattr(feed, 'status', 'N/A')
+        entries = feed.entries
+        _log(f"    [Google News] HTTP {status} — {len(entries)} entries")
+        fii_entries = [e for e in entries[:15]
+                       if ("fii" in (e.get("title","")+e.get("summary","")).lower()
+                           or "fpi" in (e.get("title","")+e.get("summary","")).lower())
+                       and "crore" in (e.get("title","")+e.get("summary","")).lower()]
+        _log(f"    [Google News] {len(fii_entries)} FII-related entries")
+        for entry in fii_entries:
+            text   = entry.get("title", "") + " " + entry.get("summary", "")
+            result = _parse_fii_dii_from_text(text)
+            if result:
+                return result
+        if fii_entries:
+            _log("    [Google News] FII entries found but regex could not parse crore amounts")
     except Exception as e:
-        _log(f"[WARN] Google News FII/DII failed: {e}")
+        _log(f"    [Google News] Error — {e}")
     return None
 
 
@@ -2242,9 +2284,15 @@ def _fetch_fii_dii_nse() -> "dict | None":
     try:
         r = _nse_session_get("/api/fiidiiTradeReact")
         if not r:
+            _log("    [NSE API] Session/request returned None (Cloudflare block or timeout)")
+            return None
+        _log(f"    [NSE API] HTTP {r.status_code}")
+        if r.status_code != 200:
+            _log(f"    [NSE API] Non-200 response — {r.status_code}")
             return None
         data = r.json()
         if not isinstance(data, list) or not data:
+            _log(f"    [NSE API] Unexpected response format: {type(data).__name__}")
             return None
         latest   = data[0]
         fii_buy  = float(str(latest.get("fiiBuy",  "0")).replace(",", ""))
@@ -2252,12 +2300,14 @@ def _fetch_fii_dii_nse() -> "dict | None":
         dii_buy  = float(str(latest.get("diiBuy",  "0")).replace(",", ""))
         dii_sell = float(str(latest.get("diiSell", "0")).replace(",", ""))
         if fii_buy + fii_sell + dii_buy + dii_sell == 0:
+            _log("    [NSE API] All values zero — data not yet published")
             return None
         return {
             "fii_flow_cr": round(fii_buy - fii_sell, 2),
             "dii_flow_cr": round(dii_buy - dii_sell, 2),
         }
-    except Exception:
+    except Exception as e:
+        _log(f"    [NSE API] Error — {e}")
         return None
 
 
@@ -6065,7 +6115,9 @@ def _run_pipeline_inner():
     # ── 3. Bulk/block deals ──
     _log("[3/17] Fetching bulk/block deals...")
     bulk_deals = fetch_bulk_deals()
-    _log(f"  Bulk deals: {len(bulk_deals)} found")
+    if bulk_deals:
+        _log(f"  Bulk deals: {len(bulk_deals)} found — {', '.join(bulk_deals.keys())}")
+    # else: fetch_bulk_deals() already logged the reason (quiet day / blocked / error)
 
     # ── 4. Load symbols ──
     _log("[4/17] Loading symbol universe...")
