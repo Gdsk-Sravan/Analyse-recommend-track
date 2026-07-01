@@ -284,7 +284,7 @@ jobs:
             confidence_history.json
             gate_memory.json
           retention-days: 90
-          if-no-files-found: ignore
+          if-no-files-found: warn
 
       - name: Upload reports (if enabled)
         if: ${{ always() && env.UPLOAD_PRIVATE_REPORTS == 'true' }}
