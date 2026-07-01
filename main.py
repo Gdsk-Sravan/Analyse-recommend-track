@@ -1195,14 +1195,52 @@ def _clean_ai_output(text: str) -> str:
     Cleans common AI output artifacts.
     Fixes spaces inside decimals: "13. 6" → "13.6"
     Removes markdown, bullets, leading/trailing junk.
+    Unescapes HTML entities (&amp; &#39; &quot; etc.).
     """
     import re
+    import html as _html_mod
+    text = _html_mod.unescape(text or "")                    # &amp; → &, &#39; → '
     text = re.sub(r'(\d+)\.\s+(\d+)', r'\1.\2', text)   # "13. 6" → "13.6"
     text = re.sub(r'(\d)\.\s+(\d)', r'\1.\2', text)       # "0. 49%" → "0.49%"
     text = re.sub(r'\*+', '', text)                          # remove markdown bold
     text = re.sub(r'^\s*[-•*]\s*', '', text, flags=re.MULTILINE)  # remove bullets
     text = " ".join(text.split())                            # normalise whitespace
     return text.strip()
+
+
+def _split_sentences(text: str) -> list:
+    """
+    Sentence splitter that does NOT break on:
+      - Ticker suffixes:   "MANBA.NS breaks..."   (letter.LETTER)
+      - Decimals:          "R/R 2.5x"             (digit.digit)
+      - Abbreviations:     "Rs. 500", "e.g.", "i.e.", "vs.", "no.", "pct."
+    Splits ONLY on: period/! /? followed by whitespace followed by a capital letter,
+    OR end-of-string.
+    """
+    import re
+    if not text:
+        return []
+    # Protect known abbreviations by temporarily removing the period
+    ABBR = {"Rs.": "Rs<DOT>", "rs.": "rs<DOT>",
+            "e.g.": "e<DOT>g<DOT>", "i.e.": "i<DOT>e<DOT>",
+            "vs.": "vs<DOT>", "No.": "No<DOT>", "no.": "no<DOT>",
+            "pct.": "pct<DOT>", "Pct.": "Pct<DOT>",
+            "Inc.": "Inc<DOT>", "Ltd.": "Ltd<DOT>", "Co.": "Co<DOT>",
+            "U.S.": "U<DOT>S<DOT>", "U.K.": "U<DOT>K<DOT>"}
+    for k, v in ABBR.items():
+        text = text.replace(k, v)
+
+    # Split on sentence-ending punctuation ONLY when followed by space+capital or end
+    # (?<=[.!?])  = look-behind: previous char is . ! ?
+    # \s+         = at least one space
+    # (?=[A-Z"'])  = look-ahead: next char is capital/quote (real sentence start)
+    parts = re.split(r'(?<=[.!?])\s+(?=[A-Z"\'\u201C\u2018])', text)
+
+    # Restore abbreviations
+    def _restore(s):
+        return s.replace("<DOT>", ".").strip()
+
+    return [_restore(p) for p in parts if _restore(p)]
 
 
 def _rule_based_summary(
@@ -1369,10 +1407,10 @@ Write EXACTLY 4 sentences. Rules:
     result = _call_ai(prompt, max_tokens=150)
     if result:
         clean = _clean_ai_output(result)
-        sentences = [s.strip() for s in clean.split(".") if len(s.strip()) > 15]
+        sentences = [s for s in _split_sentences(clean) if len(s) > 15]
         has_numbers = bool(re.search(r'\d', clean))
         if len(sentences) >= 3 and not has_numbers:
-            return ". ".join(sentences[:4]) + "."
+            return " ".join(sentences[:4])
         if len(sentences) >= 3:
             # Strip any numbers that crept through
             clean_no_nums = re.sub(r'\d+\.?\d*%?', '', clean)
@@ -1424,9 +1462,9 @@ def ai_buy_thesis(
     )
     result = _call_ai(prompt, max_tokens=80)
     if result and len(result) > 20:
-        clean = result.strip().replace("\n", " ")
-        sentences = [s.strip() for s in clean.split(".") if s.strip()]
-        return ". ".join(sentences[:2]) + "." if sentences else clean
+        clean = _clean_ai_output(result)
+        sentences = _split_sentences(clean)
+        return " ".join(sentences[:2]) if sentences else clean
     return _rule_based_thesis(symbol, sector, rr, conf_trend, catalyst, sector_status)
 
 
@@ -1434,36 +1472,73 @@ def _rule_based_near_miss_insight(
     symbol: str, conf_gap: float, conf_only: bool,
     rr_fail: bool, tq_fail: bool, conf_trend: str, days_watching: int,
     sector_status: str = "NEUTRAL",
+    # Optional per-stock numbers to make each insight unique (avoids the
+    # "same sentence copied across 20 stocks" problem that used to hit
+    # near-miss stocks past NM_AI_CAP).
+    confidence: float = 0.0, tq: float = 0.0, rr: float = 0.0,
 ) -> str:
-    """Fallback — specific and useful without AI."""
-    if conf_trend and "rising" in conf_trend.lower() and conf_only:
+    """Fallback — specific and useful without AI.
+    Every branch uses at least one stock-specific number so no two stocks
+    with a similar profile receive an identical sentence.
+    """
+    trend_lc = (conf_trend or "").lower()
+    rising   = "rising"  in trend_lc
+    falling  = "falling" in trend_lc
+    flat     = "flat"    in trend_lc
+
+    # 1) Confidence-only near miss with rising trend → very close to a BUY
+    if rising and conf_only:
         return (
-            "Confidence building steadily — needs one strong "
-            "volume day above the 20-day average to close the gap."
+            f"Confidence at {confidence:.1f} is rising toward the threshold — "
+            f"needs one strong volume day to close the {conf_gap:.1f}-point gap."
         )
+
+    # 2) Confidence-only near miss with falling trend → losing steam
+    if falling and conf_only:
+        return (
+            f"Confidence slipping from {confidence:.1f} — remove after 2 more "
+            f"sessions of decline unless volume returns."
+        )
+
+    # 3) Stuck-on-confidence for many days
     if days_watching >= 5 and conf_only:
         return (
-            f"Stuck on confidence for {days_watching} sessions — "
-            "if no improvement in 2 more days, remove from watchlist."
+            f"Stuck at {confidence:.1f} confidence for {days_watching} sessions — "
+            f"if no {conf_gap:.1f}-point improvement in 2 more days, drop from watchlist."
         )
-    if rr_fail and not conf_only:
+
+    # 4) R/R too low (with or without confidence issue)
+    if rr_fail:
         return (
-            "Risk/reward too low at current price — "
-            "wait for a pullback to improve entry before confidence qualifies."
+            f"R/R at {rr:.2f}x too low — wait for a pullback to lift R/R above "
+            f"2.0x before confidence ({confidence:.1f}) can also qualify."
         )
+
+    # 5) Trade Quality below bar
     if tq_fail:
         return (
-            "Chart pattern needs to tighten — "
-            "wait for consolidation above entry before acting."
+            f"Chart pattern weak at TQ {tq:.1f} — wait for tighter consolidation "
+            f"pushing TQ above 80 before acting."
         )
+
+    # 6) Sector drag
     if sector_status in ("LAGGING", "WEAKENING"):
         return (
-            "Sector headwind slowing progress — "
-            "monitor sector rotation before committing."
+            f"{sector_status.title()} sector holding {symbol} back — confidence "
+            f"{confidence:.1f} needs sector rotation before it can climb."
         )
+
+    # 7) Flat/first-appearance default — reference the actual gap size
+    if flat:
+        return (
+            f"Confidence flat at {confidence:.1f} for {max(days_watching,1)} "
+            f"session(s) — needs a volume spike to break the {conf_gap:.1f}-point gap."
+        )
+
+    # 8) Generic fallback still uses the actual gap AND confidence value
     return (
-        f"Needs confidence gap of {conf_gap:.1f} points closed — "
-        "watch for volume surge above the 20-day average as trigger."
+        f"Needs {conf_gap:.1f} confidence points closed from {confidence:.1f} — "
+        f"watch for volume surge above the 20-day average as trigger."
     )
 
 
@@ -1492,32 +1567,44 @@ def ai_near_miss_insight(
         "multiple factors below threshold"
     )
 
-    prompt = f"""Near miss stock: {symbol} in {sector} sector.
-Situation: {blocker_label}.
-Trend: {trend_label}.
-Days on watchlist: {days_watching}.
-Sector condition: {sector_status}.
+    prompt = f"""Near miss stock analysis. Each stock has unique numbers — treat each one differently.
 
-Write ONE complete sentence (minimum 20 words, maximum 30 words)
-answering: "What must happen in the next 1-3 sessions for {symbol}
-to become a tradeable BUY signal?"
-Be specific to this stock's actual blocker.
-Do not start with "For {symbol}" — start with a verb or condition."""
+Symbol: {symbol}
+Sector: {sector}
+Current Confidence: {confidence:.1f}/100 (needs +{conf_gap:.1f} points to qualify)
+Current TQ: {tq:.1f}/100
+Current R/R: {rr:.2f}x
+Confidence trend (3 days): {trend_label}
+Primary blocker: {blocker_label}
+Sector condition: {sector_status}
+Days on watchlist: {days_watching}
+Gate pattern: {gate_pattern or 'none'}
+Fail reasons: {', '.join(fail_reasons) if fail_reasons else 'none'}
 
-    result = _call_ai(prompt, max_tokens=80)
+Write ONE complete sentence (minimum 20 words, maximum 30 words) answering:
+"What specific event must happen in the next 1-3 sessions for this stock
+ to become a tradeable BUY signal?"
+
+Requirements:
+- Reference this stock's ACTUAL numbers (e.g. "close the {conf_gap:.1f}-point confidence gap",
+  "improve R/R above 2.0x", "tighten from {tq:.1f} TQ toward 80")
+- Do NOT start with "For {symbol}" or "{symbol} needs"
+- Start with a verb, condition, or timeframe
+- Be specific to THIS stock — do not produce a generic template
+- Do not mention the .NS suffix"""
+
+    result = _call_ai(prompt, max_tokens=90)
     if result:
         clean = _clean_ai_output(result)
-        # FIXED PARSER: minimum 20 chars to avoid fragments like "For SETL"
-        sentences = [
-            s.strip() for s in clean.replace("!", ".").split(".")
-            if len(s.strip()) >= 20
-        ]
+        # Use safe sentence splitter (protects .NS ticker suffix, decimals, abbreviations)
+        sentences = [s for s in _split_sentences(clean) if len(s) >= 20]
         if sentences:
-            return sentences[0] + "."
+            return sentences[0]
 
     return _rule_based_near_miss_insight(
         symbol, conf_gap, conf_only, rr_fail, tq_fail,
-        conf_trend, days_watching, sector_status
+        conf_trend, days_watching, sector_status,
+        confidence=confidence, tq=tq, rr=rr,
     )
 
 
@@ -1625,6 +1712,10 @@ def run_all_ai_calls(
                         conf_trend    = get_confidence_trend(sym, conf_history),
                         days_watching = w.get("days_watching", 0),
                         sector_status = w.get("sector_status", "NEUTRAL"),
+                        # Per-stock numbers so no two stocks get identical text
+                        confidence    = w.get("conf", w.get("final_confidence", 0)),
+                        tq            = w.get("tq", w.get("trade_quality_score", 0)),
+                        rr            = w.get("rr_ratio", w.get("rr", 0)),
                     ) or ""
                 except Exception:
                     results["near_miss_insights"][sym] = ""
@@ -6463,7 +6554,12 @@ def _create_excel_workbook():
         ws3.append(["Metric", "Value"])
 
         for name in ["Confidence Analysis", "TQ Analysis", "Opp Score Analysis",
-                     "Sector Analysis", "Regime Analysis", "Monthly Report"]:
+                     "Sector Analysis", "Regime Analysis", "Monthly Report",
+                     # v2 research sheets (auto-populated by research_job.py)
+                     "Weekday Analysis", "Holding Period Analysis",
+                     "Category Comparison", "Conf x TQ Matrix",
+                     "Catalyst Analysis", "Fail Reason Analysis",
+                     "Regime x Sector", "Confidence Trajectory"]:
             wb.create_sheet(name)
 
         return wb
