@@ -150,7 +150,7 @@ _MACRO_RANGES = {
     "crude_usd":      (30.0, 200.0),
     "us10y":          (1.0,  10.0),
     "dxy":            (80.0, 120.0),
-    "gold_usd":       (1500.0, 4000.0),
+    "gold_usd":       (1500.0, 6000.0),
     "nifty_1d_pct":   (-10.0, 10.0),
     "sp500_1d_pct":   (-10.0, 10.0),
     "sensex_1d_pct":  (-10.0, 10.0),
@@ -680,7 +680,8 @@ def enrich_sectors_from_nselib() -> int:
     ind_col = (cols.get("industry") or cols.get("sector") or cols.get("macro economic sector")
                or cols.get("macro_economic_sector"))
     if sym_col is None or ind_col is None:
-        _log(f"  [Sector nselib] unexpected columns: {list(df.columns)[:8]}")
+        _log(f"  [Sector nselib] equity_list has no industry/sector column "
+             f"(got {list(df.columns)[:6]}) — using yfinance fallback")
         return 0
     added = 0
     new_sectors: dict = {}
@@ -1839,9 +1840,16 @@ def fetch_option_chain(symbol_nse: str) -> dict:
             timeout=8,
         )
         if resp.status_code == 200:
-            data = resp.json()
-            res  = data.get("resultData", {}) if isinstance(data, dict) else {}
-            opdata = res.get("opDatas") or res.get("opData") or []
+            try:
+                data = resp.json()
+            except Exception:
+                data = None
+            # Guard every layer: API may return {"resultData": null}, a list,
+            # or opDatas as a list of nulls — all trigger 'NoneType.get' otherwise.
+            res_raw = data.get("resultData") if isinstance(data, dict) else None
+            res     = res_raw if isinstance(res_raw, dict) else {}
+            opdata_raw = res.get("opDatas") or res.get("opData") or []
+            opdata     = opdata_raw if isinstance(opdata_raw, list) else []
             total_ce_oi = 0
             total_pe_oi = 0
             tot_pe_top  = res.get("total_puts_oi")
@@ -1851,6 +1859,8 @@ def fetch_option_chain(symbol_nse: str) -> dict:
                 total_ce_oi = int(tot_ce_top)
             elif opdata:
                 for r in opdata:
+                    if not isinstance(r, dict):
+                        continue
                     total_ce_oi += int(r.get("calls_oi", r.get("ce_oi", 0)) or 0)
                     total_pe_oi += int(r.get("puts_oi", r.get("pe_oi", 0)) or 0)
             if total_ce_oi > 0 or total_pe_oi > 0:
@@ -2891,6 +2901,13 @@ def _fetch_fii_dii_nselib_nsdl() -> "dict | None":
     FII_CATS = {"fpi"}
 
     today = ist_today()
+
+    # Compute the *expected* T-1 business date (skip weekends).
+    # If the NSE archive hasn't published this date yet, everything we get is stale.
+    exp_t1 = today - datetime.timedelta(days=1)
+    while exp_t1.weekday() >= 5:  # Sat/Sun → walk back to Fri
+        exp_t1 -= datetime.timedelta(days=1)
+
     for delta in range(1, 10):     # T-1 .. T-9 — covers weekends + holidays
         d = today - datetime.timedelta(days=delta)
         # Skip weekends — NSE never publishes for Sat / Sun
@@ -2928,13 +2945,17 @@ def _fetch_fii_dii_nselib_nsdl() -> "dict | None":
                     dii_net += val
             if fii_net == 0.0 and dii_net == 0.0:
                 continue
-            _log(f"    [nselib NSE-cat] {date_str} ✓ — FII {fii_net:+.0f}Cr DII {dii_net:+.0f}Cr")
+            stale = d < exp_t1
+            stale_tag = f" ⚠️ STALE (expected T-1={exp_t1.strftime('%d-%m-%Y')})" if stale else ""
+            _log(f"    [nselib NSE-cat] {date_str} ✓ — FII {fii_net:+.0f}Cr DII {dii_net:+.0f}Cr{stale_tag}")
             return {
                 "fii_flow_cr":   round(fii_net, 2),
                 "dii_flow_cr":   round(dii_net, 2),
                 "dii_found":     dii_net != 0,
                 "as_of":         d.isoformat(),
                 "is_provisional": False,
+                "stale":         stale,
+                "expected_t1":   exp_t1.isoformat(),
             }
         except Exception as e:
             _log(f"    [nselib NSE-cat] {date_str} parse failure: {e}")
@@ -3053,24 +3074,37 @@ def fetch_fii_dii_flows(max_retries: int = 2) -> dict:
             _log(f"  [FII/DII] {name} error: {e}")
 
     if nsdl_data is not None:
-        nsdl_fii = nsdl_data.get("fii_flow_cr")
-        bse_fii  = bse_data.get("fii_flow_cr") if bse_data else None
-        chosen_fii, confidence = cross_check_fii(nsdl_fii, bse_fii)
-        result["fii_flow_cr"]    = chosen_fii if chosen_fii is not None else nsdl_fii
-        # DII: prefer NSDL if present, else BSE
-        if nsdl_data.get("dii_found"):
-            result["dii_flow_cr"] = nsdl_data.get("dii_flow_cr", 0.0)
-            result["dii_found"]   = True
-        elif bse_data and bse_data.get("dii_found"):
-            result["dii_flow_cr"] = bse_data.get("dii_flow_cr", 0.0)
-            result["dii_found"]   = True
-        result["is_provisional"] = is_prov
-        result["available"]      = True
-        result["source"]         = "nsdl+bse" if bse_data else "nsdl"
-        result["confidence"]     = confidence
-        dii_str = f"{result['dii_flow_cr']:+.0f}Cr" if result["dii_found"] else "N/A"
-        _log(f"  [FII/DII] ✓ NSDL — FII {result['fii_flow_cr']:+.0f}Cr | DII {dii_str} | confidence={confidence}")
-        return result
+        # Freshness check — if NSE archive is behind expected T-1, prefer provisional
+        # sources (BSE / RSS) which usually publish T-1 by 5:30 PM IST.
+        nsdl_stale = bool(nsdl_data.get("stale"))
+        if nsdl_stale and bse_data is None:
+            _log(f"  [FII/DII] NSDL is STALE (as_of={nsdl_data.get('as_of')} "
+                 f"expected={nsdl_data.get('expected_t1')}) and BSE missing — "
+                 f"falling through to RSS sources for fresher T-1 data")
+            # Skip returning stale NSDL; try RSS below
+        else:
+            nsdl_fii = nsdl_data.get("fii_flow_cr")
+            bse_fii  = bse_data.get("fii_flow_cr") if bse_data else None
+            chosen_fii, confidence = cross_check_fii(nsdl_fii, bse_fii)
+            result["fii_flow_cr"]    = chosen_fii if chosen_fii is not None else nsdl_fii
+            # DII: prefer NSDL if present, else BSE
+            if nsdl_data.get("dii_found"):
+                result["dii_flow_cr"] = nsdl_data.get("dii_flow_cr", 0.0)
+                result["dii_found"]   = True
+            elif bse_data and bse_data.get("dii_found"):
+                result["dii_flow_cr"] = bse_data.get("dii_flow_cr", 0.0)
+                result["dii_found"]   = True
+            result["is_provisional"] = is_prov
+            result["available"]      = True
+            result["source"]         = "nsdl+bse" if bse_data else "nsdl"
+            result["confidence"]     = "STALE" if nsdl_stale else confidence
+            result["as_of"]          = nsdl_data.get("as_of")
+            result["stale"]          = nsdl_stale
+            dii_str = f"{result['dii_flow_cr']:+.0f}Cr" if result["dii_found"] else "N/A"
+            stale_tag = " ⚠️ STALE" if nsdl_stale else ""
+            _log(f"  [FII/DII] ✓ NSDL{stale_tag} — FII {result['fii_flow_cr']:+.0f}Cr | "
+                 f"DII {dii_str} | as_of={result['as_of']} | confidence={result['confidence']}")
+            return result
 
     # NSDL missed — fall back to BSE alone if we have it
     if bse_data is not None:
@@ -3125,6 +3159,21 @@ def fetch_fii_dii_flows(max_retries: int = 2) -> dict:
                     return result
             except Exception:
                 pass
+
+    # Last resort: if we skipped stale NSDL earlier but RSS also failed, use stale NSDL
+    if nsdl_data is not None and not result["available"]:
+        _log(f"  [FII/DII] ⚠️ All fresh sources failed — returning STALE NSDL "
+             f"(as_of={nsdl_data.get('as_of')}) as last resort")
+        result["fii_flow_cr"]    = nsdl_data.get("fii_flow_cr", 0.0)
+        result["dii_flow_cr"]    = nsdl_data.get("dii_flow_cr", 0.0)
+        result["dii_found"]      = nsdl_data.get("dii_found", False)
+        result["is_provisional"] = True
+        result["available"]      = True
+        result["source"]         = "nsdl_stale"
+        result["confidence"]     = "STALE"
+        result["as_of"]          = nsdl_data.get("as_of")
+        result["stale"]          = True
+        return result
 
     _log(
         "  [FII/DII] All sources returned 0 — "
