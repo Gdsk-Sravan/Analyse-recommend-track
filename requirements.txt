@@ -8,3 +8,8 @@ lxml>=4.9.0
 python-dotenv>=1.0.0
 ta>=0.11.0
 openpyxl>=3.1.0
+# Phase-A safety baseline — added 2026-06-30
+nselib>=2.5.1
+tenacity>=8.2.0
+# Phase B1 — NSE Category-wise Turnover XLS parsing for nselib.category_turnover_cash
+xlrd>=2.0.1
