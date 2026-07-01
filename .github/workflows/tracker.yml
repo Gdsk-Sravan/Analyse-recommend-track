@@ -12,12 +12,18 @@ on:
           - "manual"
           - "scheduled"
 
+permissions:
+  contents: write   # needed for the git-commit-back step
+  actions: read
+
 jobs:
   track:
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: true   # keep GITHUB_TOKEN available for git push
 
       - uses: actions/setup-python@v5
         with:
@@ -48,3 +54,18 @@ jobs:
           path: recommendation_tracker.xlsx
           retention-days: 90
           overwrite: true
+
+      - name: Commit updated tracker back to repo (scheduled runs only)
+        if: ${{ github.event.inputs.run_mode == 'scheduled' }}
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # tracker_job.py appends to Daily Tracking + rebuilds Performance Summary
+          # in the xlsx. Persist so the accumulator survives beyond artifact retention.
+          files=(recommendation_tracker.xlsx trade_tracker.json)
+          existing=()
+          for f in "${files[@]}"; do [ -e "$f" ] && existing+=("$f"); done
+          [ ${#existing[@]} -eq 0 ] && exit 0
+          git add "${existing[@]}"
+          git diff --cached --quiet || git commit -m "chore: tracker daily update [skip ci]" && git push
