@@ -32,7 +32,11 @@ jobs:
       - name: Install dependencies
         run: pip install yfinance openpyxl pandas numpy python-dotenv
 
-      - name: Download recommendation tracker Excel from scanner
+      # Fallback: if the xlsx is not yet committed to the repo, pull the last
+      # artifact from main.yml. Once PERSIST_STATE_TO_REPO=true kicks in on the
+      # evening job, the xlsx lives in git and this step is a no-op.
+      - name: Download recommendation tracker Excel (fallback if git copy missing)
+        if: ${{ hashFiles('recommendation_tracker.xlsx') == '' }}
         continue-on-error: true
         uses: dawidd6/action-download-artifact@v3
         with:
