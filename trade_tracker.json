@@ -1,0 +1,108 @@
+{
+  "buys": [
+    {
+      "symbol": "SIYSIL.NS",
+      "rec_date": "2026-06-25",
+      "entry": 645.3,
+      "stop": 607.93,
+      "target1": 707.58,
+      "target2": 757.4,
+      "confidence": 65.7,
+      "tq": 94.0,
+      "regime": "HIGH_VOLATILITY",
+      "status": "ACTIVE",
+      "t1_hit_date": null,
+      "t2_hit_date": null,
+      "stop_hit_date": null,
+      "days_tracked": 7,
+      "pnl_history": [
+        {
+          "date": "2026-07-01",
+          "price": 645.3,
+          "pnl": 0.0
+        }
+      ]
+    }
+  ],
+  "watchlist": [
+    {
+      "symbol": "BOSCHLTD.NS",
+      "rec_date": "2026-06-25",
+      "tier": "NEAR_MISS",
+      "conf_at_rec": 62.5,
+      "conf_gap_at_rec": 1.5,
+      "status": "WATCHING",
+      "days_watching": 7,
+      "direction": "\u2014"
+    },
+    {
+      "symbol": "GENUSPOWER.NS",
+      "rec_date": "2026-06-25",
+      "tier": "NEAR_MISS",
+      "conf_at_rec": 62.1,
+      "conf_gap_at_rec": 1.9,
+      "status": "WATCHING",
+      "days_watching": 7,
+      "direction": "\u2014"
+    },
+    {
+      "symbol": "KRISHANA.NS",
+      "rec_date": "2026-06-25",
+      "tier": "NEAR_MISS",
+      "conf_at_rec": 60.8,
+      "conf_gap_at_rec": 3.2,
+      "status": "WATCHING",
+      "days_watching": 7,
+      "direction": "\u2014"
+    },
+    {
+      "symbol": "NAZARA.NS",
+      "rec_date": "2026-06-25",
+      "tier": "NEAR_MISS",
+      "conf_at_rec": 60.4,
+      "conf_gap_at_rec": 3.6,
+      "status": "WATCHING",
+      "days_watching": 7,
+      "direction": "\u2014"
+    },
+    {
+      "symbol": "SONACOMS.NS",
+      "rec_date": "2026-06-25",
+      "tier": "DEVELOPING",
+      "tq_at_rec": 89.4,
+      "conf_gap_at_rec": 5.2,
+      "status": "WATCHING",
+      "days_watching": 7,
+      "direction": "\u2014"
+    },
+    {
+      "symbol": "CEIGALL.NS",
+      "rec_date": "2026-06-25",
+      "tier": "DEVELOPING",
+      "tq_at_rec": 97.0,
+      "conf_gap_at_rec": 5.4,
+      "status": "WATCHING",
+      "days_watching": 7,
+      "direction": "\u2014"
+    },
+    {
+      "symbol": "RATNAVEER.NS",
+      "rec_date": "2026-06-25",
+      "tier": "DEVELOPING",
+      "tq_at_rec": 99.0,
+      "conf_gap_at_rec": 5.5,
+      "status": "WATCHING",
+      "days_watching": 7,
+      "direction": "\u2014"
+    }
+  ],
+  "completed": [],
+  "performance": {
+    "completed": 0,
+    "active": 1,
+    "win_rate": 0,
+    "avg_win": 0,
+    "avg_loss": 0,
+    "last_updated": "2026-07-01"
+  }
+}
