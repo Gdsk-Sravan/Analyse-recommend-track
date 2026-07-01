@@ -85,19 +85,52 @@ def run_tracker():
     # ── Batch download prices ──
     symbols = list(set(str(r["Ticker"]) for r in active_recs if r.get("Ticker")))
     prices  = {}
+
+    def _scalar(v):
+        """Coerce numpy/pandas scalars, 0-d arrays, or 1-element Series to float."""
+        try:
+            # pandas Series / DataFrame column → take first element
+            if hasattr(v, "iloc"):
+                v = v.iloc[0]
+            # numpy 0-d array or scalar → use .item()
+            if hasattr(v, "item"):
+                v = v.item()
+            return float(v)
+        except Exception:
+            return float("nan")
+
     for sym in symbols:
         try:
             df = yf.download(sym, period="5d", interval="1d",
-                             progress=False, auto_adjust=True)
-            if df is not None and len(df) > 0:
-                prices[sym] = {
-                    "close": float(df["Close"].iloc[-1]),
-                    "high":  float(df["High"].iloc[-1]),
-                    "low":   float(df["Low"].iloc[-1]),
-                    "vol":   float(df["Volume"].iloc[-1]),
-                    "max_close": float(df["Close"].max()),
-                    "min_close": float(df["Close"].min()),
-                }
+                             progress=False, auto_adjust=True,
+                             multi_level_index=False)
+            if df is None or len(df) == 0:
+                continue
+            # Guard: if MultiIndex slipped through (older/newer yfinance),
+            # flatten by picking this symbol's column level.
+            if hasattr(df.columns, "nlevels") and df.columns.nlevels > 1:
+                try:
+                    df = df.xs(sym, axis=1, level=-1)
+                except Exception:
+                    df.columns = df.columns.get_level_values(0)
+            close_val = _scalar(df["Close"].iloc[-1])
+            high_val  = _scalar(df["High"].iloc[-1])
+            low_val   = _scalar(df["Low"].iloc[-1])
+            vol_val   = _scalar(df["Volume"].iloc[-1])
+            max_close = _scalar(df["Close"].max())
+            min_close = _scalar(df["Close"].min())
+            # Skip if any core price came back NaN
+            if any(np.isnan(x) for x in (close_val, high_val, low_val, max_close, min_close)):
+                print(f"[WARN] Price fetch failed for {sym}: NaN in OHLC")
+                continue
+            prices[sym] = {
+                "close": close_val,
+                "high":  high_val,
+                "low":   low_val,
+                "vol":   vol_val if not np.isnan(vol_val) else 0.0,
+                "max_close": max_close,
+                "min_close": min_close,
+            }
         except Exception as e:
             print(f"[WARN] Price fetch failed for {sym}: {e}")
 
