@@ -32,7 +32,12 @@ jobs:
       - name: Install dependencies
         run: pip install yfinance requests numpy openpyxl
 
-      - name: Download tracker artifact (for active positions + conf history)
+      # Fallback: if the xlsx / JSON files are not yet committed to the repo,
+      # pull the last artifact from main.yml. Once PERSIST_STATE_TO_REPO=true
+      # is set on the evening job, these files live in git and this step is
+      # a no-op safety net.
+      - name: Download tracker artifact (fallback if git copies missing)
+        if: ${{ hashFiles('recommendation_tracker.xlsx', 'trade_tracker.json', 'confidence_history.json') == '' }}
         uses: dawidd6/action-download-artifact@v3
         continue-on-error: true
         with:
