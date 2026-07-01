@@ -12,19 +12,25 @@ on:
           - "manual"
           - "scheduled"
 
+permissions:
+  contents: write
+  actions: read
+
 jobs:
   weekly:
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
 
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install yfinance requests numpy
+        run: pip install yfinance requests numpy openpyxl
 
       - name: Download tracker artifact (for active positions + conf history)
         uses: dawidd6/action-download-artifact@v3
@@ -42,4 +48,25 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TRADE_TRACKER_V2_FILE: trade_tracker.json
           CONF_HISTORY_FILE: confidence_history.json
+          TRACKER_XLSX: recommendation_tracker.xlsx
           SCHEDULED_RUN: ${{ github.event.inputs.run_mode == 'scheduled' && 'true' || 'false' }}
+
+      - name: Commit weekly factor summary back to repo (scheduled runs only)
+        if: ${{ github.event.inputs.run_mode == 'scheduled' }}
+        run: |
+          set -e
+          if [ ! -f recommendation_tracker.xlsx ]; then
+            echo "[INFO] No tracker file to commit"
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add recommendation_tracker.xlsx
+          if git diff --cached --quiet; then
+            echo "[INFO] No changes to commit"
+          else
+            git commit -m "chore: weekly factor summary [skip ci]"
+            git push
+            echo "[INFO] Weekly factor summary committed"
+          fi
+
