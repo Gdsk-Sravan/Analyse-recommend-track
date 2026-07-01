@@ -12,12 +12,18 @@ on:
           - "manual"
           - "scheduled"
 
+permissions:
+  contents: write
+  actions: read
+
 jobs:
   research:
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
 
       - uses: actions/setup-python@v5
         with:
@@ -26,7 +32,12 @@ jobs:
       - name: Install dependencies
         run: pip install yfinance openpyxl pandas numpy python-dotenv
 
-      - name: Download recommendation tracker Excel from scanner
+      # Fallback: if the xlsx is not yet committed to the repo, try to pull
+      # the last artifact from main.yml. Once PERSIST_STATE_TO_REPO=true kicks
+      # in, the xlsx will already be in the checkout and this step becomes a
+      # no-op safety net.
+      - name: Download recommendation tracker Excel (fallback if git copy missing)
+        if: ${{ hashFiles('recommendation_tracker.xlsx') == '' }}
         continue-on-error: true
         uses: dawidd6/action-download-artifact@v3
         with:
@@ -47,3 +58,23 @@ jobs:
           name: research-report
           path: recommendation_tracker.xlsx
           retention-days: 90
+
+      - name: Commit research analytics back to repo (scheduled runs only)
+        if: ${{ github.event.inputs.run_mode == 'scheduled' }}
+        run: |
+          set -e
+          if [ ! -f recommendation_tracker.xlsx ]; then
+            echo "[INFO] No tracker file to commit"
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add recommendation_tracker.xlsx
+          if git diff --cached --quiet; then
+            echo "[INFO] No changes to commit"
+          else
+            git commit -m "chore: research analytics update [skip ci]"
+            git push
+            echo "[INFO] Research analytics committed"
+          fi
+
