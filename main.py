@@ -19,9 +19,7 @@ import time
 import random
 import itertools
 import traceback
-import calendar
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from io import StringIO
 
 try:
     from dotenv import load_dotenv
@@ -54,6 +52,219 @@ try:
     _BS4_OK = True
 except ImportError:
     _BS4_OK = False
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 0b — SAFETY BASELINE (Phase A — added 2026-06-30)
+# ─────────────────────────────────────────────────────────────────────────────
+# Real-money pipeline (CAPITAL=500000) → these are mandatory:
+#   - FetchResult provenance on every replaced fetcher
+#   - validate_macro() range gates with last-known-good fallback
+#   - cross_check_fii() for source reconciliation
+#   - explicit Asia/Kolkata timezone (no implicit dependency on TZ env var)
+#   - tenacity retries with exponential jitter
+#   - decision audit JSONL for post-mortem
+# ─────────────────────────────────────────────────────────────────────────────
+from dataclasses import dataclass
+from typing import Any, Optional
+
+try:
+    from zoneinfo import ZoneInfo
+    IST = ZoneInfo("Asia/Kolkata")
+    _ZONEINFO_OK = True
+except ImportError:  # Py < 3.9 — should not happen on the pinned 3.11 runner
+    IST = None
+    _ZONEINFO_OK = False
+
+try:
+    from tenacity import retry, stop_after_attempt, wait_exponential_jitter, retry_if_exception_type
+    _TENACITY_OK = True
+except ImportError:
+    _TENACITY_OK = False
+    # No-op shim so decorators don't crash if tenacity is missing
+    def retry(*_a, **_kw):
+        def _d(f): return f
+        return _d
+    def stop_after_attempt(*_a, **_kw): return None
+    def wait_exponential_jitter(*_a, **_kw): return None
+    def retry_if_exception_type(*_a, **_kw): return None
+
+try:
+    from nselib import capital_market as _nselib_cm
+    try:
+        from nselib import derivatives as _nselib_deriv  # noqa: F401 (reserved for Phase B5 fallback)
+    except ImportError:
+        _nselib_deriv = None
+    _NSELIB_OK = True
+except ImportError:
+    _nselib_cm = None
+    _nselib_deriv = None
+    _NSELIB_OK = False
+
+
+def ist_now() -> "datetime.datetime":
+    """Always-correct IST timestamp — does NOT depend on the TZ env var."""
+    if _ZONEINFO_OK:
+        return datetime.datetime.now(IST)
+    return datetime.datetime.now()  # fallback
+
+
+def ist_today() -> "datetime.date":
+    return ist_now().date()
+
+
+# ── Disk caches & artifacts ─────────────────────────────────────────────────
+NSELIB_CACHE_DIR     = os.getenv("NSELIB_CACHE_DIR", "nselib_cache")
+LAST_KNOWN_GOOD_FILE = os.getenv("LAST_KNOWN_GOOD_FILE", "last_known_good.json")
+DECISION_AUDIT_FILE  = f"decision_audit_{ist_today().strftime('%Y%m%d')}.jsonl"
+
+try:
+    os.makedirs(NSELIB_CACHE_DIR, exist_ok=True)
+except Exception:
+    pass
+
+
+# ── FetchResult — provenance + freshness on every replaced fetcher ──────────
+@dataclass
+class FetchResult:
+    """Provenance wrapper. Callers read `.value`; the rest is for logging/audit."""
+    value: Any
+    source: str                      # e.g. "nselib_nsdl", "frankfurter", "yfinance", "LKG", "NEUTRAL_DEFAULT"
+    as_of_date: "datetime.date"      # the date the data represents (NOT when fetched)
+    fetched_at: "datetime.datetime"  # wall-clock IST at return
+    is_stale: bool = False           # True if as_of_date < expected business date
+    notes: str = ""                  # free-form (e.g. "BSE disagrees by 28%")
+
+    def to_log(self) -> str:
+        return (f"source={self.source} as_of={self.as_of_date.isoformat()} "
+                f"stale={self.is_stale}{(' notes=' + self.notes) if self.notes else ''}")
+
+
+# ── Macro validation — hard range gates ─────────────────────────────────────
+# Single-day NSE FII record outflow was ~₹20k Cr (Mar 2020 covid).
+# Anything outside these bounds is a parse error, not real data.
+_MACRO_RANGES = {
+    "usdinr":         (75.0, 95.0),
+    "vix_in":         (8.0,  60.0),
+    "vix_us":         (8.0,  80.0),
+    "crude_usd":      (30.0, 200.0),
+    "us10y":          (1.0,  10.0),
+    "dxy":            (80.0, 120.0),
+    "gold_usd":       (1500.0, 4000.0),
+    "nifty_1d_pct":   (-10.0, 10.0),
+    "sp500_1d_pct":   (-10.0, 10.0),
+    "sensex_1d_pct":  (-10.0, 10.0),
+    "dow_1d_pct":     (-10.0, 10.0),
+    "fii_flow_cr":    (-50000.0, 50000.0),
+    "dii_flow_cr":    (-50000.0, 50000.0),
+}
+
+
+def load_last_known_good() -> dict:
+    try:
+        if os.path.exists(LAST_KNOWN_GOOD_FILE):
+            with open(LAST_KNOWN_GOOD_FILE, "r") as f:
+                return json.load(f)
+    except Exception as e:
+        # _log not yet defined at import time — print is fine here
+        print(f"[WARN] load_last_known_good failed: {e}")
+    return {}
+
+
+def save_last_known_good(lkg: dict) -> None:
+    try:
+        # Only persist scalars (no FetchResult / dataclass)
+        clean = {k: v for k, v in lkg.items() if isinstance(v, (int, float, str, bool))}
+        with open(LAST_KNOWN_GOOD_FILE, "w") as f:
+            json.dump(clean, f, indent=2, sort_keys=True, default=str)
+    except Exception as e:
+        try:
+            _log(f"[WARN] save_last_known_good failed: {e}")
+        except Exception:
+            print(f"[WARN] save_last_known_good failed: {e}")
+
+
+def validate_macro(macro: dict) -> dict:
+    """
+    Range-gate every macro value. If any value is out of range:
+      - log [VALIDATION] warning
+      - swap in last-known-good from last_known_good.json
+      - set macro["data_quality"] = "DEGRADED" and list bad fields
+    Otherwise: persist current values as the new LKG, mark NORMAL.
+    """
+    lkg = load_last_known_good()
+    bad: list = []
+
+    for field_name, (lo, hi) in _MACRO_RANGES.items():
+        v = macro.get(field_name)
+        if v is None:
+            continue
+        try:
+            vf = float(v)
+        except (TypeError, ValueError):
+            bad.append(field_name)
+            continue
+        if vf < lo or vf > hi:
+            bad.append(field_name)
+            replacement = lkg.get(field_name)
+            try:
+                _log(f"[VALIDATION] {field_name}={vf!r} out of range [{lo},{hi}] → "
+                     + (f"using LKG {replacement}" if replacement is not None else "no LKG — keeping default"))
+            except Exception:
+                pass
+            if replacement is not None:
+                macro[field_name] = replacement
+
+    if bad:
+        macro["data_quality"]  = "DEGRADED"
+        macro["bad_fields"]    = bad
+    else:
+        macro["data_quality"]  = macro.get("data_quality", "NORMAL")
+        macro["bad_fields"]    = []
+        # Persist the validated values back to LKG for next run
+        save_last_known_good({k: macro.get(k) for k in _MACRO_RANGES if k in macro})
+
+    return macro
+
+
+def cross_check_fii(nsdl_val: Optional[float],
+                    bse_val: Optional[float]) -> "tuple[Optional[float], str]":
+    """
+    Source reconciliation. NSDL is authoritative (T-1 final).
+    BSE is provisional (T+0). If both exist and disagree by >25%, flag LOW confidence.
+    Returns (chosen_value, confidence).
+    """
+    if nsdl_val is None and bse_val is None:
+        return None, "NONE"
+    if nsdl_val is None:
+        return bse_val, "BSE_ONLY"
+    if bse_val is None:
+        return nsdl_val, "NSDL_ONLY"
+    # Both present
+    if nsdl_val == 0 and bse_val == 0:
+        return 0.0, "BOTH_ZERO"
+    larger = max(abs(nsdl_val), abs(bse_val))
+    if larger > 0:
+        rel_diff = abs(nsdl_val - bse_val) / larger
+        if rel_diff > 0.25:
+            try:
+                _log(f"[XCHECK] FII disagree by {rel_diff*100:.0f}%: "
+                     f"NSDL={nsdl_val:+.0f}Cr vs BSE={bse_val:+.0f}Cr — using NSDL")
+            except Exception:
+                pass
+            return nsdl_val, "LOW"
+    return nsdl_val, "HIGH"
+
+
+def append_decision_audit(entry: dict) -> None:
+    """Append one JSON line to decision_audit_YYYYMMDD.jsonl (post-mortem trail)."""
+    try:
+        entry = {**entry, "ts": ist_now().isoformat()}
+        with open(DECISION_AUDIT_FILE, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, default=str) + "\n")
+    except Exception:
+        # Never let audit logging crash the pipeline
+        pass
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -390,6 +601,119 @@ def get_sector(symbol: str) -> str:
     if any(x in s for x in ["INFRA", "CONST", "BUILD", "CEMENT"]):
         return "INFRA"
     return "DIVERSIFIED"  # never show OTHERS
+
+
+def _nselib_equity_list_cached(max_age_hours: int = 24) -> "pd.DataFrame | None":
+    """
+    Bulk NSE equity listing with 24h disk cache. Includes industry/sector columns
+    for ~2400 listed companies. Phase B6 (2026-06-30) — replaces per-symbol yfinance hits.
+    """
+    if not _NSELIB_OK or _nselib_cm is None:
+        return None
+    cache_path = os.path.join(NSELIB_CACHE_DIR, "equity_list.json")
+    try:
+        if os.path.exists(cache_path):
+            age_h = (time.time() - os.path.getmtime(cache_path)) / 3600.0
+            if age_h < max_age_hours:
+                with open(cache_path, "r") as f:
+                    return pd.DataFrame(json.load(f))
+    except Exception:
+        pass
+
+    fn = getattr(_nselib_cm, "equity_list", None) or getattr(_nselib_cm, "nse_equity_symbols", None)
+    if fn is None:
+        return None
+    try:
+        df = fn()
+        if df is None or (hasattr(df, "empty") and df.empty):
+            return None
+        try:
+            df.to_json(cache_path, orient="records")
+        except Exception:
+            pass
+        return df
+    except Exception as e:
+        _log(f"  [nselib equity_list] error: {e}")
+        return None
+
+
+# Industry → canonical sector label normalization (NSE labels → our internal labels)
+_NSE_INDUSTRY_NORM = {
+    "INFORMATION TECHNOLOGY": "IT", "IT - SOFTWARE": "IT", "IT - HARDWARE": "IT",
+    "FINANCIAL SERVICES": "FINANCE", "NON BANKING FINANCIAL COMPANY (NBFC)": "FINANCE",
+    "HOUSING FINANCE COMPANY": "FINANCE", "FINANCE - OTHERS": "FINANCE",
+    "BANKING": "BANKING", "PRIVATE SECTOR BANK": "BANKING", "PUBLIC SECTOR BANK": "BANKING",
+    "PHARMACEUTICALS": "PHARMA", "PHARMACEUTICALS & DRUGS": "PHARMA",
+    "HEALTHCARE": "HEALTHCARE", "HEALTHCARE SERVICES": "HEALTHCARE", "HOSPITAL": "HEALTHCARE",
+    "FAST MOVING CONSUMER GOODS": "FMCG", "FMCG": "FMCG", "CONSUMER GOODS": "FMCG",
+    "CONSUMER SERVICES": "CONSUMER", "CONSUMER DURABLES": "CONSUMER",
+    "AUTOMOBILE AND AUTO COMPONENTS": "AUTO", "AUTOMOBILE": "AUTO",
+    "AUTO ANCILLARIES": "AUTO_ANCILLARY", "AUTO COMPONENTS": "AUTO_ANCILLARY",
+    "METALS & MINING": "METALS", "FERROUS METALS": "METALS", "NON-FERROUS METALS": "METALS",
+    "OIL GAS & CONSUMABLE FUELS": "ENERGY", "OIL & GAS": "ENERGY", "POWER": "ENERGY",
+    "GAS DISTRIBUTION": "ENERGY",
+    "CONSTRUCTION": "INFRA", "CONSTRUCTION MATERIALS": "INFRA", "CEMENT": "INFRA",
+    "REALTY": "REALTY", "REAL ESTATE": "REALTY",
+    "TELECOM SERVICES": "TELECOM", "TELECOMMUNICATION": "TELECOM",
+    "CAPITAL GOODS": "CAPITAL_GOODS", "INDUSTRIALS": "CAPITAL_GOODS",
+    "CHEMICALS": "CHEMICALS", "FERTILISERS & AGROCHEMICALS": "CHEMICALS",
+    "DEFENCE": "DEFENCE",
+    "TEXTILES": "TEXTILES",
+    "AGRICULTURE": "AGRI", "AGRI": "AGRI",
+}
+
+
+def enrich_sectors_from_nselib() -> int:
+    """
+    Phase B6 (2026-06-30): bulk-populate _SECTOR_MAP from nselib equity_list.
+    Returns number of new sectors added. Cheap (one HTTP call, 24h cached).
+    Run this BEFORE the per-symbol yfinance enrichment to cut its workload by >90%.
+    """
+    global _SECTOR_MAP
+    df = _nselib_equity_list_cached()
+    if df is None or (hasattr(df, "empty") and df.empty):
+        _log("  [Sector nselib] equity_list unavailable — falling through to yfinance")
+        return 0
+    # Find symbol + industry columns flexibly
+    cols = {str(c).lower().strip(): c for c in df.columns}
+    sym_col = (cols.get("symbol") or cols.get("nseid") or cols.get("series_symbol"))
+    ind_col = (cols.get("industry") or cols.get("sector") or cols.get("macro economic sector")
+               or cols.get("macro_economic_sector"))
+    if sym_col is None or ind_col is None:
+        _log(f"  [Sector nselib] unexpected columns: {list(df.columns)[:8]}")
+        return 0
+    added = 0
+    new_sectors: dict = {}
+    for _, row in df.iterrows():
+        sym = str(row[sym_col]).strip().upper()
+        if not sym or sym in ("NAN", "NONE"):
+            continue
+        sym_ns = sym if sym.endswith(".NS") else sym + ".NS"
+        if sym_ns in SECTOR_MAP or sym_ns in _SECTOR_MAP:
+            continue
+        ind = str(row[ind_col]).strip().upper()
+        norm = _NSE_INDUSTRY_NORM.get(ind)
+        if norm is None:
+            # Best-effort fallback: take first word
+            head = ind.split()[0] if ind else ""
+            norm = _NSE_INDUSTRY_NORM.get(head, "DIVERSIFIED")
+        new_sectors[sym_ns] = norm
+        added += 1
+    if new_sectors:
+        _SECTOR_MAP.update(new_sectors)
+        # Persist into the same sector_cache.json file used by enrich_sectors_from_yfinance
+        try:
+            existing: dict = {}
+            if os.path.exists(SECTOR_CACHE_FILE):
+                with open(SECTOR_CACHE_FILE, "r") as f:
+                    existing = json.load(f)
+            existing.update(new_sectors)
+            with open(SECTOR_CACHE_FILE, "w") as f:
+                json.dump(existing, f, indent=2, sort_keys=True)
+            _log(f"  [Sector nselib] ✓ added {added} sectors → cache {len(existing)} total")
+        except Exception as e:
+            _log(f"  [Sector nselib] cache write failed: {e}")
+    return added
 
 
 def enrich_sectors_from_yfinance(symbols: list, max_fetch: int = 500) -> None:
@@ -1255,8 +1579,12 @@ def run_all_ai_calls(
                     regime        = regime,
                     risk_pct      = stock.get("risk_pct", 0),
                 )
-            # Calls 7-9: near miss insights (top 3 only)
-            for w in near_miss[:3]:
+            # Calls 7-N: near-miss insights for ALL near-miss stocks.
+            # AI is capped at 15 to stay within the 15-second timeout budget;
+            # the remainder receive the deterministic rule-based fallback so
+            # every Near Miss card in Telegram has an insight line.
+            NM_AI_CAP = 15
+            for w in near_miss[:NM_AI_CAP]:
                 sym = w["symbol"]
                 futures[f"nm_{sym}"] = executor.submit(
                     ai_near_miss_insight,
@@ -1273,6 +1601,32 @@ def run_all_ai_calls(
                     risk_pct      = w.get("risk_pct", 0),
                     days_watching = w.get("days_watching", 0),
                 )
+            # Rule-based fallback for everyone past the AI cap so no Near Miss
+            # is left without an insight line in the Telegram card.
+            # `ai_near_miss_insight` itself falls back to the rule-based
+            # generator on any failure, so calling it inline (no executor,
+            # no LLM dispatch — the rule path is local & instant) keeps the
+            # signature contract correct.
+            for w in near_miss[NM_AI_CAP:]:
+                sym = w["symbol"]
+                try:
+                    primary_fail = (w.get("fail_reasons") or ["CONFIDENCE_FAIL"])[0]
+                    fr           = w.get("fail_reasons") or []
+                    conf_only    = len(fr) == 1 and "CONF" in primary_fail
+                    rr_fail      = any("RR" in f for f in fr)
+                    tq_fail      = any("TQ" in f for f in fr)
+                    results["near_miss_insights"][sym] = _rule_based_near_miss_insight(
+                        symbol        = sym,
+                        conf_gap      = w.get("conf_gap", 0),
+                        conf_only     = conf_only,
+                        rr_fail       = rr_fail,
+                        tq_fail       = tq_fail,
+                        conf_trend    = get_confidence_trend(sym, conf_history),
+                        days_watching = w.get("days_watching", 0),
+                        sector_status = w.get("sector_status", "NEUTRAL"),
+                    ) or ""
+                except Exception:
+                    results["near_miss_insights"][sym] = ""
             for key, future in futures.items():
                 try:
                     text = future.result(timeout=15)
@@ -1449,133 +1803,77 @@ def _nse_session() -> requests.Session:
     return session
 
 
-def _bhavcopy_from_file(filepath: str):
-    """Load a pre-downloaded bhavcopy CSV or ZIP from disk. Returns DataFrame or None."""
-    import zipfile, io as _io
-    try:
-        if not os.path.exists(filepath) or os.path.getsize(filepath) < 500:
-            return None
-        if filepath.endswith(".zip"):
-            with zipfile.ZipFile(filepath) as zf:
-                csv_name = next((n for n in zf.namelist() if n.endswith(".csv")), None)
-                if csv_name is None:
-                    return None
-                df = pd.read_csv(zf.open(csv_name))
-        else:
-            df = pd.read_csv(filepath)
-        df.columns = [c.strip() for c in df.columns]
-        _log(f"  Bhavcopy loaded from local file: {filepath}")
-        return df
-    except Exception as e:
-        _log(f"[WARN] Could not read local bhavcopy file {filepath}: {e}")
-        return None
-
-
-def _bhavcopy_from_bse(date: datetime.datetime):
-    """
-    BSE bhavcopy fallback — disabled.
-    BSE API and ZIP downloads both require browser session cookies unavailable from CI IPs.
-    Delivery % defaults to 50% when NSE data is also unavailable — scoring impact is minimal.
-    """
-    return None
-
-
-def fetch_nse_bhavcopy(date=None):
-    """
-    Delivery % data — tried in this priority order:
-    1. Local pre-downloaded file (bhavcopy_today.csv / .zip) written by workflow step
-    2. NSE archive URLs with pre-warmed session (blocked on CI IPs, works locally)
-    3. BSE bhavcopy fallback — BSE servers are accessible from GitHub Actions
-    Returns a DataFrame with at minimum SYMBOL and DELIV_PER columns, or None.
-    """
-    import zipfile, io as _io
-
-    if date is None:
-        date = datetime.datetime.today()
-
-    # ── 1. Local pre-downloaded file ──────────────────────────────────────────
-    for local_path in ("bhavcopy_today.csv", "bhavcopy_today.zip"):
-        df = _bhavcopy_from_file(local_path)
-        if df is not None:
-            return df
-
-    # ── 2. NSE live fetch (works locally / non-blocked IPs) ──────────────────
-    session = _nse_session()
-    session.headers.update({
-        "Referer": "https://www.nseindia.com/all-reports",
-        "X-Requested-With": "XMLHttpRequest",
-    })
-
-    nse_ok = False
-    for days_back in range(0, 6):
-        d = date - datetime.timedelta(days=days_back)
-        if d.weekday() >= 5:
-            continue
-        date_str = d.strftime("%d%b%Y").upper()
-        date_ymd = d.strftime("%Y%m%d")
-
-        nse_urls = [
-            (f"https://archives.nseindia.com/products/content/sec_bhavdata_full_{date_str}.csv", "csv"),
-            (f"https://nsearchives.nseindia.com/products/content/sec_bhavdata_full_{date_str}.csv", "csv"),
-            (f"https://nsearchives.nseindia.com/content/equities/BhavCopy_NSE_CM_0_0_0_{date_ymd}_F_0000.csv.zip", "zip"),
-        ]
-        for url, fmt in nse_urls:
-            try:
-                resp = session.get(url, timeout=20)
-                if resp.status_code == 200 and len(resp.content) > 1000:
-                    if fmt == "zip":
-                        with zipfile.ZipFile(_io.BytesIO(resp.content)) as zf:
-                            csv_name = next((n for n in zf.namelist() if n.endswith(".csv")), None)
-                            if csv_name is None:
-                                continue
-                            df = pd.read_csv(zf.open(csv_name))
-                    else:
-                        df = pd.read_csv(StringIO(resp.text))
-                    df.columns = [c.strip() for c in df.columns]
-                    _log(f"  Bhavcopy loaded for {d.strftime('%d-%b-%Y')} via {url.split('/')[2]}")
-                    return df
-                elif resp.status_code == 404:
-                    continue
-                elif resp.status_code in (403, 429):
-                    _log(f"[WARN] NSE bhavcopy blocked ({resp.status_code}) — likely CI IP block")
-                    nse_ok = False
-                    break   # all NSE sources will be blocked; skip to BSE
-            except Exception as e:
-                _log(f"[WARN] NSE bhavcopy fetch error: {e}")
-                continue
-        if not nse_ok:
-            break  # don't retry other dates if NSE is blocking us
-
-    # ── 3. BSE fallback disabled — requires browser session unavailable from CI ──
-    _log("  Bhavcopy unavailable from CI — using 50% default (no impact on signals)")
-    return None
-
-
-def get_delivery_pct(symbol: str, bhavcopy_df) -> float:
-    if bhavcopy_df is None:
-        return 50.0
-    try:
-        clean_sym = symbol.replace(".NS", "").strip()
-        cols = bhavcopy_df.columns.tolist()
-        # Detect symbol column — old format uses SYMBOL, new ZIP uses TradingSymbol
-        sym_col = "SYMBOL" if "SYMBOL" in cols else ("TradingSymbol" if "TradingSymbol" in cols else None)
-        if sym_col is None:
-            return 50.0
-        row = bhavcopy_df[bhavcopy_df[sym_col].astype(str).str.strip() == clean_sym]
-        if len(row) > 0:
-            # Check all known delivery-percentage column names in priority order
-            for col in ("DELIV_PER", "DeliveryPercentage", "% Dly Qt to Traded Qty"):
-                if col in cols:
-                    val = row.iloc[0][col]
-                    if pd.notna(val) and str(val).strip() not in ("", "-", "nan"):
-                        return float(str(val).replace(",", "").strip())
-    except Exception:
-        pass
-    return 50.0
-
-
 def fetch_option_chain(symbol_nse: str) -> dict:
-    neutral = {"pcr": 1.0, "total_ce_oi": 0, "total_pe_oi": 0}
+    """
+    Option-chain PCR — Phase B5 (2026-06-30) re-source.
+      1. NiftyTrader webapi (keyless JSON; works from CI; ~200 F&O symbols)
+      2. NSE /api/option-chain-equities (Cloudflare-gated on CI, fine locally)
+      3. Honest NEUTRAL_NO_FNO for non-F&O stocks (most NSE stocks have no options)
+    Returns: { pcr, total_ce_oi, total_pe_oi, source }
+    """
+    neutral_no_fno   = {"pcr": 1.0, "total_ce_oi": 0, "total_pe_oi": 0, "source": "NEUTRAL_NO_FNO"}
+    neutral_blocked  = {"pcr": 1.0, "total_ce_oi": 0, "total_pe_oi": 0, "source": "NEUTRAL_BLOCKED"}
+
+    # Per-run cache to avoid re-hitting NiftyTrader for the same symbol
+    cache = getattr(fetch_option_chain, "_cache", None)
+    if cache is None:
+        cache = {}
+        fetch_option_chain._cache = cache  # type: ignore[attr-defined]
+    if symbol_nse in cache:
+        return cache[symbol_nse]
+
+    # ── 1. NiftyTrader webapi (CI-friendly) ──────────────────────────────────
+    try:
+        url = (
+            "https://webapi.niftytrader.in/webapi/option/option-chain-data"
+            f"?symbol={symbol_nse}&exchange=nse&expiryDate=&atmBelow=10&atmAbove=10"
+        )
+        resp = requests.get(
+            url,
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                              "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+                "Accept":  "application/json, text/plain, */*",
+                "Referer": "https://www.niftytrader.in/",
+            },
+            timeout=8,
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            res  = data.get("resultData", {}) if isinstance(data, dict) else {}
+            opdata = res.get("opDatas") or res.get("opData") or []
+            total_ce_oi = 0
+            total_pe_oi = 0
+            tot_pe_top  = res.get("total_puts_oi")
+            tot_ce_top  = res.get("total_calls_oi")
+            if isinstance(tot_pe_top, (int, float)) and isinstance(tot_ce_top, (int, float)):
+                total_pe_oi = int(tot_pe_top)
+                total_ce_oi = int(tot_ce_top)
+            elif opdata:
+                for r in opdata:
+                    total_ce_oi += int(r.get("calls_oi", r.get("ce_oi", 0)) or 0)
+                    total_pe_oi += int(r.get("puts_oi", r.get("pe_oi", 0)) or 0)
+            if total_ce_oi > 0 or total_pe_oi > 0:
+                pcr = round(total_pe_oi / total_ce_oi, 3) if total_ce_oi > 0 else 1.0
+                result = {
+                    "pcr": pcr,
+                    "total_ce_oi": total_ce_oi,
+                    "total_pe_oi": total_pe_oi,
+                    "source": "niftytrader",
+                }
+                cache[symbol_nse] = result
+                return result
+            # 200 but no OI → likely a non-F&O symbol
+            cache[symbol_nse] = neutral_no_fno
+            return neutral_no_fno
+        elif resp.status_code == 404:
+            # NiftyTrader returns 404 for symbols not in F&O universe
+            cache[symbol_nse] = neutral_no_fno
+            return neutral_no_fno
+    except Exception as e:
+        _log(f"  [PCR NiftyTrader] {symbol_nse} error: {e}")
+
+    # ── 2. NSE direct (legacy) — works locally, Cloudflare-gated on CI ───────
     try:
         session = _nse_session()
         url  = f"https://www.nseindia.com/api/option-chain-equities?symbol={symbol_nse}"
@@ -1584,17 +1882,31 @@ def fetch_option_chain(symbol_nse: str) -> dict:
             "Referer": "https://www.nseindia.com/option-chain",
         }, timeout=12)
         if resp.status_code == 200:
+            ct = resp.headers.get("Content-Type", "")
+            if "html" in ct.lower() or resp.content[:1] == b"<":
+                cache[symbol_nse] = neutral_blocked
+                return neutral_blocked
             data    = resp.json()
             records = data.get("records", {}).get("data", [])
             total_ce_oi = sum(r.get("CE", {}).get("openInterest", 0) for r in records if "CE" in r)
             total_pe_oi = sum(r.get("PE", {}).get("openInterest", 0) for r in records if "PE" in r)
             pcr = round(total_pe_oi / total_ce_oi, 3) if total_ce_oi > 0 else 1.0
-            return {"pcr": pcr, "total_ce_oi": total_ce_oi, "total_pe_oi": total_pe_oi}
+            result = {
+                "pcr": pcr,
+                "total_ce_oi": total_ce_oi,
+                "total_pe_oi": total_pe_oi,
+                "source": "nse_direct",
+            }
+            cache[symbol_nse] = result
+            return result
         elif resp.status_code in (403, 429):
-            _log(f"[WARN] NSE options chain blocked ({resp.status_code}) for {symbol_nse} — neutral PCR used")
+            cache[symbol_nse] = neutral_blocked
+            return neutral_blocked
     except Exception as e:
-        _log(f"[WARN] fetch_option_chain failed for {symbol_nse}: {e}")
-    return neutral
+        _log(f"  [PCR NSE direct] {symbol_nse} error: {e}")
+
+    cache[symbol_nse] = neutral_blocked
+    return neutral_blocked
 
 
 def pcr_score(pcr: float) -> int:
@@ -1606,21 +1918,103 @@ def pcr_score(pcr: float) -> int:
 
 
 def fetch_bulk_deals(days_back: int = 3) -> dict:
-    result = {}
-    try:
-        # _nse_session() already visits the NSE homepage to warm cookies — no extra page hit needed
-        session = _nse_session()
+    """
+    Bulk + block deals — Phase B3 (2026-06-30) reorder:
+      1. nselib capital_market.bulk_deal_data + block_deals_data (NSE archive endpoints, CI-friendly)
+      2. BSE HTML scrape via pandas.read_html (categorywise + bulk page) as fallback
+      3. Legacy NSE /api/historical/bulk-deals (blocked from CI — kept for local runs)
+    Result: { "SYM.NS": "BUY" | "SELL" } over the last `days_back` days.
+    """
+    result: dict = {}
 
-        today   = datetime.date.today()
+    # ── 1. nselib NSE archive ────────────────────────────────────────────────
+    if _NSELIB_OK and _nselib_cm is not None:
+        # nselib period= only accepts {'1D','1W','1M','6M','1Y'}.
+        # Map our days_back window to the smallest covering shortcut.
+        if days_back <= 1:
+            period = "1D"
+        elif days_back <= 7:
+            period = "1W"
+        elif days_back <= 31:
+            period = "1M"
+        elif days_back <= 31 * 6:
+            period = "6M"
+        else:
+            period = "1Y"
+        for fn_name in ("bulk_deal_data", "block_deals_data"):
+            fn = getattr(_nselib_cm, fn_name, None)
+            if fn is None:
+                continue
+            try:
+                # nselib accepts period= shortcuts on most builds. Fall back to
+                # explicit from_date/to_date on either a TypeError (signature
+                # mismatch) or ValueError (rejected period code).
+                try:
+                    df = fn(period=period)
+                except (TypeError, ValueError):
+                    to_d   = ist_today()
+                    from_d = to_d - datetime.timedelta(days=days_back)
+                    df = fn(from_date=from_d.strftime("%d-%m-%Y"),
+                            to_date=to_d.strftime("%d-%m-%Y"))
+                if df is None or (hasattr(df, "empty") and df.empty):
+                    _log(f"  [nselib {fn_name}] empty — no deals in window")
+                    continue
+                cols = {c.lower(): c for c in df.columns}
+                sym_col = (cols.get("symbol") or cols.get("scrip") or cols.get("security"))
+                act_col = (cols.get("buy/sell") or cols.get("buy_sell") or
+                           cols.get("trade_type") or cols.get("type"))
+                if sym_col is None or act_col is None:
+                    _log(f"  [nselib {fn_name}] unexpected schema: {list(df.columns)[:6]}")
+                    continue
+                for _, row in df.iterrows():
+                    sym = str(row[sym_col]).strip().upper().replace(".NS", "") + ".NS"
+                    act = str(row[act_col]).strip().upper()
+                    action = "BUY" if act.startswith("B") else "SELL"
+                    # Don't overwrite a SELL with a BUY from a different deal — last write wins is fine
+                    result[sym] = action
+                _log(f"  [nselib {fn_name}] ✓ {len(df)} rows → {len(result)} symbols")
+            except Exception as e:
+                _log(f"  [nselib {fn_name}] error: {e}")
+        if result:
+            return result
+
+    # ── 2. BSE HTML scrape via pandas.read_html ──────────────────────────────
+    try:
+        bse_url = "https://www.bseindia.com/markets/equity/EQReports/bulk_deals.aspx"
+        # pandas.read_html needs lxml/html5lib; lxml is in requirements.txt
+        tables = pd.read_html(bse_url, flavor="lxml")
+        for df in tables:
+            cols_lower = [str(c).lower() for c in df.columns]
+            if any("security" in c or "scrip" in c or "symbol" in c for c in cols_lower) and \
+               any("deal type" in c or "buy/sell" in c or "type" in c for c in cols_lower):
+                sym_col = next(c for c in df.columns
+                               if "security" in str(c).lower() or "scrip" in str(c).lower()
+                               or "symbol" in str(c).lower())
+                act_col = next(c for c in df.columns
+                               if "deal type" in str(c).lower() or "buy/sell" in str(c).lower()
+                               or "type" in str(c).lower())
+                for _, row in df.iterrows():
+                    sym = str(row[sym_col]).strip().upper().replace(".NS", "") + ".NS"
+                    act = str(row[act_col]).strip().upper()
+                    action = "BUY" if act.startswith("B") else "SELL"
+                    result[sym] = action
+                if result:
+                    _log(f"  [BSE bulk deals HTML] ✓ {len(result)} symbols")
+                    return result
+    except Exception as e:
+        _log(f"  [BSE bulk deals HTML] error — {e}")
+
+    # ── 3. Legacy NSE /api endpoint (works on non-CI IPs) ────────────────────
+    try:
+        session = _nse_session()
+        today   = ist_today()
         from_dt = (today - datetime.timedelta(days=days_back)).strftime("%d-%m-%Y")
         to_dt   = today.strftime("%d-%m-%Y")
-
-        # Try the historical endpoint first, fall back to the simple endpoint
         for url in [
             f"https://www.nseindia.com/api/historical/bulk-deals?from={from_dt}&to={to_dt}",
             "https://www.nseindia.com/api/bulk-deals",
         ]:
-            _log(f"  [Bulk Deals] GET {url}")
+            _log(f"  [Bulk Deals legacy] GET {url}")
             resp = session.get(
                 url,
                 headers={
@@ -1630,50 +2024,31 @@ def fetch_bulk_deals(days_back: int = 3) -> dict:
                 },
                 timeout=12,
             )
-            _log(f"  [Bulk Deals] HTTP {resp.status_code} | Content-Type: {resp.headers.get('Content-Type','?')} | Body len: {len(resp.content)}")
-
             if resp.status_code in (403, 429):
-                _log(f"  [Bulk Deals] BLOCKED ({resp.status_code}) — Cloudflare/rate-limit")
+                _log(f"  [Bulk Deals legacy] BLOCKED ({resp.status_code}) — Cloudflare/rate-limit")
                 break
-
             if resp.status_code == 404:
-                _log(f"  [Bulk Deals] 404 on {url} — trying next endpoint")
                 continue
-
             if resp.status_code != 200:
-                _log(f"  [Bulk Deals] Unexpected HTTP {resp.status_code} — skipping")
                 break
-
-            # 200 but NSE sometimes returns an HTML Cloudflare gate with 200 status
             ct = resp.headers.get("Content-Type", "")
-            if not resp.content:
-                _log("  [Bulk Deals] Empty body — trying next endpoint")
-                continue
-            if "html" in ct.lower() or resp.content[:1] == b"<":
-                _log(
-                    f"  [Bulk Deals] Got HTML instead of JSON (Cloudflare gate) — "
-                    f"NSE is blocking API access from this IP. Bulk deals unavailable."
-                )
-                break  # No point trying fallback endpoint — same IP will be blocked again
-
+            if not resp.content or "html" in ct.lower() or resp.content[:1] == b"<":
+                _log("  [Bulk Deals legacy] HTML/empty body — Cloudflare gate")
+                break
             try:
                 payload = resp.json()
-            except Exception as je:
-                _log(f"  [Bulk Deals] JSON parse failed: {je} — body snippet: {resp.text[:120]!r}")
+            except Exception:
                 break
-
-            deals = payload.get("data", [])
-            if not deals:
-                _log(f"  [Bulk Deals] API OK — no bulk deals in last {days_back} days (quiet period)")
-            else:
-                for deal in deals:
-                    sym    = deal.get("symbol", "").strip() + ".NS"
-                    action = "BUY" if str(deal.get("buySell", "")).upper().startswith("B") else "SELL"
-                    result[sym] = action
-            break  # success — don't try next endpoint
-
+            for deal in payload.get("data", []):
+                sym    = deal.get("symbol", "").strip() + ".NS"
+                action = "BUY" if str(deal.get("buySell", "")).upper().startswith("B") else "SELL"
+                result[sym] = action
+            break
     except Exception as e:
-        _log(f"  [Bulk Deals] Network error — {e}")
+        _log(f"  [Bulk Deals legacy] Network error — {e}")
+
+    if not result:
+        _log("  [Bulk Deals] all sources empty — no bulk-deal signal today")
     return result
 
 
@@ -2030,6 +2405,44 @@ GLOBAL_TICKERS = {
 }
 
 
+# Phase B2: Yahoo's INR=X feed has been drifting (54-wk range 84.55–97.05 confirms feed is broken).
+# Frankfurter is ECB-backed, keyless, CI-friendly, and updates daily ~16:00 CET.
+def _fetch_usdinr_frankfurter() -> "FetchResult | None":
+    """Frankfurter API → authoritative USDINR. Returns None on any failure.
+    Manual retry loop with exponential backoff (avoids tenacity-version skew)."""
+    last_err: "Exception | None" = None
+    for attempt in range(3):
+        try:
+            resp = requests.get(
+                "https://api.frankfurter.dev/v1/latest?from=USD&to=INR",
+                headers={"User-Agent": "swing-trade-engine/6.0"},
+                timeout=8,
+            )
+            if resp.status_code != 200:
+                _log(f"  [USDINR Frankfurter] HTTP {resp.status_code} (try {attempt+1}/3)")
+                last_err = RuntimeError(f"HTTP {resp.status_code}")
+                time.sleep(1 + attempt + random.random())
+                continue
+            data = resp.json()
+            rate = float(data["rates"]["INR"])
+            as_of = data.get("date")  # e.g. "2026-06-30"
+            try:
+                as_of_d = datetime.datetime.strptime(as_of, "%Y-%m-%d").date()
+            except Exception:
+                as_of_d = ist_today()
+            stale = (ist_today() - as_of_d).days > 3
+            return FetchResult(
+                value=rate, source="frankfurter",
+                as_of_date=as_of_d, fetched_at=ist_now(),
+                is_stale=stale,
+            )
+        except Exception as e:
+            last_err = e
+            time.sleep(1 + attempt + random.random())
+    _log(f"  [USDINR Frankfurter] all 3 attempts failed — last error: {last_err}")
+    return None
+
+
 def fetch_global_macro() -> dict:
     macro = {
         "usdinr": 83.5, "crude_usd": 75.0, "vix_us": 18.0, "vix_in": 15.0,
@@ -2038,7 +2451,23 @@ def fetch_global_macro() -> dict:
         "sensex_1d_pct": 0.0, "dow_1d_pct": 0.0,
         "vix_in_20d_avg": 15.0, "vix_term_ratio": 1.0,
     }
+    # Provenance map — which source each macro field came from
+    macro["sources"] = {}
+
+    # Phase B2: Frankfurter takes precedence over Yahoo for USD/INR
+    usdinr_fr = _fetch_usdinr_frankfurter()
+    if usdinr_fr is not None and 75.0 <= usdinr_fr.value <= 95.0:
+        macro["usdinr"]            = round(usdinr_fr.value, 4)
+        macro["sources"]["usdinr"] = usdinr_fr.to_log()
+        _log(f"  USD/INR ✓ Frankfurter — {macro['usdinr']:.4f} ({usdinr_fr.to_log()})")
+        skip_usdinr_yf = True
+    else:
+        _log("  USD/INR ✗ Frankfurter failed — falling back to yfinance INR=X")
+        skip_usdinr_yf = False
+
     for name, ticker in GLOBAL_TICKERS.items():
+        if name == "USDINR" and skip_usdinr_yf:
+            continue
         try:
             # Fetch 30d for VIX_IN so we can compute 20d moving average
             period = "30d" if name == "VIX_IN" else "5d"
@@ -2047,7 +2476,9 @@ def fetch_global_macro() -> dict:
                 last = float(df["Close"].squeeze().iloc[-1])
                 prev = float(df["Close"].squeeze().iloc[-2])
                 pct  = round((last - prev) / prev * 100, 2) if prev != 0 else 0.0
-                if name == "USDINR":   macro["usdinr"]       = last
+                if name == "USDINR":
+                    macro["usdinr"]            = last
+                    macro["sources"]["usdinr"] = f"source=yfinance({ticker}) as_of={ist_today().isoformat()}"
                 elif name == "CRUDE":  macro["crude_usd"]    = last
                 elif name == "VIX_US": macro["vix_us"]       = last
                 elif name == "VIX_IN":
@@ -2066,6 +2497,9 @@ def fetch_global_macro() -> dict:
                 elif name == "SENSEX": macro["sensex_1d_pct"]= pct
         except Exception:
             continue
+
+    # Phase A safety: range-gate everything; degrade gracefully via LKG
+    macro = validate_macro(macro)
     return macro
 
 
@@ -2295,6 +2729,12 @@ def _fetch_fii_dii_google_news() -> "dict | None":
             "in the month", "for the month", "during the month",
             "total outflow", "total inflow", "total 2024", "total 2025", "total 2026",
             "since january", "since april", "outflows reach", "inflows reach",
+            # Phase B1 (2026-06-30): kill historical-record headlines that misled the parser
+            "single-day", "single day", "largest", "biggest", "record",
+            "all-time", "all time", "outflow in 2024", "outflow in 2025", "outflow in 2026",
+            "inflow in 2024",  "inflow in 2025",  "inflow in 2026",
+            "outflow of 2024", "outflow of 2025", "outflow of 2026",
+            "highest ever", "lowest ever", "biggest ever", "largest ever",
         )
 
         # Try combined query first (best chance of finding both FII + DII in one article),
@@ -2321,6 +2761,41 @@ def _fetch_fii_dii_google_news() -> "dict | None":
                     continue
                 if any(p in tl for p in _CUMULATIVE_PHRASES):
                     _log(f"    [Google News] skipped (cumulative) — {title!r}")
+                    continue
+
+                # Phase B1.1 (2026-06-30): freshness guard. Reject articles
+                # older than 3 calendar days so stale headlines (e.g. a Feb-3
+                # report parsed in June) cannot leak through as "today's" flow.
+                pub_struct = entry.get("published_parsed") or entry.get("updated_parsed")
+                if pub_struct is not None:
+                    try:
+                        pub_dt = datetime.datetime(*pub_struct[:6], tzinfo=datetime.timezone.utc)
+                        age_days = (datetime.datetime.now(datetime.timezone.utc) - pub_dt).days
+                        if age_days > 3:
+                            _log(
+                                f"    [Google News] skipped (stale, {age_days}d old) — {title!r}"
+                            )
+                            continue
+                    except Exception:
+                        pass  # bad/missing date — be permissive, parse anyway
+
+                # Belt-and-braces: also block any article whose body explicitly
+                # quotes a different month/year. Today's article would say e.g.
+                # "30 Jun", not "Feb 3" or "Mar 12". This catches stripped
+                # Google-News titles where published_parsed is wrong.
+                now_ist     = datetime.datetime.now(IST)
+                this_month  = now_ist.strftime("%b").lower()       # 'jun'
+                this_year   = str(now_ist.year)
+                other_month_hit = False
+                for m in ("jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"):
+                    if m == this_month:
+                        continue
+                    # Match "feb 3", "feb, 3", "feb 3,", "feb 03"
+                    if re.search(rf"\b{m}\s+\d", tl):
+                        other_month_hit = True
+                        break
+                if other_month_hit:
+                    _log(f"    [Google News] skipped (off-month date in body) — {title!r}")
                     continue
 
                 _log(f"    [Google News] attempting parse — {title!r}")
@@ -2387,6 +2862,140 @@ def _fetch_fii_dii_nse() -> "dict | None":
         return None
 
 
+# ── Phase B1: nselib NSE category-wise turnover (authoritative T-1) ────────
+def _fetch_fii_dii_nselib_nsdl() -> "dict | None":
+    """
+    Authoritative T-1 FII / DII source via nselib `category_turnover_cash`.
+
+    NSE publishes the official "Category-wise Turnover (Cash Market)" sheet
+    every business day at ~7 PM IST. It carries Buy / Sell / Net values
+    (Rs Crores) for: Bank, Insurance Companies, Mutual Funds, AIF, PMS,
+    RETAIL, OTHERS, **FPI**. Free, no auth, CI-friendly.
+
+      FII flow  = FPI Net
+      DII flow  = Banks + Insurance + Mutual Funds + AIF + PMS (Net)
+
+    Walks back day-by-day until it finds the most recent published date
+    (NSE archive has ~T-1 lag; weekends + holidays are skipped silently).
+    Name kept for backward compat with the source-cascade table.
+    """
+    if not _NSELIB_OK or _nselib_cm is None:
+        _log("    [nselib NSE-cat] nselib not installed — skipped")
+        return None
+    fn = getattr(_nselib_cm, "category_turnover_cash", None)
+    if fn is None:
+        _log("    [nselib NSE-cat] category_turnover_cash unavailable in this nselib build")
+        return None
+
+    DII_CATS = {"bank", "insurance companies", "mutual funds", "aif", "pms"}
+    FII_CATS = {"fpi"}
+
+    today = ist_today()
+    for delta in range(1, 10):     # T-1 .. T-9 — covers weekends + holidays
+        d = today - datetime.timedelta(days=delta)
+        # Skip weekends — NSE never publishes for Sat / Sun
+        if d.weekday() >= 5:
+            continue
+        date_str = d.strftime("%d-%m-%Y")
+        try:
+            df = fn(date_str)
+        except Exception as e:
+            msg = str(e)
+            # "No data available" is the normal not-yet-published / holiday signal
+            if "No data available" not in msg:
+                _log(f"    [nselib NSE-cat] {date_str} error: {e}")
+            continue
+        if df is None or (hasattr(df, "empty") and df.empty):
+            continue
+        try:
+            cols = {c.lower(): c for c in df.columns}
+            cat_col  = cols.get("category")
+            net_col  = cols.get("net value in rs.crores") or cols.get("net value")
+            if cat_col is None or net_col is None:
+                _log(f"    [nselib NSE-cat] {date_str} unexpected schema: {list(df.columns)}")
+                continue
+            fii_net = 0.0
+            dii_net = 0.0
+            for _, row in df.iterrows():
+                cat = str(row[cat_col]).strip().lower()
+                try:
+                    val = float(str(row[net_col]).replace(",", "").strip())
+                except (ValueError, TypeError):
+                    continue
+                if cat in FII_CATS:
+                    fii_net += val
+                elif cat in DII_CATS:
+                    dii_net += val
+            if fii_net == 0.0 and dii_net == 0.0:
+                continue
+            _log(f"    [nselib NSE-cat] {date_str} ✓ — FII {fii_net:+.0f}Cr DII {dii_net:+.0f}Cr")
+            return {
+                "fii_flow_cr":   round(fii_net, 2),
+                "dii_flow_cr":   round(dii_net, 2),
+                "dii_found":     dii_net != 0,
+                "as_of":         d.isoformat(),
+                "is_provisional": False,
+            }
+        except Exception as e:
+            _log(f"    [nselib NSE-cat] {date_str} parse failure: {e}")
+            continue
+    _log("    [nselib NSE-cat] no data found in last 9 days")
+    return None
+
+
+def _fetch_fii_dii_bse() -> "dict | None":
+    """
+    BSE categorywise turnover — public HTML, no Cloudflare gate from CI.
+    Provisional T+0 numbers. Returns FII + DII. Used for cross-check vs NSDL.
+    """
+    try:
+        url = "https://api.bseindia.com/BseIndiaAPI/api/CatTurnover/w?TDate="
+        # The endpoint accepts an empty TDate and returns latest available
+        tdate = ist_today().strftime("%Y%m%d")
+        resp = requests.get(
+            url + tdate,
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                              "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+                "Accept":  "application/json, text/plain, */*",
+                "Referer": "https://www.bseindia.com/markets/equity/EQReports/categorywise_turnover.aspx",
+            },
+            timeout=10,
+        )
+        if resp.status_code != 200:
+            _log(f"    [BSE FII] HTTP {resp.status_code} — skipped")
+            return None
+        try:
+            data = resp.json()
+        except Exception:
+            return None
+        rows = data if isinstance(data, list) else data.get("Table", data.get("data", []))
+        if not rows:
+            return None
+        fii_net = 0.0
+        dii_net = 0.0
+        for r in rows:
+            cat = str(r.get("CATEGORY", r.get("Category", ""))).upper()
+            buy_v  = float(str(r.get("BUYVAL",  r.get("BuyValue",  0))).replace(",", "") or 0)
+            sell_v = float(str(r.get("SELLVAL", r.get("SellValue", 0))).replace(",", "") or 0)
+            net_v  = buy_v - sell_v
+            if "FII" in cat or "FPI" in cat or "FOREIGN" in cat:
+                fii_net += net_v
+            elif "DII" in cat or "DOMESTIC" in cat or "MUTUAL" in cat or "MF" in cat:
+                dii_net += net_v
+        if fii_net == 0 and dii_net == 0:
+            return None
+        _log(f"    [BSE FII] ✓ — FII {fii_net:+.0f}Cr DII {dii_net:+.0f}Cr")
+        return {
+            "fii_flow_cr": round(fii_net, 2),
+            "dii_flow_cr": round(dii_net, 2),
+            "dii_found":   dii_net != 0,
+        }
+    except Exception as e:
+        _log(f"    [BSE FII] error — {e}")
+        return None
+
+
 def fetch_fii_dii_flows(max_retries: int = 2) -> dict:
     """
     Fetches FII/DII flows — 5 sources tried in order.
@@ -2413,9 +3022,14 @@ def fetch_fii_dii_flows(max_retries: int = 2) -> dict:
     result = {
         "fii_flow_cr": 0.0, "dii_flow_cr": 0.0,
         "is_provisional": False, "available": False, "dii_found": False,
+        "source": "NONE", "confidence": "NONE",
     }
 
+    # Phase B1 (2026-06-30): NSDL is the authoritative T-1 source; BSE is provisional T+0.
+    # Try authoritative paths first, then RSS fallbacks for CI.
     sources = [
+        ("nselib NSDL",           _fetch_fii_dii_nselib_nsdl),
+        ("BSE Categorywise",      _fetch_fii_dii_bse),
         ("NSE API",               _fetch_fii_dii_nse),
         ("Moneycontrol RSS",      _fetch_fii_dii_mc_rss),
         ("Economic Times RSS",    _fetch_fii_dii_et_rss),
@@ -2423,7 +3037,56 @@ def fetch_fii_dii_flows(max_retries: int = 2) -> dict:
         ("Google News RSS",       _fetch_fii_dii_google_news),
     ]
 
-    for name, fn in sources:
+    # First pass: gather NSDL + BSE for cross-check, return early if NSDL is good
+    nsdl_data: "dict | None" = None
+    bse_data:  "dict | None" = None
+    for name, fn in sources[:2]:
+        try:
+            _log(f"  [FII/DII] Trying {name}...")
+            d = fn()
+            if d and (d.get("fii_flow_cr", 0) != 0 or d.get("dii_flow_cr", 0) != 0):
+                if name == "nselib NSDL":
+                    nsdl_data = d
+                else:
+                    bse_data = d
+        except Exception as e:
+            _log(f"  [FII/DII] {name} error: {e}")
+
+    if nsdl_data is not None:
+        nsdl_fii = nsdl_data.get("fii_flow_cr")
+        bse_fii  = bse_data.get("fii_flow_cr") if bse_data else None
+        chosen_fii, confidence = cross_check_fii(nsdl_fii, bse_fii)
+        result["fii_flow_cr"]    = chosen_fii if chosen_fii is not None else nsdl_fii
+        # DII: prefer NSDL if present, else BSE
+        if nsdl_data.get("dii_found"):
+            result["dii_flow_cr"] = nsdl_data.get("dii_flow_cr", 0.0)
+            result["dii_found"]   = True
+        elif bse_data and bse_data.get("dii_found"):
+            result["dii_flow_cr"] = bse_data.get("dii_flow_cr", 0.0)
+            result["dii_found"]   = True
+        result["is_provisional"] = is_prov
+        result["available"]      = True
+        result["source"]         = "nsdl+bse" if bse_data else "nsdl"
+        result["confidence"]     = confidence
+        dii_str = f"{result['dii_flow_cr']:+.0f}Cr" if result["dii_found"] else "N/A"
+        _log(f"  [FII/DII] ✓ NSDL — FII {result['fii_flow_cr']:+.0f}Cr | DII {dii_str} | confidence={confidence}")
+        return result
+
+    # NSDL missed — fall back to BSE alone if we have it
+    if bse_data is not None:
+        result["fii_flow_cr"]    = bse_data["fii_flow_cr"]
+        result["dii_flow_cr"]    = bse_data.get("dii_flow_cr", 0.0)
+        result["dii_found"]      = bse_data.get("dii_found", False)
+        result["is_provisional"] = True  # BSE is provisional
+        result["available"]      = True
+        result["source"]         = "bse"
+        result["confidence"]     = "MEDIUM"
+        dii_str = f"{result['dii_flow_cr']:+.0f}Cr" if result["dii_found"] else "N/A"
+        _log(f"  [FII/DII] ✓ BSE (provisional, no NSDL) — FII {result['fii_flow_cr']:+.0f}Cr | DII {dii_str}")
+        return result
+
+    # Authoritative sources missed — try RSS fallbacks
+    for name, fn in sources[2:]:
         try:
             _log(f"  [FII/DII] Trying {name}...")
             data = fn()
@@ -2433,10 +3096,12 @@ def fetch_fii_dii_flows(max_retries: int = 2) -> dict:
                 result["dii_found"]      = data.get("dii_found", data.get("dii_flow_cr", 0) != 0)
                 result["is_provisional"] = is_prov
                 result["available"]      = True
+                result["source"]         = name.lower().replace(" ", "_")
+                result["confidence"]     = "LOW"   # RSS scrape is best-effort
                 dii_str = f"{result['dii_flow_cr']:+.0f}Cr" if result["dii_found"] else "N/A"
                 _log(
                     f"  [FII/DII] {name} ✓ — "
-                    f"FII {result['fii_flow_cr']:+.0f}Cr | DII {dii_str}"
+                    f"FII {result['fii_flow_cr']:+.0f}Cr | DII {dii_str} | confidence=LOW"
                 )
                 return result
         except Exception as e:
@@ -2468,11 +3133,6 @@ def fetch_fii_dii_flows(max_retries: int = 2) -> dict:
            else "data should be available but all sources failed (API/network issue — investigate)")
     )
     return result
-
-
-def fetch_fii_dii_fallback() -> dict:
-    """Legacy stub — now handled inside fetch_fii_dii_flows."""
-    return fetch_fii_dii_flows(max_retries=1)
 
 
 def get_fii_dii_data() -> dict:
@@ -2526,13 +3186,6 @@ def format_fii_dii_line(fii_data: dict) -> str:
         f"FII {fii_icon} ₹{abs(fii):.0f}Cr · "
         f"DII {dii_str} · {sentiment}{prov}"
     )
-
-
-def format_fii_dii(fii: float, dii: float) -> str:
-    """Legacy wrapper — used internally where only float values are available."""
-    available = not (fii == 0 and dii == 0)
-    return format_fii_dii_line({"fii_flow_cr": fii, "dii_flow_cr": dii,
-                                "available": available, "is_provisional": False})
 
 
 def interpret_nifty_structure(close: float, ema20: float, ema50: float,
@@ -2928,7 +3581,6 @@ _FOMC_DATES_2026 = [
     "2026-06-18", "2026-07-30", "2026-09-17",
     "2026-11-05", "2026-12-17",
 ]
-_INDIA_BUDGET_2027 = "2027-02-01"   # Union Budget always 1 Feb
 
 
 def _nse_expiry_dates(lookahead_days: int = 60) -> list:
@@ -3120,18 +3772,6 @@ def format_upcoming_events_compact(events_config: list, holdings: list) -> list:
         return lines
     except Exception:
         return ["UPCOMING EVENTS"] + [f"  {html.escape(str(ev.get('name','')))} \u2014 {ev.get('date','')}" for ev in (events_config or [])]
-
-
-def format_upcoming_events(events: list, holdings: list) -> list:
-    """Legacy stub \u2014 redirects to format_upcoming_events_compact for any old callers."""
-    dicts = [{"name": str(e), "date": "", "note": "", "sectors_up": [], "sectors_down": []}
-             for e in events]
-    return format_upcoming_events_compact(dicts, holdings)
-
-
-def get_upcoming_events(lookahead_days: int = 7) -> list:
-    """Legacy stub \u2014 redirects to load_events_config()."""
-    return load_events_config()
 
 
 def score_to_regime(score: float, vix_in: float) -> str:
@@ -3662,25 +4302,6 @@ def compute_platt_stats(tracker_entries: list) -> dict:
     }
 
 
-
-    return {
-        "symbol": symbol, "sector": sector,
-        "trend_quality": 50, "momentum_quality": 50, "volume_delivery": 50,
-        "sector_strength": 50, "rs_vs_nifty": 50, "news_risk": 50,
-        "risk_reward": 0, "ownership_quality": 50, "options_sentiment": 60,
-        "macro_alignment": 50, "trade_quality_score": 0,
-        "entry": 0.0, "stop": 0.0, "target1": 0.0, "target2": 0.0,
-        "rr_ratio": 0.0, "avg_volume": 0, "avg_value_lakhs": 0.0,
-        "near_52w_high": False, "sector_status": "NEUTRAL", "accum_signal": "NEUTRAL",
-        "roe": 0.0, "de_ratio": 0.0, "promoter_pledge_pct": 0.0,
-        "news_penalty": 0, "is_black_swan": False, "news_summary": "",
-        "price": 0.0, "ret1d": 0.0, "ret5d": 0.0, "ret21d": 0.0,
-        "high_52w": 0.0, "low_52w": 0.0, "atr14": 0.0, "rsi14": 50.0,
-        "final_confidence": 0.0, "base_confidence": 0.0,
-        "weekly_trend_ok": False, "price_pattern": "NONE", "rs_diff21": 0.0,
-    }
-
-
 def weekly_trend_score(df_daily) -> tuple:
     """
     Multi-timeframe confirmation: resamples daily OHLCV to weekly.
@@ -4122,14 +4743,6 @@ def monitor_portfolio(holdings: list, price_data: dict, regime: str) -> list:
         else:
             alerts.append({**base, "action": "HOLD",       "reason": "ON_TRACK",      "days_held": days_held})
     return alerts
-
-
-def build_portfolio_ai_summary(alerts: list) -> str:
-    """Compact <200-token summary — safe to pass to Groq if commentary needed."""
-    lines = []
-    for a in alerts:
-        lines.append(f"{a['symbol']}: {a['action']} ({a['reason']}) PnL={a.get('pnl_pct', 0):.1f}%")
-    return "\n".join(lines[:10])
 
 
 def detect_short_signals(scored_stocks: list, regime: str, thresh: dict) -> list:
@@ -4718,110 +5331,6 @@ def _entry_block(e: dict) -> list:
     return blk
 
 
-def format_tracker_daily(open_entries: list, closed_today: list, timestamp: str) -> str:
-    lines = []
-    lines.append("─" * 40)
-    lines.append(f"SIGNAL TRACKER — {timestamp}")
-    lines.append(f"Open: {len(open_entries)} | Closed today: {len(closed_today)}")
-    lines.append("─" * 40)
-    open_buys      = [e for e in open_entries if e["type"] == "BUY"       and e["status"] == "OPEN"]
-    open_near_miss = [e for e in open_entries if e["type"] == "NEAR_MISS" and e["status"] == "OPEN"]
-
-    lines.append("")
-    lines.append("BUY SIGNALS TRACKING")
-    if open_buys:
-        for e in open_buys:
-            lines.extend(_entry_block(e))
-            lines.append("")
-    else:
-        lines.append("  No open BUY signals.")
-
-    lines.append("")
-    lines.append("NEAR MISS TRACKING")
-    lines.append("  (Tracking near-miss setups for comparison)")
-    if open_near_miss:
-        for e in open_near_miss:
-            lines.extend(_entry_block(e))
-            lines.append("")
-    else:
-        lines.append("  No open near-miss signals.")
-
-    if closed_today:
-        lines.append("")
-        lines.append("CLOSED TODAY")
-        for e in closed_today:
-            pnl    = e.get("final_pnl_pct", 0)
-            emoji  = "✅" if pnl >= 0 else "❌"
-            days   = _days_open(e)
-            lines.append(f"  {emoji} <b>{e['symbol']}</b> [{e['type']}] — {e['close_reason']}")
-            lines.append(f"  Entry Rs{e.get('entry', 0):.2f} → Close Rs{e.get('close_price', 0):.2f} | PnL: <b>{pnl:+.2f}%</b> in {days}d")
-            lines.append(f"  Max gain: {e['max_gain_pct']:+.2f}% | Max loss: {e['max_loss_pct']:+.2f}%")
-            lines.append("")
-
-    lines.append("─" * 40)
-    lines.append("Tracker only. Prices ~15min delayed.")
-    lines.append("─" * 40)
-    return "\n".join(lines)
-
-
-def format_tracker_close_summary(closed_entries: list) -> str:
-    if not closed_entries:
-        return ""
-    lines = []
-    for e in closed_entries:
-        pnl   = e.get("final_pnl_pct", 0)
-        days  = (datetime.date.fromisoformat(e["close_date"]) -
-                 datetime.date.fromisoformat(e["suggested_date"])).days
-        emoji = "✅ WIN" if pnl >= 0 else "❌ LOSS"
-        lines += [
-            "─" * 40,
-            f"TRADE CLOSED — {e['symbol']}",
-            "─" * 40,
-            f"Signal type : {e['type']}",
-            f"Signal date : {e['suggested_date']}",
-            f"Close date  : {e['close_date']} ({days} days held)",
-            f"Outcome     : {emoji}",
-            f"Reason      : {e['close_reason']}",
-            f"Entry       : Rs{e.get('entry', 0):.2f}",
-            f"Exit        : Rs{e.get('close_price', 0):.2f}",
-            f"PnL         : {pnl:+.2f}%",
-            f"Max gain    : {e['max_gain_pct']:+.2f}%",
-            f"Max loss    : {e['max_loss_pct']:+.2f}%",
-            "─" * 40,
-        ]
-    return "\n".join(lines)
-
-
-def format_tracker_stats(all_entries: list) -> str:
-    closed = [e for e in all_entries if e["status"] == "CLOSED"]
-    if not closed:
-        return "No closed trades yet."
-    wins    = [e for e in closed if e.get("final_pnl_pct", 0) >= 0]
-    losses  = [e for e in closed if e.get("final_pnl_pct", 0) < 0]
-    avg_pnl = sum(e.get("final_pnl_pct", 0) for e in closed) / len(closed)
-    avg_days = sum(
-        (datetime.date.fromisoformat(e["close_date"]) -
-         datetime.date.fromisoformat(e["suggested_date"])).days
-        for e in closed if e.get("close_date") and e.get("suggested_date")
-    ) / max(1, len(closed))
-    best  = max(closed, key=lambda x: x.get("final_pnl_pct", 0))
-    worst = min(closed, key=lambda x: x.get("final_pnl_pct", 0))
-    lines = [
-        "─" * 40,
-        "SIGNAL TRACKER — LIFETIME STATS",
-        "─" * 40,
-        f"Total closed : {len(closed)}",
-        f"Win rate     : {len(wins)}/{len(closed)} ({len(wins)/len(closed)*100:.1f}%)",
-        f"Loss rate    : {len(losses)}/{len(closed)} ({len(losses)/len(closed)*100:.1f}%)",
-        f"Avg PnL      : {avg_pnl:+.2f}%",
-        f"Avg hold     : {avg_days:.1f} days",
-        f"Best trade   : {best['symbol']} {best.get('final_pnl_pct', 0):+.2f}%",
-        f"Worst trade  : {worst['symbol']} {worst.get('final_pnl_pct', 0):+.2f}%",
-        "─" * 40,
-    ]
-    return "\n".join(lines)
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # SECTION 9b — TRADE TRACKER V2 (new structured format)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -5046,9 +5555,6 @@ def format_near_miss_failures(stock: dict, thresh: dict) -> list:
     return [f"  ✗ Needs: {fail_str} → Watch: vol surge or consol above entry"]
 
 
-NEAR_MISS_LIMIT = 5  # show only top 5 near misses in Telegram; full list in Excel
-
-
 def format_conviction_meter(regime_score: float, breadth: float,
                              fii: float, dii: float) -> list:
     """Visual conviction bar — compact 1-line version for mobile."""
@@ -5169,101 +5675,6 @@ def format_buy_card(stock: dict, sizing: dict, regime: str,
         return lines
     except Exception:
         return [f"  \U0001f4c8 <b>{html.escape(str(stock.get('symbol', '?')))}</b>"]
-
-
-def format_portfolio_card(alert: dict, current_price: float) -> list:
-    """Enhanced portfolio card with Hold Score, R-multiple, ATR stop (ENHANCEMENT 7)."""
-    try:
-        symbol = str(alert.get("symbol", ""))
-        entry  = float(alert.get("entry", 0) or 0)
-        stop   = float(alert.get("stop_loss", alert.get("stop", 0)) or 0)
-        t1     = float(alert.get("target1", 0) or 0)
-        t2     = float(alert.get("target2", 0) or 0)
-        days   = int(alert.get("days_held", 0) or 0)
-        pnl_p  = float(alert.get("pnl_pct", 0) or 0)
-        action = str(alert.get("action", "HOLD"))
-
-        risk_per_share = entry - stop
-        gain_per_share = current_price - entry
-        r_multiple = round(gain_per_share / risk_per_share, 2) if risk_per_share > 0 else 0.0
-
-        # ATR-based trailing stop
-        try:
-            df = fetch_price_data(symbol, period="1mo")
-            if df is not None and len(df) >= 14:
-                atr = float(np.mean(df["High"].values[-14:] - df["Low"].values[-14:]))
-                atr_stop = round(current_price - atr * 2, 2)
-            else:
-                atr_stop = stop
-        except Exception:
-            atr_stop = stop
-
-        remaining_upside = round((t2 - current_price) / current_price * 100, 1) if t2 > current_price else 0.0
-        dist_stop = round((current_price - max(stop, atr_stop)) / current_price * 100, 1) if current_price > 0 else 0.0
-
-        hold_score = 50
-        if pnl_p > 0:              hold_score += 20
-        if r_multiple > 1:         hold_score += 15
-        if days < 15:              hold_score += 10
-        if remaining_upside > 5:   hold_score += 5
-        hold_score = min(100, hold_score)
-
-        action_icon = {"HOLD": "✅", "EXIT": "🔴", "EXIT_FULL": "🔴",
-                       "TRAIL_STOP": "🟡", "REVIEW": "🟠"}.get(action, "✅")
-
-        return [
-            f"  {action_icon} <b>{html.escape(symbol)}</b> | {action} | Day {days}",
-            f"     Entry Rs{entry:.2f} → Now Rs{current_price:.2f} | PnL {pnl_p:+.1f}% | {r_multiple:+.2f}R",
-            f"     Hold Score: {hold_score}/100 | Remaining Upside: {remaining_upside:.1f}%",
-            f"     Stop Rs{stop:.2f} | ATR Stop Rs{atr_stop:.2f} | Distance: {dist_stop:.1f}%",
-            f"     T1 Rs{t1:.2f} | T2 Rs{t2:.2f} | Review in: {max(0, 15 - days)} days",
-        ]
-    except Exception:
-        return [f"  ✅ <b>{html.escape(str(alert.get('symbol', '?')))}</b>"]
-
-
-def format_portfolio_dashboard(alerts: list, current_prices: dict,
-                                total_capital: float) -> list:
-    """Portfolio health summary with sector allocation (ENHANCEMENT 8)."""
-    try:
-        if not alerts:
-            return ["  No active holdings."]
-        qty_known = [a for a in alerts if a.get("quantity", 0) > 0]
-        total_invested = sum(
-            float(a.get("entry", 0)) * float(a.get("quantity", 0))
-            for a in qty_known
-        )
-        total_current = sum(
-            current_prices.get(a["symbol"], float(a.get("entry", 0))) *
-            float(a.get("quantity", 0))
-            for a in qty_known
-        )
-        total_pnl_pct = round((total_current - total_invested) / total_invested * 100, 2) \
-                        if total_invested > 0 else 0.0
-        exposure_pct  = round(total_invested / total_capital * 100, 1) if total_capital > 0 else 0.0
-        cash_pct      = round(100 - exposure_pct, 1)
-
-        sector_exp: dict = {}
-        for a in qty_known:
-            s   = get_sector(a.get("symbol", ""))
-            val = float(a.get("entry", 0)) * float(a.get("quantity", 0))
-            sector_exp[s] = sector_exp.get(s, 0) + val
-
-        lines = [
-            "  💼 Portfolio Health Dashboard",
-            f"    Invested:  Rs{total_invested:,.0f} ({exposure_pct:.1f}%)",
-            f"    Current:   Rs{total_current:,.0f} | PnL {total_pnl_pct:+.2f}%",
-            f"    Cash:      {cash_pct:.1f}% available",
-            f"    Positions: {len(alerts)}",
-        ]
-        if sector_exp:
-            lines.append("    Sector Allocation:")
-            for sec, val in sorted(sector_exp.items(), key=lambda x: -x[1]):
-                pct = round(val / total_capital * 100, 1) if total_capital > 0 else 0.0
-                lines.append(f"      {html.escape(sec):<16} {pct:.1f}%")
-        return lines
-    except Exception:
-        return ["  💼 Portfolio Health Dashboard (unavailable)"]
 
 
 # ── Compact Portfolio Card (FIX 3E) ──────────────────────────────────────────
@@ -5424,53 +5835,15 @@ def format_daily_summary(regime: str, buys: list, watchlist: list,
         return ["", "📋 DAILY SUMMARY", "  (unavailable)"]
 
 
-def format_system_snapshot(tracker_v2: dict, portfolio_count: int = 0) -> list:
-    """System performance footer (ENHANCEMENT 10)."""
-    try:
-        tracker = tracker_v2 or {}
-        perf    = tracker.get("performance", {}) or {}
-        active  = tracker.get("buys", []) or []
-        watching = tracker.get("watchlist", []) or []
-
-        open_pnls = []
-        for pos in active:
-            hist = pos.get("pnl_history", [])
-            if hist:
-                open_pnls.append(hist[-1].get("pnl", 0))
-        avg_open_pnl = round(sum(open_pnls) / len(open_pnls), 1) if open_pnls else 0.0
-
-        wr = float(perf.get("win_rate", 0) or 0)
-        if wr >= 60:       health = "🟢 Excellent"
-        elif wr >= 45:     health = "🟡 Good"
-        elif wr >= 35:     health = "🟠 Neutral"
-        elif not perf.get("completed"): health = "⚪ No data yet"
-        else:              health = "🔴 Weak"
-
-        return [
-            "",
-            "📊 SYSTEM PERFORMANCE SNAPSHOT",
-            f"  Portfolio Holdings:   {portfolio_count}",
-            f"  Signal Tracked Pos:   {len(active)}",
-            f"  Avg Open Return:      {avg_open_pnl:+.1f}%",
-            f"  Watchlist Tracking:   {len(watching)} stocks",
-            f"  Completed Trades:     {perf.get('completed', 0)}",
-            f"  Win Rate (all-time):  {wr:.1f}%",
-            f"  Avg Win:              {perf.get('avg_win', 0):+.1f}%",
-            f"  Avg Loss:             {perf.get('avg_loss', 0):+.1f}%",
-            f"  Strategy Health:      {health}",
-        ]
-    except Exception:
-        return []
-
-
 def format_watchlist_section(watchlist: list, regime: str,
                               conf_history: dict = None,
                               gate_memory: dict = None,
                               near_miss_insights: dict = None) -> list:
     """
-    NEAR MISS  — full detail, sorted by R/R descending (fully actionable)
-    DEVELOPING — full levels top 3, rest collapsed (BUG FIX 3)
-    MONITOR    — single collapsed count line only (BUG FIX 4)
+    NEAR MISS  — full detail for ALL stocks (no truncation), sorted by R/R desc
+    DEVELOPING — company-names-only (rows of 5), like MONITOR
+    MONITOR    — company-names-only (rows of 5)
+    Full Entry/Stop/T1/T2 for every tier is persisted to recommendation_tracker.xlsx.
     """
     thresh   = REGIME_THRESHOLDS[regime]
     min_conf = thresh["min_confidence"]
@@ -5483,12 +5856,10 @@ def format_watchlist_section(watchlist: list, regime: str,
 
     lines = [f"👁 <b>WATCHLIST</b> — {len(watchlist)} stocks (min conf {min_conf})"]
 
-    # -- NEAR MISS: 3 lines per stock, top 5 only --------------------------------
+    # -- NEAR MISS: full detail card for EVERY stock (no truncation) ----------
     if near:
-        lines.append(
-            f"🔴 <b>NEAR MISS</b> ({len(near)} total, top {min(len(near), NEAR_MISS_LIMIT)})"
-        )
-        for w in near[:NEAR_MISS_LIMIT]:
+        lines.append(f"🔴 <b>NEAR MISS</b> ({len(near)} total — all listed)")
+        for w in near:
             sym      = html.escape(str(w["symbol"]))
             sector   = html.escape(str(w.get("sector", "DIV")))
             conf     = w.get("conf", w.get("final_confidence", 0))
@@ -5506,39 +5877,15 @@ def format_watchlist_section(watchlist: list, regime: str,
             insight = (near_miss_insights or {}).get(w.get("symbol", ""), "")
             if insight:
                 lines.append(f"  💡 {html.escape(str(insight))}")
-        if len(near) > NEAR_MISS_LIMIT:
-            lines.append(f"  +{len(near) - NEAR_MISS_LIMIT} more in Excel tracker")
 
-    # -- DEVELOPING: 2 lines per stock, top 3 expanded --------------------------
+    # -- DEVELOPING: header + all names in rows of 5 (like MONITOR) -----------
     if dev:
-        lines.append(f"🟡 <b>DEVELOPING</b> ({len(dev)} building)")
-        for w in dev[:3]:
-            sym    = html.escape(str(w["symbol"]))
-            sector = html.escape(str(w.get("sector", "OTHERS")))
-            conf   = w.get("conf", w.get("final_confidence", 0))
-            tq     = w.get("tq", w.get("trade_quality_score", 0))
-            gap    = w.get("conf_gap", 0)
-            entry  = w.get("entry", 0)
-            stop   = w.get("stop", 0)
-            t1     = w.get("target1", 0)
-            t2     = w.get("target2", 0)
-            rr     = w.get("rr_ratio", w.get("rr", 0))
-            risk   = w.get("risk_pct", 0)
-            opp    = w.get("opportunity_score", 0)
-            # Show only failing checks inline
-            thresh2 = thresh
-            fails  = []
-            if conf < thresh2["min_confidence"]: fails.append(f"Conf+{gap:.1f}")
-            if tq   < thresh2["min_tq"]:         fails.append(f"TQ+{thresh2['min_tq']-tq:.1f}")
-            if rr   < thresh2["min_rr"]:         fails.append(f"RR+{thresh2['min_rr']-rr:.2f}x")
-            fail_str = " · ".join(fails) if fails else "—"
-            lines.append(f"  {sym} [{sector}] · Opp{opp:.0f} Conf{conf:.1f} TQ{tq:.1f} RR{rr:.1f}x")
-            lines.append(f"  ₹{entry:.1f} · Stop ₹{stop:.1f} · T1 ₹{t1:.1f} · T2 ₹{t2:.1f} · Needs: {fail_str}")
-        if len(dev) > 3:
-            rest_names = ", ".join(w["symbol"].replace(".NS", "") for w in dev[3:])
-            lines.append(f"  +{len(dev)-3} more: {rest_names}")
+        lines.append(f"🟡 <b>DEVELOPING</b> ({len(dev)} building) — full levels in Excel")
+        dev_names = [w["symbol"].replace(".NS", "") for w in dev]
+        for i in range(0, len(dev_names), 5):
+            lines.append("  " + " \u00b7 ".join(dev_names[i:i+5]))
 
-    # -- MONITOR: header + all names in rows of 5 ---------------------------
+    # -- MONITOR: header + all names in rows of 5 (unchanged) -----------------
     if mon:
         best     = max(mon, key=lambda x: x.get("rr_ratio", x.get("rr", 0)))
         best_sym = best["symbol"].replace(".NS", "")
@@ -5547,7 +5894,6 @@ def format_watchlist_section(watchlist: list, regime: str,
             f"\U0001f535 <b>MONITOR</b> ({len(mon)} early-stage) \u00b7 best R/R: {best_sym} {best_rr:.1f}x"
         )
         names = [m["symbol"].replace(".NS", "") for m in mon]
-        # print 5 names per line
         for i in range(0, len(names), 5):
             lines.append("  " + " \u00b7 ".join(names[i:i+5]))
 
@@ -6011,6 +6357,25 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
 
     # ── Footer ──
     lines.append("")
+    # Phase C: data-quality footer — visible signal of source health
+    try:
+        dq          = macro.get("data_quality", "NORMAL")
+        bad_fields  = macro.get("bad_fields", []) or []
+        usdinr_src  = (macro.get("sources", {}) or {}).get("usdinr", "?")
+        # Extract just the source name from the verbose log line
+        usdinr_name = "yfinance"
+        if "frankfurter" in str(usdinr_src):
+            usdinr_name = "frankfurter"
+        elif "yfinance" in str(usdinr_src):
+            usdinr_name = "yfinance"
+        fii_src     = str(macro.get("fii_source", "?"))
+        fii_conf    = str(macro.get("fii_confidence", "?"))
+        dq_icon     = "🟢" if dq == "NORMAL" else "🟡"
+        lines.append(f"{dq_icon} Data quality: {dq}"
+                     + (f" · bad={','.join(bad_fields)}" if bad_fields else "")
+                     + f" · usdinr={usdinr_name} · fii={fii_src}({fii_conf})")
+    except Exception:
+        pass
     lines.append("─" * 22)
     lines.append("⚠️ Recommendation only. Execute manually.")
     return "\n".join(lines)
@@ -6197,8 +6562,11 @@ def _run_pipeline_inner():
     macro["dii_flow_cr"]      = fii_dii["dii_flow_cr"]
     macro["fii_available"]    = fii_dii.get("available", False)
     macro["fii_provisional"]  = fii_dii.get("is_provisional", False)
+    macro["fii_source"]       = fii_dii.get("source", "NONE")
+    macro["fii_confidence"]   = fii_dii.get("confidence", "NONE")
     dii_log = f"{fii_dii['dii_flow_cr']:+.0f}Cr" if fii_dii.get("dii_found") else "N/A"
-    _log(f"  FII: {fii_dii['fii_flow_cr']:+.0f}Cr | DII: {dii_log} | Available: {fii_dii['available']}")
+    _log(f"  FII: {fii_dii['fii_flow_cr']:+.0f}Cr | DII: {dii_log} | "
+         f"src={macro['fii_source']} conf={macro['fii_confidence']} | Available: {fii_dii['available']}")
 
     # ── 3. Bulk/block deals ──
     _log("[3/17] Fetching bulk/block deals...")
@@ -6217,7 +6585,8 @@ def _run_pipeline_inner():
     _log(f"  Tradable: {len(tradable)} stocks")
 
     # ── 5b. Enrich sector map for all tradable symbols ──
-    _log("[5b/17] Enriching sector map from yfinance for unknowns...")
+    _log("[5b/17] Enriching sector map: nselib bulk first, yfinance fallback...")
+    enrich_sectors_from_nselib()
     enrich_sectors_from_yfinance(list(tradable.keys()))
     if not tradable:
         _log("[ERROR] No tradable stocks. Aborting.")
@@ -6300,20 +6669,23 @@ def _run_pipeline_inner():
     def _fetch_pcr(stock: dict) -> tuple:
         sym_clean = stock["symbol"].replace(".NS", "")
         oc = fetch_option_chain(sym_clean)
-        return stock["symbol"], pcr_score(oc["pcr"])
+        return stock["symbol"], pcr_score(oc["pcr"]), oc.get("source", "?")
 
     pcr_map = {}
+    pcr_src_map = {}
     with ThreadPoolExecutor(max_workers=5) as ex:
         futs = {ex.submit(_fetch_pcr, s): s["symbol"] for s in top_40[:20]}
         for fut in as_completed(futs):
             try:
-                sym, score_val = fut.result(timeout=15)
-                pcr_map[sym] = score_val
+                sym, score_val, src = fut.result(timeout=15)
+                pcr_map[sym]     = score_val
+                pcr_src_map[sym] = src
             except Exception as e:
                 _log(f"[WARN] PCR fetch failed for {futs[fut]}: {e}")
 
     for stock in top_40[:20]:
         stock["options_sentiment"] = pcr_map.get(stock["symbol"], 60)
+        stock["pcr_source"]        = pcr_src_map.get(stock["symbol"], "NOT_FETCHED")
 
     # ── 11. Final confidence ──
     _log("[11/17] Computing final confidence...")
@@ -6427,6 +6799,31 @@ def _run_pipeline_inner():
     max_buys = effective_thresholds[regime]["max_buys"]
     buys = buys[:max_buys]
 
+    # ── 14a. Decision audit JSONL — Phase C ─────────────────────────────────
+    # Append one line per stock that reached the gates. Used for post-mortem RCA
+    # ("why did we buy X on day N?") and CL-level signal regression tests.
+    try:
+        for stock in (buys + watchlist_stocks + rejected):
+            append_decision_audit({
+                "symbol":          stock.get("symbol"),
+                "decision":        stock.get("decision"),
+                "confidence":      stock.get("confidence"),
+                "trade_quality":   stock.get("trade_quality"),
+                "opportunity":     stock.get("opportunity_score"),
+                "regime":          regime,
+                "fail_reasons":    stock.get("fail_reasons", []),
+                "warnings":        stock.get("warnings", []),
+                "macro_quality":   macro.get("data_quality", "NORMAL"),
+                "macro_bad":       macro.get("bad_fields", []),
+                "fii_source":      macro.get("fii_source"),
+                "fii_confidence":  macro.get("fii_confidence"),
+                "usdinr":          macro.get("usdinr"),
+                "pcr_source":      stock.get("pcr_source"),
+            })
+        _log(f"  [Audit] decision_audit appended {len(buys)+len(watchlist_stocks)+len(rejected)} rows → {DECISION_AUDIT_FILE}")
+    except Exception as e:
+        _log(f"  [Audit] append failed (non-fatal): {e}")
+
     # ── 14b. Confidence history update (FEATURE 2) ──
     _today_str_h = datetime.date.today().isoformat()
     conf_history = load_confidence_history()
@@ -6489,7 +6886,8 @@ def _run_pipeline_inner():
 
     # ── 15. Format and send main Telegram message ──
     _log("[15/17] Sending main Telegram report...")
-    timestamp = datetime.datetime.now().strftime("%b %d, %Y %H:%M IST")
+    # Phase C: explicit Asia/Kolkata — no dependency on TZ env var
+    timestamp = ist_now().strftime("%b %d, %Y %H:%M IST")
     # nifty_state already computed at step 6b — pass through (BUG FIX 1)
 
     # ── 15a. Run AI calls in parallel (daily summary + buy theses + near miss insights) ──
@@ -6576,15 +6974,15 @@ def _run_pipeline_inner():
     save_csv(buys,             "buys_today.csv")
 
     # Save recommendations to Excel tracker (PART C)
+    # Always persist — the Excel is the system-of-record for the tracker job
+    # and downstream artifacts. Manual runs MUST still write it, otherwise the
+    # Recommendation Tracker workflow has nothing to download.
     today_str_pipe = datetime.date.today().isoformat()
-    if IS_SCHEDULED:
-        save_recommendations_to_excel(
-            buys, watchlist_stocks,
-            {"regime": regime, "score": regime_data.get("score", 0)},
-            today_str_pipe
-        )
-    else:
-        _log("  Excel recommendations NOT saved (manual run)")
+    save_recommendations_to_excel(
+        buys, watchlist_stocks,
+        {"regime": regime, "score": regime_data.get("score", 0)},
+        today_str_pipe
+    )
 
     # ── 18. Done ──
     _log("[DONE] Pipeline complete.")
