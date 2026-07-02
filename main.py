@@ -144,7 +144,9 @@ class FetchResult:
 # Single-day NSE FII record outflow was ~₹20k Cr (Mar 2020 covid).
 # Anything outside these bounds is a parse error, not real data.
 _MACRO_RANGES = {
-    "usdinr":         (75.0, 95.0),
+    # 2026: rupee has traded 82-97; keep a wide 2-6 year band so a real 95.xx
+    # print doesn't get flagged as an OOR parse error.
+    "usdinr":         (70.0, 105.0),
     "vix_in":         (8.0,  60.0),
     "vix_us":         (8.0,  80.0),
     "crude_usd":      (30.0, 200.0),
@@ -290,13 +292,16 @@ TELEGRAM_MAX_CHARS  = 3800  # buffer below 4096 hard limit
 
 # Regime thresholds — v6.0 calibrated (Bug 2 fix)
 REGIME_THRESHOLDS = {
-    "STRONG_BULL":     {"min_confidence": 78, "min_tq": 72, "min_rr": 1.7, "max_buys": 5,  "max_exposure": 0.85},
-    "BULL":            {"min_confidence": 82, "min_tq": 76, "min_rr": 1.8, "max_buys": 3,  "max_exposure": 0.75},
-    "SIDEWAYS":        {"min_confidence": 80, "min_tq": 78, "min_rr": 2.0, "max_buys": 1,  "max_exposure": 0.50},
-    "TRANSITION":      {"min_confidence": 83, "min_tq": 78, "min_rr": 2.0, "max_buys": 2,  "max_exposure": 0.55},
-    "HIGH_VOLATILITY": {"min_confidence": 85, "min_tq": 80, "min_rr": 2.2, "max_buys": 1,  "max_exposure": 0.40},
-    "BEAR":            {"min_confidence": 92, "min_tq": 88, "min_rr": 2.5, "max_buys": 0,  "max_exposure": 0.20},
-    "STRONG_BEAR":     {"min_confidence": 99, "min_tq": 99, "min_rr": 3.0, "max_buys": 0,  "max_exposure": 0.00},
+    # max_stop_pct — wide-stop guardrail (any BUY with (entry-stop)/entry > this
+    # gets rejected). Bullish regimes tolerate wider volatility stops; bearish
+    # regimes force tight stops to keep loss small.
+    "STRONG_BULL":     {"min_confidence": 78, "min_tq": 72, "min_rr": 1.7, "max_buys": 5,  "max_exposure": 0.85, "max_stop_pct": 8.0},
+    "BULL":            {"min_confidence": 82, "min_tq": 76, "min_rr": 1.8, "max_buys": 3,  "max_exposure": 0.75, "max_stop_pct": 7.0},
+    "SIDEWAYS":        {"min_confidence": 80, "min_tq": 78, "min_rr": 2.0, "max_buys": 1,  "max_exposure": 0.50, "max_stop_pct": 6.0},
+    "TRANSITION":      {"min_confidence": 83, "min_tq": 78, "min_rr": 2.0, "max_buys": 2,  "max_exposure": 0.55, "max_stop_pct": 6.0},
+    "HIGH_VOLATILITY": {"min_confidence": 85, "min_tq": 80, "min_rr": 2.2, "max_buys": 1,  "max_exposure": 0.40, "max_stop_pct": 5.0},
+    "BEAR":            {"min_confidence": 92, "min_tq": 88, "min_rr": 2.5, "max_buys": 0,  "max_exposure": 0.20, "max_stop_pct": 5.0},
+    "STRONG_BEAR":     {"min_confidence": 99, "min_tq": 99, "min_rr": 3.0, "max_buys": 0,  "max_exposure": 0.00, "max_stop_pct": 4.0},
 }
 
 # Factor weights — 10 factors, sum = 1.00
@@ -849,13 +854,20 @@ def truncate_display(text: str, max_len: int = 100) -> str:
 
 
 def _split_telegram_message(text: str, max_len: int) -> list:
-    """Split at section (═) boundaries first, then fallback to newline split."""
+    """Split at section (═) boundaries first, then paragraph (\n\n), then newline.
+
+    FIX: previously fell straight from section-divider to single-newline, which
+    sometimes broke a Near-Miss card in half. Preferring paragraph boundaries
+    keeps semantic blocks (BUY card, NEAR MISS card, WATCHLIST row) intact.
+    Also prepends "(cont'd)" to continuation chunks so the user knows they're
+    reading a continuation of the previous section.
+    """
     if len(text) <= max_len:
         return [text]
     chunks = []
     DIVIDER = "═"
-    # Try splitting at section dividers
-    sections = text.split(DIVIDER * 10)  # lines of ═══…
+    # Try splitting at section dividers (long lines of ═)
+    sections = text.split(DIVIDER * 10)
     chunk = ""
     for section in sections:
         candidate = (chunk + DIVIDER * 10 + section) if chunk else section
@@ -867,17 +879,23 @@ def _split_telegram_message(text: str, max_len: int) -> list:
             chunk = section
     if chunk:
         chunks.append(chunk)
-    # If any chunk still too long, split by newline
+    # If any chunk still too long, split — prefer paragraph (\n\n), then \n.
     final = []
     for c in chunks:
         while len(c) > max_len:
-            split_at = c.rfind("\n", 0, max_len)
+            split_at = c.rfind("\n\n", 0, max_len)
+            if split_at == -1:
+                split_at = c.rfind("\n", 0, max_len)
             if split_at == -1:
                 split_at = max_len
             final.append(c[:split_at])
             c = c[split_at:].lstrip("\n")
         if c:
             final.append(c)
+    # Prepend a (cont'd) tag on chunks 2..N so a card split across messages is
+    # obvious to the reader on Telegram.
+    if len(final) > 1:
+        final = [final[0]] + [f"(cont'd)\n{c}" for c in final[1:]]
     return final if final else [text]
 
 
@@ -1446,23 +1464,49 @@ def ai_buy_thesis(
     symbol: str, sector: str, confidence: float, tq: float, rr: float,
     conf_trend: str, catalyst: list, sector_status: str,
     roe: float, pledge_pct: float, regime: str, risk_pct: float,
+    factor_scores: dict = None, soft_warnings: list = None,
+    rs_diff21: float = 0.0, accum_signal: str = "NEUTRAL",
 ) -> str:
-    """1-2 sentence specific trade thesis for a BUY signal. ~80 token input."""
+    """1-2 sentence specific trade thesis for a BUY signal.
+
+    Now feeds the LLM the TOP-3 factor scores, the WEAKEST factor, RS-vs-Nifty,
+    accumulation signal and any soft warnings so it has stock-specific evidence
+    to cite instead of falling back to generic phrases like 'strong buy signal'.
+    """
+    fs = factor_scores or {}
+    ranked = sorted(fs.items(), key=lambda kv: -(kv[1] or 0))
+    top_factors = [f"{k}={int(v)}" for k, v in ranked[:3] if v is not None]
+    weakest     = ranked[-1] if ranked else ("n/a", 0)
+    warns       = ", ".join((soft_warnings or [])[:3]) or "none"
+
     prompt = (
         f"Stock selected as BUY signal:\n"
         f"Symbol: {symbol} | Sector: {sector}\n"
         f"Confidence: {confidence:.1f}/100 | TQ: {tq:.1f} | R/R: {rr:.2f}x\n"
         f"Confidence trend (3d): {conf_trend if conf_trend else 'first appearance'}\n"
         f"Catalysts: {', '.join(catalyst) if catalyst else 'none'}\n"
-        f"Sector status: {sector_status} | ROE {roe:.1f}% | Pledge {pledge_pct:.0f}%\n"
-        f"Risk per trade: {risk_pct:.1f}% | Regime: {regime}\n\n"
-        "Write ONE sentence (max 25 words) on why this stock was selected today — "
-        "mention sector, R/R, and strongest signal. "
-        "Then ONE sentence (max 15 words) on the key risk. No bullets, no jargon."
+        f"Sector status: {sector_status} | Accumulation: {accum_signal}\n"
+        f"Fundamentals: ROE {roe:.1f}% | Pledge {pledge_pct:.0f}%\n"
+        f"Relative Strength vs Nifty (21d): {rs_diff21:+.1f}%\n"
+        f"Top-3 factor scores: {', '.join(top_factors) if top_factors else 'n/a'}\n"
+        f"Weakest factor: {weakest[0]}={int(weakest[1] or 0)}\n"
+        f"Soft warnings: {warns}\n"
+        f"Regime: {regime}\n\n"
+        "Write ONE sentence (max 25 words) on why THIS stock was selected today. "
+        "MUST cite AT LEAST ONE of: the strongest factor by name+score, a specific catalyst, "
+        "the RS-vs-Nifty number, or accumulation signal. "
+        "Do NOT say 'strong buy signal' or generic phrases like 'strong <sector> sector'. "
+        "Then ONE sentence (max 15 words) on the KEY RISK — must mention the WEAKEST factor by name, "
+        "a soft warning, or a stock-specific concern (wide stop, near 52W high, etc.). "
+        "Do NOT mention '1.5% loss per trade' — fixed and boring. No bullets, no jargon."
     )
-    result = _call_ai(prompt, max_tokens=80)
+    result = _call_ai(prompt, max_tokens=100)
     if result and len(result) > 20:
         clean = _clean_ai_output(result)
+        try:
+            clean = html.unescape(clean)
+        except Exception:
+            pass
         sentences = _split_sentences(clean)
         return " ".join(sentences[:2]) if sentences else clean
     return _rule_based_thesis(symbol, sector, rr, conf_trend, catalyst, sector_status)
@@ -1567,13 +1611,28 @@ def ai_near_miss_insight(
         "multiple factors below threshold"
     )
 
+    # FIX: when Conf already passes (conf_gap==0), the real blocker is R/R or TQ.
+    # Tell the AI which knob to talk about — previously it invented a non-existent
+    # "close the confidence gap" line even when Conf was well above threshold.
+    conf_passes    = conf_gap <= 0
+    active_gap_str = (
+        f"R/R gap: needs to reach {rr + 0.2:.2f}x from {rr:.2f}x"
+        if conf_passes and rr_fail
+        else (
+            f"TQ gap: needs +{80 - tq:.1f} from {tq:.1f} toward 80"
+            if conf_passes and tq_fail
+            else f"Confidence gap: needs +{conf_gap:.1f} points from {confidence:.1f}"
+        )
+    )
+
     prompt = f"""Near miss stock analysis. Each stock has unique numbers — treat each one differently.
 
 Symbol: {symbol}
 Sector: {sector}
-Current Confidence: {confidence:.1f}/100 (needs +{conf_gap:.1f} points to qualify)
+Current Confidence: {confidence:.1f}/100 (threshold {'MET' if conf_passes else 'NOT MET'})
 Current TQ: {tq:.1f}/100
 Current R/R: {rr:.2f}x
+Active blocker: {active_gap_str}
 Confidence trend (3 days): {trend_label}
 Primary blocker: {blocker_label}
 Sector condition: {sector_status}
@@ -1586,8 +1645,10 @@ Write ONE complete sentence (minimum 20 words, maximum 30 words) answering:
  to become a tradeable BUY signal?"
 
 Requirements:
-- Reference this stock's ACTUAL numbers (e.g. "close the {conf_gap:.1f}-point confidence gap",
-  "improve R/R above 2.0x", "tighten from {tq:.1f} TQ toward 80")
+- Focus ONLY on the ACTIVE blocker above. If confidence already PASSES the
+  threshold, do NOT invent a confidence gap — talk about R/R or TQ instead.
+- Reference this stock's ACTUAL numbers (R/R value, TQ value, or conf value
+  — whichever is the blocker).
 - Do NOT start with "For {symbol}" or "{symbol} needs"
 - Start with a verb, condition, or timeframe
 - Be specific to THIS stock — do not produce a generic template
@@ -1596,6 +1657,10 @@ Requirements:
     result = _call_ai(prompt, max_tokens=90)
     if result:
         clean = _clean_ai_output(result)
+        try:
+            clean = html.unescape(clean)   # FIX: strip HTML entities from AI output
+        except Exception:
+            pass
         # Use safe sentence splitter (protects .NS ticker suffix, decimals, abbreviations)
         sentences = [s for s in _split_sentences(clean) if len(s) >= 20]
         if sentences:
@@ -1666,6 +1731,19 @@ def run_all_ai_calls(
                     pledge_pct    = stock.get("promoter_pledge_pct", 0),
                     regime        = regime,
                     risk_pct      = stock.get("risk_pct", 0),
+                    factor_scores = stock.get("factor_scores", {}) or {
+                        "trend":     stock.get("trend_quality", 50),
+                        "momentum":  stock.get("momentum_quality", 50),
+                        "volume":    stock.get("volume_delivery", 50),
+                        "sector":    stock.get("sector_strength", 50),
+                        "rs":        stock.get("rs_vs_nifty", 50),
+                        "news":      stock.get("news_risk", 50),
+                        "ownership": stock.get("ownership_quality", 50),
+                        "macro":     stock.get("macro_alignment", 50),
+                    },
+                    soft_warnings = stock.get("_soft_warnings", []) or [],
+                    rs_diff21     = float(stock.get("rs_diff21", 0) or 0),
+                    accum_signal  = stock.get("accum_signal", "NEUTRAL"),
                 )
             # Calls 7-N: near-miss insights for ALL near-miss stocks.
             # AI is capped at 15 to stay within the 15-second timeout budget;
@@ -2447,20 +2525,36 @@ def fetch_promoter_data_cached(symbol_clean: str, cache: dict,
     return data
 
 
-def fetch_all_fundamentals_cached(top_40: list, max_stocks: int = 20) -> list:
+def fetch_all_fundamentals_cached(top_40: list, max_stocks: int = 30) -> list:
     """
     Fetches fundamentals sequentially with 24h cache.
+
+    PRIORITY ORDER (FIX): rearrange top_40 so likely BUY candidates get their
+    fundamentals FIRST (before rate-limit exhaustion) — sorted by
+    final/base confidence as a proxy for BUY-likelihood. Cache hits are
+    effectively free so we can safely widen from 20 -> 30 stocks without
+    noticeably slowing the fresh run.
+
     Adds ~50s on first run; near-instant on same-day re-runs.
     """
     cache = load_fundamentals_cache()
     _log(f"[INFO] Fundamentals cache: {len(cache)} symbols cached")
-    est_sec = sum(
-        0 if symbol_clean in cache else 2.5
-        for symbol_clean in [s["symbol"].replace(".NS", "") for s in top_40[:max_stocks]]
-    )
-    _log(f"[INFO] Estimated fetch time: ~{est_sec:.0f}s for {max_stocks} stocks")
 
-    for i, stock in enumerate(top_40[:max_stocks]):
+    def _prio(s):
+        # Best proxy for BUY-likelihood: final_confidence > base_confidence > 0.
+        return -(s.get("final_confidence", 0) or s.get("base_confidence", 0) or 0)
+    ordered  = sorted(top_40, key=_prio)
+    to_fetch = ordered[:max_stocks]
+    skip     = ordered[max_stocks:]
+
+    est_sec = sum(
+        0 if s["symbol"].replace(".NS", "") in cache else 2.5
+        for s in to_fetch
+    )
+    _log(f"[INFO] Estimated fetch time: ~{est_sec:.0f}s for {max_stocks} stocks "
+         f"(BUY-priority order)")
+
+    for i, stock in enumerate(to_fetch):
         sym_clean = stock["symbol"].replace(".NS", "")
         _log(f"  [{i+1}/{max_stocks}] {sym_clean}")
         pdata = fetch_promoter_data_cached(sym_clean, cache, cache_ttl_hours=24)
@@ -2473,8 +2567,12 @@ def fetch_all_fundamentals_cached(top_40: list, max_stocks: int = 20) -> list:
         stock["fundamentals_source"] = pdata.get("source", "NEUTRAL_DEFAULT")
         # Refine ownership_quality with ROE + D/E (screener+YF data now available)
         _update_ownership_quality(stock)
+        # Log silent-fail cases so we can see WHICH stocks came back empty.
+        if (pdata.get("roe", 0) == 0 and pdata.get("de_ratio", 0) == 0
+                and stock["fundamentals_source"] in ("NEUTRAL_DEFAULT", "screener_partial")):
+            _log(f"    [FUND] {sym_clean}: ROE/D/E both 0 · source={stock['fundamentals_source']}")
 
-    for stock in top_40[max_stocks:]:
+    for stock in skip:
         stock["promoter_data"]       = {**NEUTRAL_FUNDAMENTALS}
         stock["ownership_quality"]   = 50
         stock["promoter_pledge_pct"] = 0.0
@@ -2484,7 +2582,7 @@ def fetch_all_fundamentals_cached(top_40: list, max_stocks: int = 20) -> list:
         stock["fundamentals_source"] = "NOT_FETCHED"
 
     save_fundamentals_cache(cache)
-    fetched_ok = sum(1 for s in top_40[:max_stocks]
+    fetched_ok = sum(1 for s in to_fetch
                      if s.get("fundamentals_source") not in ("NEUTRAL_DEFAULT", "NOT_FETCHED"))
     _log(f"  Fundamentals done: {fetched_ok}/{max_stocks} real data | "
          f"{max_stocks - fetched_ok} defaults | cache saved")
@@ -3304,7 +3402,10 @@ def format_fii_dii_line(fii_data: dict) -> str:
     dii_found = fii_data.get("dii_found", dii != 0)  # backward-compat: if no flag, assume found if non-zero
     prov      = " (provisional)" if fii_data.get("is_provisional") else ""
 
-    fii_icon = "🟢" if fii > 0 else "🔴"
+    # Signed formatting so the icon is never ambiguous. 🟢 = inflow (positive),
+    # 🔴 = outflow (negative), ⚪ = zero/unknown. Previously showed a red icon
+    # next to a positive rupee number which contradicted the daily summary.
+    fii_icon = "🟢" if fii > 0 else ("🔴" if fii < 0 else "⚪")
     dii_icon = "🟢" if dii > 0 else ("🔴" if dii < 0 else "⚪")
 
     if fii > 500 and dii_found and dii > 500:
@@ -3313,6 +3414,8 @@ def format_fii_dii_line(fii_data: dict) -> str:
         sentiment = "⚠️ Both selling"
     elif fii > 500:
         sentiment = "🟢 FII buying"
+    elif dii_found and dii > 500 and fii < -500:
+        sentiment = "🟡 DII absorbing FII selling"
     elif dii_found and dii > 500:
         sentiment = "🟡 DII supporting"
     elif fii < -500:
@@ -3320,10 +3423,11 @@ def format_fii_dii_line(fii_data: dict) -> str:
     else:
         sentiment = "➡️ Neutral flows"
 
-    dii_str = f"{dii_icon} ₹{abs(dii):.0f}Cr" if dii_found else "N/A"
+    # Show the SIGN in the amount too (₹+3318Cr / ₹-3318Cr) so text and icon agree.
+    dii_str = f"{dii_icon} ₹{dii:+,.0f}Cr" if dii_found else "N/A"
 
     return (
-        f"FII {fii_icon} ₹{abs(fii):.0f}Cr · "
+        f"FII {fii_icon} ₹{fii:+,.0f}Cr · "
         f"DII {dii_str} · {sentiment}{prov}"
     )
 
@@ -4117,14 +4221,24 @@ def compute_final_confidence(base: float, regime: str, news_penalty: float,
     return round(max(0.0, min(100.0, final)), 2)
 
 
+# Env-driven cap (default 25%). Read once at module load so both sizers agree.
+_MAX_POSITION_PCT_ENV = float(os.getenv("MAX_POSITION_PCT", "25")) / 100.0
+
+
 def compute_position_size(entry: float, stop: float, capital: float,
                            risk_per_trade: float = 0.015,
-                           max_position_pct: float = 0.25) -> dict:
-    """Risk-based position sizing — always returns non-zero for valid inputs."""
+                           max_position_pct: float = None) -> dict:
+    """Risk-based position sizing — always returns non-zero for valid inputs.
+
+    Returns keys: shares, position_value, position_pct, risk_amount, risk_pct,
+    max_loss (= shares × (entry − stop), the actual worst-case rupee loss).
+    """
+    if max_position_pct is None:
+        max_position_pct = _MAX_POSITION_PCT_ENV
     try:
         if entry <= 0 or stop <= 0 or stop >= entry or capital <= 0:
             return {"shares": 0, "position_value": 0.0, "position_pct": 0.0,
-                    "risk_amount": 0.0, "risk_pct": 0.0}
+                    "risk_amount": 0.0, "risk_pct": 0.0, "max_loss": 0.0}
         risk_per_share = entry - stop
         risk_amount    = capital * risk_per_trade
         shares         = max(1, int(risk_amount / risk_per_share))
@@ -4133,16 +4247,20 @@ def compute_position_size(entry: float, stop: float, capital: float,
             shares         = max(1, int((capital * max_position_pct) / entry))
             position_value = shares * entry
         position_pct = (position_value / capital) * 100
+        # Actual worst-case rupee loss (may differ slightly from risk_amount
+        # because shares is an integer). Downstream renders read this key.
+        max_loss = round(shares * risk_per_share, 2)
         return {
             "shares":         shares,
             "position_value": round(position_value, 2),
             "position_pct":   round(position_pct, 1),
             "risk_amount":    round(risk_amount, 2),
             "risk_pct":       round(risk_per_trade * 100, 1),
+            "max_loss":       max_loss,
         }
     except Exception:
         return {"shares": 0, "position_value": 0.0, "position_pct": 0.0,
-                "risk_amount": 0.0, "risk_pct": 0.0}
+                "risk_amount": 0.0, "risk_pct": 0.0, "max_loss": 0.0}
 
 
 def compute_portfolio_heat(holdings: list, current_prices: dict,
@@ -4197,7 +4315,7 @@ def compute_portfolio_heat(holdings: list, current_prices: dict,
 
 def kelly_position_size(entry: float, stop: float, capital: float,
                         win_rate: float, avg_win_pct: float, avg_loss_pct: float,
-                        heat: dict, max_position_pct: float = 0.25) -> dict:
+                        heat: dict, max_position_pct: float = None) -> dict:
     """
     Kelly Criterion position sizing — sizes position based on ACTUAL historical
     win rate from the tracker. Falls back to fixed 1.5% risk if no history.
@@ -4211,6 +4329,8 @@ def kelly_position_size(entry: float, stop: float, capital: float,
 
     Activates automatically once tracker has >= 20 closed trades.
     """
+    if max_position_pct is None:
+        max_position_pct = _MAX_POSITION_PCT_ENV
     try:
         if entry <= 0 or stop <= 0 or stop >= entry or capital <= 0:
             return compute_position_size(entry, stop, capital)
@@ -4249,6 +4369,7 @@ def kelly_position_size(entry: float, stop: float, capital: float,
             position_value = shares * entry
         position_pct = (position_value / capital) * 100
 
+        max_loss = round(shares * risk_per_share, 2)
         return {
             "shares":          shares,
             "position_value":  round(position_value, 2),
@@ -4256,6 +4377,7 @@ def kelly_position_size(entry: float, stop: float, capital: float,
             "risk_amount":     round(risk_amount, 2),
             "risk_pct":        round(risk_per_trade * 100, 2),
             "sizing_method":   sizing_method,
+            "max_loss":        max_loss,
         }
     except Exception:
         return compute_position_size(entry, stop, capital)
@@ -4660,10 +4782,31 @@ def compute_all_factors(symbol: str, df,
 
         # ── Factor 4: Sector Strength ──
         rotation_adj, sector_status = 0, "NEUTRAL"
+        rotation_hit = False
         if sector_rotation:
+            # Detect whether this sector was actually IN the rotation map.
+            # sector_rotation is typically {sector_name: score} but may be
+            # {"ranks": {...}} in some builds — handle both.
+            try:
+                _known = set()
+                if isinstance(sector_rotation, dict):
+                    if isinstance(sector_rotation.get("ranks"), dict):
+                        _known = set(sector_rotation["ranks"].keys())
+                    else:
+                        _known = set(sector_rotation.keys())
+                rotation_hit = sector in _known
+            except Exception:
+                rotation_hit = False
             rotation_adj, sector_status = sector_rotation_score(sector, sector_rotation)
         result["sector_strength"] = max(0, min(100, 50 + rotation_adj))
         result["sector_status"]   = sector_status
+        if sector_rotation and not rotation_hit:
+            # Surface as a soft warning + downgrade status so BUY thesis / logs
+            # know we defaulted to neutral instead of a real rotation read.
+            result["sector_status"] = "UNKNOWN"
+            result.setdefault("_soft_warnings", []).append(
+                f"SECTOR_ROTATION_MISSING({sector})"
+            )
 
         # ── Factor 5: Relative Strength vs Nifty (real 21-day comparison) ──
         # Uses actual Nifty 21d return computed once in pipeline, not a proxy
@@ -4859,7 +5002,13 @@ def monitor_portfolio(holdings: list, price_data: dict, regime: str) -> list:
         pnl_abs  = round(cur_val - invested, 2)
         try:
             entry_dt  = datetime.datetime.strptime(holding.get("entry_date", ""), "%Y-%m-%d")
-            days_held = (datetime.datetime.today() - entry_dt).days
+            # FIX: prefer business days (T-days). Weekends inflated the counter.
+            try:
+                _tdays = int(pd.bdate_range(entry_dt.date(),
+                                            datetime.date.today()).size) - 1
+                days_held = max(0, _tdays)
+            except Exception:
+                days_held = (datetime.datetime.today() - entry_dt).days
         except Exception:
             days_held = 0
 
@@ -4974,6 +5123,21 @@ def run_gates(stock: dict, regime: str, thresholds: dict,
     rr = stock.get("rr_ratio", 0)
     if rr < thresh["min_rr"]:
         fail_reasons.append(f"RR_FAIL(got {rr:.2f}, need {thresh['min_rr']})")
+
+    # Gate 8b: Wide-stop guardrail (HARD) — reject if stop distance > regime cap.
+    # Prevents a 12% stop from being deployed in a regime where 6% is the ceiling.
+    try:
+        _entry_v = float(stock.get("entry", 0) or 0)
+        _stop_v  = float(stock.get("stop",  0) or 0)
+        _max_stop_pct = float(thresh.get("max_stop_pct", 8.0))
+        if _entry_v > 0 and 0 < _stop_v < _entry_v:
+            _stop_dist_pct = (_entry_v - _stop_v) / _entry_v * 100.0
+            if _stop_dist_pct > _max_stop_pct:
+                fail_reasons.append(
+                    f"WIDE_STOP(got {_stop_dist_pct:.1f}%, cap {_max_stop_pct:.1f}%)"
+                )
+    except Exception:
+        pass
 
     # Gate 9: Sector Health (SOFT / HARD if LAGGING)
     sector_status = stock.get("sector_status", "NEUTRAL")
@@ -5210,7 +5374,10 @@ def classify_watchlist(stock: dict, regime: str, thresholds: dict) -> dict:
     min_conf = thresh["min_confidence"]
     conf     = stock.get("final_confidence", 0)
     tq       = stock.get("trade_quality_score", 0)
-    conf_gap = round(min_conf - conf, 1)
+    # FIX (IOLCP bug): clamp to 0. Previously produced negative gaps when Conf
+    # already passed the threshold but R/R was the real blocker — the AI/rule
+    # insight then said "close the -10.7-point gap" which is nonsense.
+    conf_gap = round(max(0.0, min_conf - conf), 1)
 
     # Always compute price levels — every watchlist entry shows them
     levels = calculate_watchlist_levels(stock)
@@ -5688,9 +5855,10 @@ def format_near_miss_failures(stock: dict, thresh: dict) -> list:
     min_t = thresh.get("min_tq", 78)
     min_r = thresh.get("min_rr", 2.0)
     fails = []
-    if conf < min_c: fails.append(f"Conf+{min_c - conf:.1f}")
-    if tq   < min_t: fails.append(f"TQ+{min_t - tq:.1f}")
-    if rr   < min_r: fails.append(f"RR+{min_r - rr:.2f}x")
+    # Use max(0, gap) so a metric that already passes never prints a negative gap.
+    if conf < min_c: fails.append(f"Conf+{max(0.0, min_c - conf):.1f}")
+    if tq   < min_t: fails.append(f"TQ+{max(0.0, min_t - tq):.1f}")
+    if rr   < min_r: fails.append(f"RR+{max(0.0, min_r - rr):.2f}x")
     fail_str = " · ".join(fails) if fails else "near threshold"
     return [f"  ✗ Needs: {fail_str} → Watch: vol surge or consol above entry"]
 
@@ -5711,7 +5879,10 @@ def format_conviction_meter(regime_score: float, breadth: float,
         elif conviction >= 55: label = "🟡 Moderate"
         elif conviction >= 40: label = "🟠 Weak"
         else:                  label = "🔴 Poor"
-        return [f"  Conviction [{bar}] {conviction:.0f}% · {label}"]
+        # Relabel: this is REGIME conviction (blend of regime score, breadth, flows)
+        # — distinct from the numeric "Score X/100" printed above. Previously read
+        # just "Conviction" which was ambiguous.
+        return [f"  Regime Conviction [{bar}] {conviction:.0f}% · {label}"]
     except Exception:
         return []
 
@@ -5784,6 +5955,16 @@ def format_buy_card(stock: dict, sizing: dict, regime: str,
             if "NEAR_52W_HIGH" in cats:   thesis_parts.append("near 52W high breakout")
             buy_thesis = ", ".join(thesis_parts) if thesis_parts else "multi-factor confluence"
 
+        # Unescape HTML entities from upstream news/AI text before we re-escape
+        # for Telegram HTML mode — prevents double-encoding like &amp;#x27;.
+        try:
+            for _k in ("news_summary", "buy_thesis", "summary"):
+                _v = stock.get(_k)
+                if isinstance(_v, str) and "&" in _v and ";" in _v:
+                    stock[_k] = html.unescape(_v)
+        except Exception:
+            pass
+
         sym     = html.escape(str(stock.get("symbol", "")))
         entry   = stock.get("entry", 0)
         stop_p  = stock.get("stop", 0)
@@ -5793,23 +5974,55 @@ def format_buy_card(stock: dict, sizing: dict, regime: str,
         pos_val = sizing.get("position_value", stock.get("position_value", 0))
         pos_pct = sizing.get("position_pct", stock.get("position_pct", 0))
         shares  = sizing.get("shares", stock.get("shares", 0))
-        max_loss= sizing.get("max_loss", stock.get("max_loss", 0))
+        # BUGFIX: prefer explicit `max_loss`; fall back to risk_amount; last-resort
+        # live compute (shares × risk-per-share) so cached rows still render.
+        max_loss = (
+            sizing.get("max_loss")
+            or stock.get("max_loss")
+            or sizing.get("risk_amount")
+            or stock.get("risk_amount")
+            or 0
+        )
+        try:
+            if (not max_loss or float(max_loss) <= 0) and shares and entry and stop_p and entry > stop_p > 0:
+                max_loss = round(shares * (entry - stop_p), 2)
+        except Exception:
+            pass
+        # Persist back to stock so tracker / weekly stats read a real number.
+        stock["max_loss"] = max_loss
         news    = truncate_display(stock.get("news_summary", ""), 120)
 
         pos_val_k = pos_val / 1000  # display in K
-        max_loss_k = max_loss / 1000
+        max_loss_k = max_loss / 1000 if max_loss else 0
+        # Render MaxLoss in ₹ when < ₹1K so tiny worst-case losses don't collapse to 0.0K.
+        max_loss_str = (
+            f"MaxLoss ₹{max_loss:.0f}" if 0 < max_loss < 1000
+            else f"MaxLoss ₹{max_loss_k:.1f}K"
+        )
         lines = [
             f"  {icon} <b>{sym}</b> · {html.escape(str(sector))}",
             f"  Opp {opp:.0f} · Conf {conf:.1f} · TQ {tq:.1f} · R/R {rr:.2f}x",
             f"  Entry ₹{entry:.1f} · Stop ₹{stop_p:.1f} ({risk_p:.1f}%) · T1 ₹{t1:.1f} · T2 ₹{t2:.1f}",
-            f"  Size ₹{pos_val_k:.0f}K ({pos_pct:.1f}%) · {shares} shares · MaxLoss ₹{max_loss_k:.1f}K",
+            f"  Size ₹{pos_val_k:.0f}K ({pos_pct:.1f}%) · {shares} shares · {max_loss_str}",
             f"  ROE {stock.get('roe', 0):.1f}% · D/E {stock.get('de_ratio', 0):.2f} · Pledge {stock.get('promoter_pledge_pct', 0):.0f}%",
             f"  📝 {html.escape(str(buy_thesis))}",
         ]
         if cats:
             lines.append(f"  🏷 {html.escape(' · '.join(str(c) for c in cats))}")
+        # FIX label/score mismatch: distinguish NO_NEWS (score correctly = 50)
+        # from "we have news but couldn't summarise". Never claim "No significant
+        # news" unless the category actually was NO_NEWS.
+        news_cat = str(stock.get("news_category", "") or "").upper()
         if news and news != "\u2014":
+            try:
+                news = html.unescape(str(news))
+            except Exception:
+                pass
             lines.append(f"  📰 {html.escape(str(news))}")
+        elif news_cat == "NO_NEWS":
+            lines.append("  📰 No headlines in last 3 days")
+        else:
+            lines.append("  📰 —")
         fs = stock.get("factor_scores", {}) or {}
         lines += format_confidence_breakdown(fs, conf)
         return lines
@@ -5847,7 +6060,7 @@ def format_portfolio_card_compact(alert: dict, current_price: float,
                        "TRAIL_STOP": "🟡", "REVIEW": "🟠"}.get(action, "✅")
 
         lines = [
-            f"  {action_icon} <b>{html.escape(symbol)}</b> · {action} · D{days} · {pnl_icon}{pnl_p:+.1f}% · {r_mult:+.2f}R",
+            f"  {action_icon} <b>{html.escape(symbol)}</b> · {action} · T{days} · {pnl_icon}{pnl_p:+.1f}% · {r_mult:+.2f}R",
             f"  ₹{entry:.0f}→₹{current_price:.0f} · T1 ₹{t1:.0f} · T2 ₹{t2:.0f}",
         ]
         if near_stop:
@@ -6233,6 +6446,22 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
 
     # ── Header ──────────────────────────────────────────────────────────────
     lines.append(f"📊 <b>NSE SWING BRIEF</b> · {timestamp}")
+    # FIX: stamp the actual latest OHLCV candle date used by the scan so
+    # readers can tell whether data is fresh or from a prior session.
+    try:
+        _latest = None
+        _ns = nifty_state or {}
+        _cand = _ns.get("latest_candle_date") or _ns.get("as_of") or _ns.get("as_of_date")
+        if _cand:
+            _latest = str(_cand)
+        elif macro:
+            _cand2 = macro.get("latest_candle_date") or macro.get("as_of")
+            if _cand2:
+                _latest = str(_cand2)
+        if _latest:
+            lines.append(f"  <i>Latest candle: {html.escape(_latest)}</i>")
+    except Exception:
+        pass
     lines.append("─" * 22)
     lines.append("")
 
@@ -6288,9 +6517,35 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
         "dii_flow_cr":    dii_flow,
         "available":      macro.get("fii_available", not (fii_flow == 0 and dii_flow == 0)),
         "is_provisional": macro.get("fii_provisional", False),
+        "dii_found":      macro.get("dii_found", dii_flow != 0),
     }
     fii_dii_line = format_fii_dii_line(_fii_data)
     lines.append(f"  {fii_dii_line}")
+
+    # FIX: STRONG_BULL + heavy FII outflow contradiction — flag prominently.
+    # Also surface FII stale (yesterday's number can look like today's).
+    _fii_stale = (
+        bool(macro.get("fii_stale"))
+        or str(macro.get("fii_confidence", "")).upper() == "STALE"
+    )
+    if regime == "STRONG_BULL" and fii_flow < -1000:
+        if _fii_stale:
+            lines.append(
+                "  ⚠️ <b>REGIME CAVEAT</b>: STRONG_BULL but FII ₹"
+                f"{fii_flow:+,.0f}Cr (STALE data — may be yesterday's). "
+                "Wait for fresh flow print before deploying full size."
+            )
+        else:
+            lines.append(
+                "  ⚠️ <b>REGIME CAVEAT</b>: STRONG_BULL but FII outflow ₹"
+                f"{fii_flow:+,.0f}Cr. Domestic bid absorbing — tighten sizing "
+                "until FII turns net buyer."
+            )
+    elif regime in ("STRONG_BULL", "BULL") and _fii_stale:
+        lines.append(
+            "  ⚠️ <b>FII data STALE</b> — flows shown are from a prior day. "
+            "Treat regime score with caution."
+        )
 
     # ── Conviction + Risk (single lines) ──
     _kl2 = key_levels or {}
@@ -6318,10 +6573,20 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
             f"EMA50: {kl.get('ema50', '—')} | "
             f"EMA200: {kl.get('ema200', '—')}"
         )
+        # FIX: date-stamp the 52W High/Low so a stale figure is obvious.
+        _52w_as_of = None
+        try:
+            _ns2 = nifty_state or {}
+            _52w_as_of = _ns2.get("as_of") or _ns2.get("latest_candle_date") or _ns2.get("as_of_date")
+            if _52w_as_of:
+                _52w_as_of = str(_52w_as_of)
+        except Exception:
+            _52w_as_of = None
+        _52w_tag = f" (as of {html.escape(_52w_as_of)})" if _52w_as_of else ""
         lines.append(
             f"  52W H: {kl.get('high_52w', '—')} "
             f"({kl.get('dist_from_52w_high_pct', 0):.1f}% away) | "
-            f"52W L: {kl.get('low_52w', '—')}"
+            f"52W L: {kl.get('low_52w', '—')}{_52w_tag}"
         )
         lines.append(
             f"  20D Range: {kl.get('recent_low_20d', '—')} — {kl.get('recent_high_20d', '—')}"
@@ -6510,8 +6775,16 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
             usdinr_name = "yfinance"
         fii_src     = str(macro.get("fii_source", "?"))
         fii_conf    = str(macro.get("fii_confidence", "?"))
-        dq_icon     = "🟢" if dq == "NORMAL" else "🟡"
-        lines.append(f"{dq_icon} Data quality: {dq}"
+        # FIX: surface FII staleness explicitly in the footer — previously the
+        # "STALE" hint was hidden inside fii_confidence and easy to miss.
+        fii_stale = (
+            bool(macro.get("fii_stale"))
+            or "stale" in fii_src.lower()
+            or fii_conf.upper() == "STALE"
+        )
+        stale_tag = " ⚠️ FII_STALE" if fii_stale else ""
+        dq_icon     = "🟢" if (dq == "NORMAL" and not fii_stale) else "🟡"
+        lines.append(f"{dq_icon} Data quality: {dq}{stale_tag}"
                      + (f" · bad={','.join(bad_fields)}" if bad_fields else "")
                      + f" · usdinr={usdinr_name} · fii={fii_src}({fii_conf})")
     except Exception:
@@ -6709,6 +6982,11 @@ def _run_pipeline_inner():
     macro["fii_provisional"]  = fii_dii.get("is_provisional", False)
     macro["fii_source"]       = fii_dii.get("source", "NONE")
     macro["fii_confidence"]   = fii_dii.get("confidence", "NONE")
+    # FIX: bubble the staleness flag + dii_found flag so downstream (footer,
+    # regime banner, tracker row) can surface it explicitly.
+    macro["fii_stale"]        = bool(fii_dii.get("stale", False)) or \
+                                str(fii_dii.get("confidence", "")).upper() == "STALE"
+    macro["dii_found"]        = bool(fii_dii.get("dii_found", fii_dii.get("dii_flow_cr", 0) != 0))
     dii_log = f"{fii_dii['dii_flow_cr']:+.0f}Cr" if fii_dii.get("dii_found") else "N/A"
     _log(f"  FII: {fii_dii['fii_flow_cr']:+.0f}Cr | DII: {dii_log} | "
          f"src={macro['fii_source']} conf={macro['fii_confidence']} | Available: {fii_dii['available']}")
@@ -6802,11 +7080,16 @@ def _run_pipeline_inner():
         stock["news_penalty"]  = penalty
         stock["is_black_swan"] = ai_result.get("is_black_swan", False)
         stock["news_summary"]  = truncate_display(ai_result.get("summary", ""), 100)
+        # FIX: persist news category so BUY-card renderer can distinguish
+        # "no headlines" (NO_NEWS) from "headline exists but summary was empty".
+        stock["news_category"] = ai_result.get("category", "")
         stock["news_risk"]     = max(0, 100 - int(penalty * 2))
 
     # ── 9. Promoter data + fundamentals — sequential with 24h cache (no rate limiting) ──
-    _log("[9/17] Fetching promoter/fundamentals for top 20 (sequential + cached)...")
-    top_40 = fetch_all_fundamentals_cached(top_40, max_stocks=20)
+    # FIX: widen from 20 -> 30 so 3-of-5 BUYs no longer come back with ROE=0.
+    # BUY-priority ordering is done inside fetch_all_fundamentals_cached().
+    _log("[9/17] Fetching promoter/fundamentals for top 30 (BUY-priority + cached)...")
+    top_40 = fetch_all_fundamentals_cached(top_40, max_stocks=30)
 
     # ── 10. Options PCR for top 20 (parallel) ──
     _log("[10/17] Options PCR for top 20 (parallel)...")
@@ -7012,7 +7295,7 @@ def _run_pipeline_inner():
             avg_win_pct=platt["avg_win_pct"],
             avg_loss_pct=platt["avg_loss_pct"],
             heat=heat,
-            max_position_pct=0.25,
+            max_position_pct=_MAX_POSITION_PCT_ENV,
         )
         stock.update(pos)
 
