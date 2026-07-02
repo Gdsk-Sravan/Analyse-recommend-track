@@ -286,6 +286,11 @@ PORTFOLIO_FILE          = os.getenv("PORTFOLIO_FILE", "portfolio.json")
 WATCHLIST_FILE      = os.getenv("WATCHLIST_FILE", "watchlist_persist.json")
 CONF_HISTORY_FILE   = os.getenv("CONF_HISTORY_FILE", "confidence_history.json")
 GATE_MEMORY_FILE    = os.getenv("GATE_MEMORY_FILE", "gate_memory.json")
+# Phase C3 (2026-07-02): real per-stock delivery % cache + sector rank history
+# + VIX percentile cache. All three are additive institutional-grade signals.
+DELIVERY_CACHE_FILE     = os.getenv("DELIVERY_CACHE_FILE", "delivery_cache.json")
+SECTOR_RANK_HISTORY_FILE = os.getenv("SECTOR_RANK_HISTORY_FILE", "sector_rank_history.json")
+VIX_HISTORY_CACHE_FILE  = os.getenv("VIX_HISTORY_CACHE_FILE", "vix_history_cache.json")
 # True only when triggered by GitHub Actions cron schedule — never for manual runs
 IS_SCHEDULED        = os.getenv("SCHEDULED_RUN", "false").lower() == "true"
 TELEGRAM_MAX_CHARS  = 3800  # buffer below 4096 hard limit
@@ -2572,6 +2577,169 @@ def save_fundamentals_cache(cache: dict) -> None:
         _log(f"[WARN] save_fundamentals_cache failed: {e}")
 
 
+# ---------------------------------------------------------------------------
+# DELIVERY % — real per-stock institutional accumulation signal.
+# Phase C3 (2026-07-02): delivery-to-traded ratio from nselib bhavcopy
+# archives. This is the single strongest per-stock signal in the Indian
+# market: high delivery % on rising price = institutional accumulation;
+# low delivery % on rising price = speculative pump; high delivery % on
+# falling price = insider/large-holder unloading. Cached 24h per symbol.
+# ---------------------------------------------------------------------------
+
+def load_delivery_cache() -> dict:
+    try:
+        if os.path.exists(DELIVERY_CACHE_FILE):
+            with open(DELIVERY_CACHE_FILE, "r") as f:
+                return json.load(f)
+    except Exception as e:
+        _log(f"[WARN] load_delivery_cache failed: {e}")
+    return {}
+
+
+def save_delivery_cache(cache: dict) -> None:
+    try:
+        with open(DELIVERY_CACHE_FILE, "w") as f:
+            json.dump(cache, f, indent=2, default=str)
+    except Exception as e:
+        _log(f"[WARN] save_delivery_cache failed: {e}")
+
+
+def fetch_delivery_data(symbol_clean: str, lookback_days: int = 30) -> dict:
+    """Fetch per-day delivery % from NSE bhavcopy via nselib.
+
+    Returns:
+        {
+            "delivery_pct_today":  float (0-100),
+            "delivery_pct_20d_avg": float (0-100),
+            "delivery_ratio":      float (today / 20d_avg),
+            "delivery_signal":     "STRONG_ACCUM" | "ACCUM" | "NEUTRAL" |
+                                   "WEAK" | "DISTRIBUTION",
+            "series_days":         int (number of daily rows we got),
+            "source":              "nselib" | "unavailable"
+        }
+        Empty-ish result with source="unavailable" if the fetch fails.
+    """
+    default = {
+        "delivery_pct_today":   0.0,
+        "delivery_pct_20d_avg": 0.0,
+        "delivery_ratio":       1.0,
+        "delivery_signal":      "NEUTRAL",
+        "series_days":          0,
+        "source":               "unavailable",
+    }
+    try:
+        # nselib import — deferred to avoid hard dependency at module load time.
+        from nselib import capital_market as _nsecm  # type: ignore
+    except Exception as e:
+        _log(f"    [DELIV] nselib unavailable ({e}) — using proxy only")
+        return default
+    try:
+        # nselib expects DD-MM-YYYY for from_date / to_date.
+        today   = datetime.datetime.now().date()
+        # Use a wider window than 20d because market holidays + weekends can
+        # thin out the row count; we'll trim later.
+        from_d  = today - datetime.timedelta(days=max(45, lookback_days + 15))
+        df = _nsecm.security_wise_archives(
+            symbol=symbol_clean,
+            from_date=from_d.strftime("%d-%m-%Y"),
+            to_date=today.strftime("%d-%m-%Y"),
+            series="EQ",
+        )
+        if df is None or len(df) == 0:
+            return default
+        # Column name in nselib is usually "%DlyQttoTradedQty" (str with '%')
+        # or "DELIV_PER". Handle both.
+        col = None
+        for cand in ("%DlyQttoTradedQty", "DELIV_PER", "%DlyQt to TradedQty"):
+            if cand in df.columns:
+                col = cand
+                break
+        if col is None:
+            _log(f"    [DELIV] {symbol_clean}: no delivery column found "
+                 f"(cols={list(df.columns)[:6]})")
+            return default
+        # Parse to float — some rows come as '-' or with '%' suffix.
+        vals: list = []
+        for v in df[col].tolist():
+            try:
+                if v is None:
+                    continue
+                s = str(v).replace("%", "").strip()
+                if s in ("", "-", "N/A"):
+                    continue
+                vals.append(float(s))
+            except Exception:
+                continue
+        # nselib returns most-recent-first typically, but not guaranteed.
+        # Sort by date if there's a date column.
+        # For safety we just use the last 20 entries as "recent 20" regardless
+        # of order — if newest is first, we reverse.
+        if len(vals) < 5:
+            return default
+        # Detect ordering heuristically: nselib usually returns newest-first.
+        # We'll assume newest-first and take vals[0] as today, vals[:20] as 20d.
+        today_pct   = vals[0]
+        twenty_d    = vals[:min(20, len(vals))]
+        avg_20d     = sum(twenty_d) / len(twenty_d)
+        ratio       = (today_pct / avg_20d) if avg_20d > 0 else 1.0
+        # Signal derivation
+        if ratio >= 1.30:   sig = "STRONG_ACCUM"
+        elif ratio >= 1.15: sig = "ACCUM"
+        elif ratio <= 0.70: sig = "DISTRIBUTION"
+        elif ratio <= 0.85: sig = "WEAK"
+        else:               sig = "NEUTRAL"
+        return {
+            "delivery_pct_today":   round(today_pct, 2),
+            "delivery_pct_20d_avg": round(avg_20d, 2),
+            "delivery_ratio":       round(ratio, 3),
+            "delivery_signal":      sig,
+            "series_days":          len(vals),
+            "source":               "nselib",
+        }
+    except Exception as e:
+        _log(f"    [DELIV] {symbol_clean} fetch failed: {e}")
+        return default
+
+
+def fetch_delivery_cached(symbol_clean: str, cache: dict,
+                          cache_ttl_hours: int = 24) -> dict:
+    """24h-cached wrapper around fetch_delivery_data()."""
+    now    = datetime.datetime.now()
+    cached = cache.get(symbol_clean)
+    if cached:
+        try:
+            cached_at = datetime.datetime.fromisoformat(cached.get("cached_at", "2000-01-01"))
+            if (now - cached_at).total_seconds() / 3600 < cache_ttl_hours:
+                return cached["data"]
+        except Exception:
+            pass
+    data = fetch_delivery_data(symbol_clean)
+    cache[symbol_clean] = {"data": data, "cached_at": now.isoformat()}
+    return data
+
+
+def delivery_score_from_signal(signal: str, ratio: float) -> float:
+    """Convert delivery signal → 0-100 factor score for volume_delivery.
+
+    Anchored around 50 (neutral). Uses the numeric ratio for smooth
+    interpolation instead of pure buckets.
+    """
+    try:
+        # Clamp ratio to a sane band before scaling.
+        r = max(0.3, min(2.0, float(ratio)))
+        # Piecewise: 1.0 → 55, 1.5 → 90, 2.0 → 100, 0.7 → 30, 0.4 → 10.
+        if r >= 1.0:
+            score = 55 + (r - 1.0) * 90 / 1.0   # 1.0→55, 2.0→145 clipped to 100
+        else:
+            score = 55 - (1.0 - r) * 75 / 0.6   # 1.0→55, 0.4→(55-75)=-20 clipped
+        # Signal override at the extremes so labels remain consistent
+        if signal == "STRONG_ACCUM": score = max(score, 88)
+        elif signal == "DISTRIBUTION": score = min(score, 18)
+        return round(max(0.0, min(100.0, score)), 1)
+    except Exception:
+        return 50.0
+
+
 def fetch_promoter_data_cached(symbol_clean: str, cache: dict,
                                 cache_ttl_hours: int = 24) -> dict:
     """Returns cached data if fresher than cache_ttl_hours; otherwise fetches live."""
@@ -2651,6 +2819,37 @@ def fetch_all_fundamentals_cached(top_40: list, max_stocks: int = 30) -> list:
                      if s.get("fundamentals_source") not in ("NEUTRAL_DEFAULT", "NOT_FETCHED"))
     _log(f"  Fundamentals done: {fetched_ok}/{max_stocks} real data | "
          f"{max_stocks - fetched_ok} defaults | cache saved")
+
+    # ── Delivery % fetch (same top-N batch, 24h cache) ─────────────────────
+    # Phase C3 (2026-07-02): real per-stock delivery-to-traded ratio.
+    # This is the strongest single per-stock signal for the Indian market —
+    # separates institutional accumulation from speculative pumps.
+    deliv_cache = load_delivery_cache()
+    deliv_ok    = 0
+    _log(f"  [DELIV] Fetching delivery % for {len(to_fetch)} stocks "
+         f"(cache size: {len(deliv_cache)})")
+    for stock in to_fetch:
+        sym_clean = stock["symbol"].replace(".NS", "")
+        ddata = fetch_delivery_cached(sym_clean, deliv_cache, cache_ttl_hours=24)
+        stock["delivery_pct_today"]   = ddata.get("delivery_pct_today", 0.0)
+        stock["delivery_pct_20d_avg"] = ddata.get("delivery_pct_20d_avg", 0.0)
+        stock["delivery_ratio"]       = ddata.get("delivery_ratio", 1.0)
+        stock["delivery_signal"]      = ddata.get("delivery_signal", "NEUTRAL")
+        stock["delivery_source"]      = ddata.get("source", "unavailable")
+        if ddata.get("source") == "nselib":
+            deliv_ok += 1
+    # Skip stocks (outside top max_stocks) get neutral defaults so downstream
+    # logic never trips on missing keys.
+    for stock in skip:
+        stock["delivery_pct_today"]   = 0.0
+        stock["delivery_pct_20d_avg"] = 0.0
+        stock["delivery_ratio"]       = 1.0
+        stock["delivery_signal"]      = "NEUTRAL"
+        stock["delivery_source"]      = "not_fetched"
+    save_delivery_cache(deliv_cache)
+    _log(f"  [DELIV] Done: {deliv_ok}/{len(to_fetch)} real data | "
+         f"{len(to_fetch) - deliv_ok} proxy-only")
+
     return top_40
 
 
@@ -2714,6 +2913,9 @@ def fetch_global_macro() -> dict:
         "gold_usd": 2300.0, "nifty_1d_pct": 0.0, "dxy": 103.0,
         "sensex_1d_pct": 0.0, "dow_1d_pct": 0.0,
         "vix_in_20d_avg": 15.0, "vix_term_ratio": 1.0,
+        # Phase 3: VIX percentile regime (populated below if 1y history fetched)
+        "vix_in_percentile": None, "vix_in_regime": "UNKNOWN",
+        "vix_in_lookback_days": 0,
     }
     # Provenance map — which source each macro field came from
     macro["sources"] = {}
@@ -2739,8 +2941,9 @@ def fetch_global_macro() -> dict:
         if name == "USDINR" and skip_usdinr_yf:
             continue
         try:
-            # Fetch 30d for VIX_IN so we can compute 20d moving average
-            period = "30d" if name == "VIX_IN" else "5d"
+            # Fetch 1y for VIX_IN so we can compute both 20d MA and 252d percentile;
+            # 5d suffices for everything else.
+            period = "1y" if name == "VIX_IN" else "5d"
             df = yf.download(ticker, period=period, interval="1d", progress=False, auto_adjust=True)
             if df is not None and len(df) >= 2:
                 last = float(df["Close"].squeeze().iloc[-1])
@@ -2780,6 +2983,35 @@ def fetch_global_macro() -> dict:
                         vix20_avg = float(df["Close"].squeeze().tail(20).mean())
                         macro["vix_in_20d_avg"] = round(vix20_avg, 2)
                         macro["vix_term_ratio"]  = round(last / vix20_avg, 3) if vix20_avg > 0 else 1.0
+                    # Phase 3 (2026-07-01): 252-day rolling VIX percentile —
+                    # institutional-grade regime signal. Low percentile = market
+                    # complacent (raise bar), high percentile = fear (lower bar,
+                    # opportunity for contrarian entries).
+                    try:
+                        vix_series = df["Close"].squeeze().dropna()
+                        if len(vix_series) >= 60:
+                            # Use up to 252 trading days; fewer if history is short.
+                            window = vix_series.tail(252)
+                            rank_below = int((window < last).sum())
+                            pctile = round(100.0 * rank_below / max(len(window), 1), 1)
+                            macro["vix_in_percentile"] = pctile
+                            macro["vix_in_lookback_days"] = int(len(window))
+                            # Regime bucket for downstream decision logic
+                            if pctile <= 15.0:
+                                regime = "COMPLACENT"      # raise bar
+                            elif pctile >= 85.0:
+                                regime = "FEAR"            # lower bar (contrarian)
+                            elif pctile >= 65.0:
+                                regime = "ELEVATED"        # mild caution
+                            else:
+                                regime = "NORMAL"
+                            macro["vix_in_regime"] = regime
+                        else:
+                            macro["vix_in_percentile"] = None
+                            macro["vix_in_regime"]     = "UNKNOWN"
+                    except Exception:
+                        macro["vix_in_percentile"] = None
+                        macro["vix_in_regime"]     = "UNKNOWN"
                 elif name == "US10Y":  macro["us10y"]        = last
                 elif name == "GOLD":   macro["gold_usd"]     = last
                 elif name == "DXY":    macro["dxy"]          = last
@@ -3688,6 +3920,35 @@ def compute_breadth(tradable: dict) -> dict:
     }
 
 
+def _load_sector_rank_history() -> dict:
+    """Load sector rank history: {'YYYY-MM-DD': {sector: rank_int}}.
+
+    Phase 4 (2026-07-01): persist daily 5d ranks so rotation velocity
+    (5-day rank delta) can be computed run-over-run.
+    """
+    try:
+        if os.path.exists(SECTOR_RANK_HISTORY_FILE):
+            with open(SECTOR_RANK_HISTORY_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, dict):
+                return data
+    except Exception as e:
+        _log(f"[WARN] sector rank history load failed: {e}")
+    return {}
+
+
+def _save_sector_rank_history(history: dict) -> None:
+    """Persist sector rank history — trims to trailing 30 calendar days."""
+    try:
+        # Trim: keep only last 30 date-keys sorted DESC
+        keys_sorted = sorted(history.keys(), reverse=True)[:30]
+        trimmed = {k: history[k] for k in keys_sorted}
+        with open(SECTOR_RANK_HISTORY_FILE, "w", encoding="utf-8") as f:
+            json.dump(trimmed, f, indent=2, sort_keys=True)
+    except Exception as e:
+        _log(f"[WARN] sector rank history save failed: {e}")
+
+
 def compute_sector_rotation(tradable: dict) -> dict:
     sector_returns: dict = {}
     for symbol, df in tradable.items():
@@ -3708,6 +3969,8 @@ def compute_sector_rotation(tradable: dict) -> dict:
     avg_5d  = sum(all_5d)  / len(all_5d)  if all_5d  else 0
     avg_20d = sum(all_20d) / len(all_20d) if all_20d else 0
     result = {}
+    # First pass: compute per-sector 5d/20d means and static status.
+    sector_5d = {}
     for sector, rets in sector_returns.items():
         s5d  = sum(r[0] for r in rets) / len(rets)
         s20d = sum(r[1] for r in rets) / len(rets)
@@ -3720,6 +3983,55 @@ def compute_sector_rotation(tradable: dict) -> dict:
         else:
             status = "NEUTRAL"
         result[sector] = {"ret5d": round(s5d, 2), "ret20d": round(s20d, 2), "status": status}
+        sector_5d[sector] = s5d
+
+    # Phase 4 (2026-07-01): rank sectors by 5-day return (1 = best).
+    # Persist to history and compute 5-day rank delta = rotation velocity.
+    try:
+        ranked = sorted(sector_5d.items(), key=lambda kv: kv[1], reverse=True)
+        today_ranks = {sec: idx + 1 for idx, (sec, _) in enumerate(ranked)}
+        today_key = ist_today().isoformat()
+
+        history = _load_sector_rank_history()
+        history[today_key] = today_ranks
+        _save_sector_rank_history(history)
+
+        # Find nearest history date >= 5 trading days back (approx 7 cal days).
+        past_keys = sorted([k for k in history.keys() if k < today_key], reverse=True)
+        prior_ranks = None
+        prior_key = None
+        for k in past_keys:
+            try:
+                d_prior = date.fromisoformat(k)
+                d_today = date.fromisoformat(today_key)
+                if (d_today - d_prior).days >= 5:
+                    prior_ranks = history[k]
+                    prior_key = k
+                    break
+            except Exception:
+                continue
+
+        for sector in result:
+            r_now = today_ranks.get(sector)
+            result[sector]["rank_5d"] = r_now
+            if prior_ranks and sector in prior_ranks and r_now is not None:
+                delta = int(prior_ranks[sector]) - int(r_now)  # +ve = moved up
+                result[sector]["rank_delta_5d"] = delta
+                result[sector]["rank_prior_date"] = prior_key
+                # Classify rotation velocity — sector direction over 5 sessions.
+                if delta >= 3:
+                    rot = "ROTATING_IN"
+                elif delta <= -3:
+                    rot = "ROTATING_OUT"
+                else:
+                    rot = "STABLE"
+                result[sector]["rotation_velocity"] = rot
+            else:
+                result[sector]["rank_delta_5d"]    = None
+                result[sector]["rotation_velocity"] = "UNKNOWN"
+    except Exception as e:
+        _log(f"[WARN] sector rotation velocity computation failed: {e}")
+
     return result
 
 
@@ -3727,7 +4039,11 @@ def sector_rotation_score(sector: str, rotation: dict) -> tuple:
     data   = rotation.get(sector, {})
     status = data.get("status", "NEUTRAL")
     adj    = {"LEADING": 15, "NEUTRAL": 0, "WEAKENING": -8, "LAGGING": -15}
-    return adj.get(status, 0), status
+    # Phase 4: rotation velocity overlay — reward sectors rotating IN even
+    # while still statically LAGGING (contrarian setup); penalize rotating OUT.
+    velocity = data.get("rotation_velocity", "UNKNOWN")
+    velocity_adj = {"ROTATING_IN": 5, "STABLE": 0, "ROTATING_OUT": -3, "UNKNOWN": 0}.get(velocity, 0)
+    return adj.get(status, 0) + velocity_adj, status
 
 
 def compute_key_levels(nifty_df) -> dict:
@@ -4907,6 +5223,16 @@ def compute_all_factors(symbol: str, df,
             rotation_adj, sector_status = sector_rotation_score(sector, sector_rotation)
         result["sector_strength"] = max(0, min(100, 50 + rotation_adj))
         result["sector_status"]   = sector_status
+        # Phase 4 (2026-07-01): surface rotation velocity + 5d rank delta on
+        # the stock dict so Gate 9 (SECTOR_LAGGING) and Telegram formatters can
+        # distinguish a laggard drifting further down (real reject) from one
+        # already rotating IN (contrarian window — soft-only).
+        _srot = {}
+        if isinstance(sector_rotation, dict):
+            _srot = sector_rotation.get(sector, {}) if isinstance(sector_rotation.get(sector), dict) else {}
+        result["sector_velocity"]      = _srot.get("rotation_velocity", "UNKNOWN")
+        result["sector_rank_5d"]       = _srot.get("rank_5d")
+        result["sector_rank_delta_5d"] = _srot.get("rank_delta_5d")
         if sector_rotation and not rotation_hit:
             # Surface as a soft warning + downgrade status so BUY thesis / logs
             # know we defaulted to neutral instead of a real rotation read.
@@ -5253,11 +5579,22 @@ def run_gates(stock: dict, regime: str, thresholds: dict,
     # that used to be sector=OTHERS suddenly became a hard-reject. Now LAGGING
     # is a scoreable fail: rotation candidates can still reach WATCHLIST/
     # NEAR_MISS, and only get pushed to REJECTED if combined with other fails.
-    sector_status = stock.get("sector_status", "NEUTRAL")
+    # Phase 4 (2026-07-01): rotation velocity overrides static status —
+    # a LAGGING sector that is ROTATING_IN (5-day rank moved up ≥3 spots) is
+    # a valid contrarian entry, so downgrade to a warning only.
+    sector_status   = stock.get("sector_status", "NEUTRAL")
+    sector_velocity = stock.get("sector_rotation_velocity", "UNKNOWN")
     if sector_status == "LAGGING":
-        fail_reasons.append("SECTOR_LAGGING")
+        if sector_velocity == "ROTATING_IN":
+            warnings.append("SECTOR_LAGGING_BUT_ROTATING_IN")
+        else:
+            fail_reasons.append("SECTOR_LAGGING")
     elif sector_status == "WEAKENING":
         warnings.append("SECTOR_WEAKENING")
+    # Rotating-OUT is a soft warning regardless of static status — sector is
+    # bleeding leadership rank fast.
+    if sector_velocity == "ROTATING_OUT" and sector_status != "LAGGING":
+        warnings.append("SECTOR_ROTATING_OUT")
 
     # Gate 10: High Pledge Warning (SOFT)
     if 20 < pledge <= 40:
@@ -5296,6 +5633,46 @@ def run_gates(stock: dict, regime: str, thresholds: dict,
         elif worst_corr >= 0.60:
             warnings.append(f"MODERATE_CORR_{worst_corr:.2f}_WITH_{corr_sym.replace('.NS','')}")
 
+    # Gate 15: Delivery Quality (SOFT — pump detection & institutional exit)
+    # Phase C3 (2026-07-02): only fires when we actually got real nselib
+    # delivery data (source == "nselib"). Two cases:
+    #   (a) DISTRIBUTION signal (ratio ≤ 0.70)  → soft fail, "SUSPECT_PUMP" or
+    #                                             "INSTITUTIONAL_EXIT"
+    #       - If today's return also > +2%      → clear pump pattern
+    #       - Else                              → possible institutional exit
+    #   (b) WEAK signal (0.70 < ratio ≤ 0.85)   → warning only, no fail
+    if stock.get("delivery_source") == "nselib":
+        deliv_sig = stock.get("delivery_signal", "NEUTRAL")
+        # Prefer explicit ret1d_pct if present; fall back to ret1d (the actual
+        # key set by score_stock at L5205).
+        ret1d     = float(
+            stock.get("ret1d_pct", stock.get("ret1d", 0.0)) or 0.0
+        )
+        if deliv_sig == "DISTRIBUTION":
+            if ret1d > 2.0:
+                fail_reasons.append("SUSPECT_PUMP_LOW_DELIVERY")
+                warnings.append(
+                    f"PUMP_PATTERN: price+{ret1d:.1f}% but delivery ratio "
+                    f"{stock.get('delivery_ratio', 0):.2f}"
+                )
+            else:
+                fail_reasons.append("INSTITUTIONAL_EXIT")
+                warnings.append(
+                    f"DISTRIBUTION: delivery {stock.get('delivery_pct_today', 0):.0f}% "
+                    f"vs 20d avg {stock.get('delivery_pct_20d_avg', 0):.0f}%"
+                )
+        elif deliv_sig == "WEAK":
+            warnings.append(
+                f"WEAK_DELIVERY: {stock.get('delivery_pct_today', 0):.0f}% "
+                f"(20d avg {stock.get('delivery_pct_20d_avg', 0):.0f}%)"
+            )
+        elif deliv_sig == "STRONG_ACCUM":
+            # Positive confirmation — surface as informational warning-tag
+            warnings.append(
+                f"STRONG_ACCUMULATION: delivery {stock.get('delivery_pct_today', 0):.0f}% "
+                f"(20d avg {stock.get('delivery_pct_20d_avg', 0):.0f}%)"
+            )
+
     hard_fails = [f for f in fail_reasons if "WARNING" not in f]
     if hard_fails:
         # PORTFOLIO_FULL never blocks watchlist — stock is valid, just capacity is full today
@@ -5303,8 +5680,12 @@ def run_gates(stock: dict, regime: str, thresholds: dict,
         scoreable_fails = [f for f in hard_fails if "PORTFOLIO_FULL" not in f]
         # Phase C2 (2026-07-02): SECTOR_LAGGING is now a soft-scoreable fail —
         # it counts toward the 2-fail budget but no longer excludes watchlist.
+        # Phase C3 (2026-07-02): INSTITUTIONAL_EXIT also soft-scoreable
+        # (allow watchlist tier for post-distribution rebounds). SUSPECT_PUMP
+        # stays HARD because pump patterns rarely recover cleanly.
         soft_only = all(
             "EVENT_BLOCK" in f or "HIGH_CORR" in f or "SECTOR_LAGGING" in f
+            or "INSTITUTIONAL_EXIT" in f
             for f in scoreable_fails
         )
         if not scoreable_fails:
@@ -5983,23 +6364,27 @@ def format_near_miss_failures(stock: dict, thresh: dict) -> list:
 
 def format_conviction_meter(regime_score: float, breadth: float,
                              fii: float, dii: float) -> list:
-    """Visual conviction bar — compact 1-line version for mobile."""
+    """Visual conviction bar — compact 1-line version for mobile.
+
+    Phase C3 (2026-07-02): FII/DII flows are no longer factored into conviction.
+    Rationale: NSDL FII data is structurally D-1 (or D-2 on weekends/holidays);
+    the number we see today is stale by 1-2 sessions and cannot reliably move
+    an intraday-actionable conviction meter. Replaced flow weight with a
+    breadth-emphasis blend, which is a real-time internal signal.
+
+    fii/dii parameters kept for backwards-compatibility with callers but
+    intentionally unused in the calculation.
+    """
+    _ = (fii, dii)  # kept for signature stability; not used in scoring
     try:
-        combined_flow = fii + dii
-        conviction = round(
-            regime_score * 0.5 +
-            breadth * 0.3 +
-            min(100, max(0, 50 + combined_flow / 200)) * 0.2
-        , 1)
+        # Composite: 55% regime score + 45% breadth (both real-time internals)
+        conviction = round(regime_score * 0.55 + breadth * 0.45, 1)
         filled = int(conviction / 10)
         bar    = "█" * filled + "░" * (10 - filled)
         if conviction >= 75:   label = "🟢 Strong"
         elif conviction >= 55: label = "🟡 Moderate"
         elif conviction >= 40: label = "🟠 Weak"
         else:                  label = "🔴 Poor"
-        # Relabel: this is REGIME conviction (blend of regime score, breadth, flows)
-        # — distinct from the numeric "Score X/100" printed above. Previously read
-        # just "Conviction" which was ambiguous.
         return [f"  Regime Conviction [{bar}] {conviction:.0f}% · {label}"]
     except Exception:
         return []
@@ -6140,14 +6525,36 @@ def format_buy_card(stock: dict, sizing: dict, regime: str,
             )
         else:
             fund_line = "  ROE N/A · D/E N/A · Pledge N/A (fetch failed)"
+
+        # Phase C3: delivery line — the strongest per-stock institutional signal.
+        # Only shown when we got real nselib data; otherwise silent (the OBV proxy
+        # is already baked into base_confidence).
+        deliv_line = None
+        if stock.get("delivery_source") == "nselib":
+            _d_today = float(stock.get("delivery_pct_today", 0) or 0)
+            _d_20d   = float(stock.get("delivery_pct_20d_avg", 0) or 0)
+            _d_sig   = str(stock.get("delivery_signal", "NEUTRAL"))
+            _sig_emoji = {
+                "STRONG_ACCUM":  "🟢 STRONG ACCUM",
+                "ACCUM":         "🟢 Accumulation",
+                "NEUTRAL":       "⚪ Neutral",
+                "WEAK":          "🟡 Weak delivery",
+                "DISTRIBUTION":  "🔴 DISTRIBUTION",
+            }.get(_d_sig, _d_sig)
+            deliv_line = (
+                f"  Delivery {_d_today:.0f}% (20d avg {_d_20d:.0f}%) · {_sig_emoji}"
+            )
+
         lines = [
             f"  {icon} <b>{sym}</b> · {html.escape(str(sector), quote=False)}",
             f"  Opp {opp:.0f} · Conf {conf:.1f} · TQ {tq:.1f} · R/R {rr:.2f}x",
             f"  Entry ₹{entry:.1f} · Stop ₹{stop_p:.1f} ({risk_p:.1f}%) · T1 ₹{t1:.1f} · T2 ₹{t2:.1f}",
             f"  Size ₹{pos_val_k:.0f}K ({pos_pct:.1f}%) · {shares} shares · {max_loss_str}",
             fund_line,
-            f"  📝 {html.escape(str(buy_thesis), quote=False)}",
         ]
+        if deliv_line:
+            lines.append(deliv_line)
+        lines.append(f"  📝 {html.escape(str(buy_thesis), quote=False)}")
         if cats:
             lines.append(f"  🏷 {html.escape(' · '.join(str(c) for c in cats), quote=False)}")
         # FIX label/score mismatch: distinguish NO_NEWS (score correctly = 50)
@@ -6638,9 +7045,26 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
     )
     lines.append(f"  {html.escape(str(reg_why))}")
     lines.append(f"  {REGIME_RATIONALE.get(regime, '')}")
-    lines.append(
-        f"  VIX-IN {vix_in:.1f}({vix_in_flag}) · VIX-US {vix_us:.1f}({vix_us_flag})"
-    )
+    # Phase 3 (2026-07-01): VIX percentile — institutional-grade regime cue.
+    _vp = macro.get("vix_in_percentile")
+    _vr = macro.get("vix_in_regime", "UNKNOWN")
+    if _vp is not None:
+        _vr_hint = {
+            "COMPLACENT": "complacent · watch mean reversion",
+            "NORMAL":     "normal",
+            "ELEVATED":   "elevated",
+            "FEAR":       "fear · contrarian window",
+            "UNKNOWN":    "",
+        }.get(_vr, "")
+        _hint_str = f" — {_vr_hint}" if _vr_hint else ""
+        lines.append(
+            f"  VIX-IN {vix_in:.1f}({vix_in_flag}) · {_vp:.0f}th %ile [{_vr}{_hint_str}] · "
+            f"VIX-US {vix_us:.1f}({vix_us_flag})"
+        )
+    else:
+        lines.append(
+            f"  VIX-IN {vix_in:.1f}({vix_in_flag}) · VIX-US {vix_us:.1f}({vix_us_flag})"
+        )
     lines.append(
         f"  NIFTY {macro.get('nifty_1d_pct', 0):+.2f}% · "
         f"S&P {macro.get('sp500_1d_pct', 0):+.2f}% · "
@@ -6663,29 +7087,20 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
     fii_dii_line = format_fii_dii_line(_fii_data)
     lines.append(f"  {fii_dii_line}")
 
-    # FIX: STRONG_BULL + heavy FII outflow contradiction — flag prominently.
-    # Also surface FII stale (yesterday's number can look like today's).
+    # Phase C3 (2026-07-02): FII/DII flows are shown for narrative context but
+    # NOT used to gate sizing or trigger regime overrides. NSDL data is
+    # structurally D-1 (often D-2 on weekends/post-holiday) and cannot be used
+    # as a real-time actionable signal. We keep a small info note when the
+    # number looks unusually stale so the reader isn't misled, but there is
+    # no longer a bold CAVEAT that pretends to be actionable.
     _fii_stale = (
         bool(macro.get("fii_stale"))
         or str(macro.get("fii_confidence", "")).upper() == "STALE"
     )
-    if regime == "STRONG_BULL" and fii_flow < -1000:
-        if _fii_stale:
-            lines.append(
-                "  ⚠️ <b>REGIME CAVEAT</b>: STRONG_BULL but FII ₹"
-                f"{fii_flow:+,.0f}Cr (STALE data — may be yesterday's). "
-                "Wait for fresh flow print before deploying full size."
-            )
-        else:
-            lines.append(
-                "  ⚠️ <b>REGIME CAVEAT</b>: STRONG_BULL but FII outflow ₹"
-                f"{fii_flow:+,.0f}Cr. Domestic bid absorbing — tighten sizing "
-                "until FII turns net buyer."
-            )
-    elif regime in ("STRONG_BULL", "BULL") and _fii_stale:
+    if _fii_stale:
         lines.append(
-            "  ⚠️ <b>FII data STALE</b> — flows shown are from a prior day. "
-            "Treat regime score with caution."
+            "  ℹ️ <i>FII/DII shown above is D-1 or older (NSDL publishes T+1). "
+            "Reference only — no impact on today's sizing.</i>"
         )
 
     # ── Conviction + Risk (single lines) ──
@@ -7112,7 +7527,42 @@ def _run_pipeline_inner():
     # ── 1. Global macro ──
     _log("[1/17] Fetching global macro...")
     macro = fetch_global_macro()
-    _log(f"  NIFTY {macro['nifty_1d_pct']:+.2f}% | VIX-IN {macro['vix_in']:.1f} | USD/INR {macro['usdinr']:.2f}")
+    _vp   = macro.get("vix_in_percentile")
+    _vp_s = f" ({_vp:.0f}th %ile, {macro.get('vix_in_regime','UNKNOWN')})" if _vp is not None else ""
+    _log(
+        f"  NIFTY {macro['nifty_1d_pct']:+.2f}% | "
+        f"VIX-IN {macro['vix_in']:.1f}{_vp_s} | "
+        f"USD/INR {macro['usdinr']:.2f}"
+    )
+
+    # ── 0c. VIX-percentile regime adjustment ──
+    # Phase 3 (2026-07-01): VIX percentile is a leading contrarian signal.
+    # COMPLACENT (<=15th pct) → market is dangerously calm, raise the bar by +2.
+    # FEAR (>=85th pct)      → panic bottoms are entry opportunities, lower by -3.
+    # ELEVATED (65-85)       → mild caution (+1).
+    # Apply once, on top of any earnings-season adjustment already baked in.
+    _vix_pct = macro.get("vix_in_percentile")
+    _vix_regime = macro.get("vix_in_regime", "UNKNOWN")
+    vix_adj = 0
+    if _vix_pct is not None:
+        if _vix_regime == "COMPLACENT":
+            vix_adj = 2
+        elif _vix_regime == "ELEVATED":
+            vix_adj = 1
+        elif _vix_regime == "FEAR":
+            vix_adj = -3
+    if vix_adj != 0:
+        _log(
+            f"[INFO] VIX regime {_vix_regime} (pct={_vix_pct}) — "
+            f"thresholds adjusted by {vix_adj:+d}"
+        )
+        # If we hadn't already deep-copied for earnings, copy now.
+        if effective_thresholds is REGIME_THRESHOLDS:
+            effective_thresholds = copy.deepcopy(REGIME_THRESHOLDS)
+        for rk in effective_thresholds:
+            effective_thresholds[rk]["min_confidence"] = max(
+                50, min(99, effective_thresholds[rk]["min_confidence"] + vix_adj)
+            )
 
     # ── 1b. FII/DII flows from NSE ──
     _log("[2/17] Fetching FII/DII flows from NSE...")
@@ -7264,6 +7714,20 @@ def _run_pipeline_inner():
     # ── 11. Final confidence ──
     _log("[11/17] Computing final confidence...")
     macro_adj_global = macro_regime_adjustment(macro) * 0.3
+    # Phase C3 (2026-07-02): blend real delivery % into the volume_delivery
+    # factor for stocks that got real nselib data. OBV proxy stays as fallback.
+    # Weight: 65% real delivery + 35% existing (OBV × accumulation) blend.
+    for stock in top_40:
+        if stock.get("delivery_source") == "nselib":
+            deliv_score  = delivery_score_from_signal(
+                stock.get("delivery_signal", "NEUTRAL"),
+                stock.get("delivery_ratio", 1.0),
+            )
+            proxy_score  = float(stock.get("volume_delivery", 50))
+            blended      = round(deliv_score * 0.65 + proxy_score * 0.35, 1)
+            stock["volume_delivery_proxy"] = proxy_score  # keep for audit
+            stock["volume_delivery"]       = blended
+        # Otherwise keep existing OBV-proxy value as computed in score_stock().
     for stock in top_40:
         bulk_adj  = bulk_deal_score(stock["symbol"], bulk_deals)
         base_conf = compute_base_confidence({k: stock.get(k, 50) for k in FACTOR_WEIGHTS})
@@ -7375,14 +7839,11 @@ def _run_pipeline_inner():
     watchlist_stocks.sort(key=lambda x: (-x.get("opportunity_score", 0), x.get("symbol", "")))
 
     # Enforce max_buys cap
+    # Phase C3 (2026-07-02): removed fii_stale halving — FII data is
+    # structurally D-1/D-2 and was never a reliable signal to throttle
+    # sizing on. max_buys is now driven purely by regime thresholds and
+    # portfolio heat. See format_conviction_meter comment for full rationale.
     max_buys = effective_thresholds[regime]["max_buys"]
-    # Phase C1 (2026-07-02): reduce aggression when FII data is stale. On stale
-    # days we shouldn't deploy full firepower — halve the cap (rounded up so at
-    # least 1 BUY still fires if we were going to buy).
-    if bool((macro or {}).get("fii_stale", False)) and max_buys > 1:
-        _reduced = max(1, (max_buys + 1) // 2)
-        _log(f"  ⚠ FII data STALE — reducing max_buys {max_buys} → {_reduced}")
-        max_buys = _reduced
     buys = buys[:max_buys]
 
     # ── 14a. Decision audit JSONL — Phase C ─────────────────────────────────
