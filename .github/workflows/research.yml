@@ -12,6 +12,15 @@ on:
           - "manual"
           - "scheduled"
 
+      fresh_start:
+        description: "Phase C7c FRESH START — skip research this run only. Set back to false immediately after."
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
 permissions:
   contents: write
   actions: read
@@ -51,6 +60,11 @@ jobs:
         env:
           TRACKER_XLSX: recommendation_tracker.xlsx
           SCHEDULED_RUN: ${{ github.event.inputs.run_mode == 'scheduled' && 'true' || 'false' }}
+          # Phase C7c: FRESH_START skips the research build on the reset run.
+          FRESH_START: ${{ github.event.inputs.fresh_start || 'false' }}
+          # Phase C7e: min-N gate + delivery/sector cache freshness inputs
+          MIN_SAMPLE_N: ${{ vars.MIN_SAMPLE_N || '5' }}
+          SECTOR_RANK_HISTORY_FILE: sector_rank_history.json
         run: python research_job.py
 
       - uses: actions/upload-artifact@v4
