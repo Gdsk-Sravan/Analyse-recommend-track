@@ -84,6 +84,15 @@ on:
           - "evening"
           - "morning"
 
+      fresh_start:
+        description: "Phase C7c FRESH START — wipe all state (tracker, history, gate memory) and start clean this run only. Set back to false immediately after."
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
 permissions:
   contents: write
   actions: read
@@ -100,6 +109,11 @@ env:
   TZ: "Asia/Kolkata"
   # true only when triggered by cron schedule — manual dispatch sets this false
   SCHEDULED_RUN: ${{ github.event.inputs.run_mode == 'scheduled' && 'true' || 'false' }}
+  # Phase C7c: one-shot state reset — wipes tracker/history/gate memory + renames
+  # old xlsx to .stale_<date>. All job scripts (main, tracker, research, weekly,
+  # morning_check) read FRESH_START from env and short-circuit their state loaders.
+  # IMPORTANT: set back to 'false' immediately after the reset run.
+  FRESH_START: ${{ github.event.inputs.fresh_start || 'false' }}
 
   TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
   TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -217,6 +231,15 @@ jobs:
             qualified_stocks.csv
             low_volatility_stocks.txt
             tracker.json
+            trade_tracker.json
+            confidence_history.json
+            gate_memory.json
+            watchlist_persist.json
+            regime_calibration.json
+            delivery_cache.json
+            sector_rank_history.json
+            weekly_metrics.json
+            vix_history_cache.json
           key: stock-reviewer-data-${{ runner.os }}-${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
             stock-reviewer-data-${{ runner.os }}-${{ github.ref_name }}-
@@ -271,6 +294,15 @@ jobs:
             qualified_stocks.csv
             low_volatility_stocks.txt
             tracker.json
+            trade_tracker.json
+            confidence_history.json
+            gate_memory.json
+            watchlist_persist.json
+            regime_calibration.json
+            delivery_cache.json
+            sector_rank_history.json
+            weekly_metrics.json
+            vix_history_cache.json
           key: stock-reviewer-data-${{ runner.os }}-${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Upload recommendation tracker Excel
@@ -283,6 +315,11 @@ jobs:
             trade_tracker.json
             confidence_history.json
             gate_memory.json
+            watchlist_persist.json
+            regime_calibration.json
+            sector_rank_history.json
+            delivery_cache.json
+            weekly_metrics.json
           retention-days: 90
           if-no-files-found: warn
 
@@ -317,6 +354,11 @@ jobs:
             trade_tracker.json
             confidence_history.json
             gate_memory.json
+            watchlist_persist.json
+            regime_calibration.json
+            sector_rank_history.json
+            delivery_cache.json
+            weekly_metrics.json
           )
           existing=()
           for f in "${files[@]}"; do [ -e "$f" ] && existing+=("$f"); done
@@ -347,11 +389,14 @@ jobs:
           python-version: "3.11"
           cache: "pip"
 
-      - name: Restore cache (to get last night's tracker.json)
+      # Phase C7d: morning kill-switch reads trade_tracker.json to compute
+      # buys_paused verdict — must be restored alongside tracker.json.
+      - name: Restore cache (to get last night's tracker.json + trade_tracker.json)
         uses: actions/cache/restore@v4
         with:
           path: |
             tracker.json
+            trade_tracker.json
           key: stock-reviewer-data-${{ runner.os }}-${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
             stock-reviewer-data-${{ runner.os }}-${{ github.ref_name }}-
@@ -363,6 +408,17 @@ jobs:
           pip3 install requests yfinance python-dotenv
 
       - name: Run morning gap-open check
+        env:
+          # Phase C7d: kill-switch inputs
+          TRADE_TRACKER_V2_FILE: trade_tracker.json
+          # Same env-var name as the pipeline (main.py) — morning_check now
+          # reads CAPITAL first, then PORTFOLIO_CAPITAL, then TOTAL_CAPITAL.
+          CAPITAL:               ${{ vars.CAPITAL || vars.TOTAL_CAPITAL || '500000' }}
+          KS_MAX_CONSEC_LOSSES:  ${{ vars.KS_MAX_CONSEC_LOSSES || '3' }}
+          KS_DAY_STOP_PCT:       ${{ vars.KS_DAY_STOP_PCT || '2.0' }}
+          KS_WEEK_STOP_PCT:      ${{ vars.KS_WEEK_STOP_PCT || '3.0' }}
+          KS_DD_HALVE_PCT:       ${{ vars.KS_DD_HALVE_PCT || '5.0' }}
+          KS_DD_HALT_PCT:        ${{ vars.KS_DD_HALT_PCT || '10.0' }}
         run: python3 morning_check.py
 
       - name: Show result
