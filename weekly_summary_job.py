@@ -15,17 +15,57 @@ TELEGRAM_CHAT_ID   = os.getenv("TELEGRAM_CHAT_ID", "")
 TRACKER_FILE       = os.getenv("TRADE_TRACKER_V2_FILE", "trade_tracker.json")
 CONF_HISTORY_FILE  = os.getenv("CONF_HISTORY_FILE", "confidence_history.json")
 TRACKER_XLSX       = os.getenv("TRACKER_XLSX", "recommendation_tracker.xlsx")
+# Phase C7c: FRESH_START flag — skip old state on the reset run
+FRESH_START        = os.getenv("FRESH_START", "false").lower() == "true"
+# Phase C7e: persistent file holding last-week metrics for week-over-week deltas
+WEEKLY_METRICS_FILE = os.getenv("WEEKLY_METRICS_FILE", "weekly_metrics.json")
 
-SECTOR_PROXIES = {
-    "PHARMA":        "SUNPHARMA.NS",
-    "BANKING":       "HDFCBANK.NS",
-    "IT":            "INFY.NS",
-    "AUTO":          "MARUTI.NS",
-    "CAPITAL_GOODS": "BHEL.NS",
-    "ENERGY":        "RELIANCE.NS",
-    "METALS":        "TATASTEEL.NS",
-    "DEFENCE":       "HAL.NS",
-}
+
+# ── Phase C7e (2026-07-02): dynamic sector universe ──
+# Kill the hardcoded 8-sector map — derive the sector list from sector_master.csv
+# (columns: symbol,sector,industry) by picking the first symbol in each sector
+# as its proxy. Falls back to a small default set only if the CSV is missing.
+# NOTE: main.py has no SECTOR_ETF_MAP constant — sector→proxy mapping only
+# exists as data in sector_master.csv, so we go straight there.
+def _load_sector_proxies() -> dict:
+    """Return {SECTOR_UPPER: ticker_proxy}. Falls back to a small default set
+    only if the CSV read fails."""
+    try:
+        import csv
+        if os.path.exists("sector_master.csv"):
+            proxies = {}
+            with open("sector_master.csv", "r", encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    # Real columns are lowercase: symbol,sector,industry
+                    sec = (row.get("sector") or row.get("Sector") or "").strip()
+                    sym = (row.get("symbol") or row.get("Symbol")
+                           or row.get("Proxy") or row.get("Ticker") or "").strip()
+                    if not sec or not sym:
+                        continue
+                    key = sec.upper()
+                    # Keep first symbol seen per sector as the proxy
+                    if key not in proxies:
+                        proxies[key] = sym
+            if proxies:
+                return proxies
+    except Exception:
+        pass
+
+    # Last-resort fallback (was previously the only source of truth)
+    return {
+        "PHARMA":        "SUNPHARMA.NS",
+        "BANKING":       "HDFCBANK.NS",
+        "IT":            "INFY.NS",
+        "AUTO":          "MARUTI.NS",
+        "CAPITAL_GOODS": "BHEL.NS",
+        "ENERGY":        "RELIANCE.NS",
+        "METALS":        "TATASTEEL.NS",
+        "DEFENCE":       "HAL.NS",
+    }
+
+
+SECTOR_PROXIES = _load_sector_proxies()
 
 
 def _weekly_pct(ticker: str) -> float:
@@ -439,6 +479,58 @@ def write_weekly_factor_summary(week_start: str, week_end: str) -> None:
         print(f"[WARN] Could not save {TRACKER_XLSX}: {e}")
 
 
+# ── Phase C7e (2026-07-02): week-over-week delta helpers ──
+def _load_last_week_metrics() -> dict:
+    """Read last week's snapshot; empty dict if missing or FRESH_START set upstream."""
+    try:
+        if not os.path.exists(WEEKLY_METRICS_FILE):
+            return {}
+        with open(WEEKLY_METRICS_FILE, "r") as f:
+            return json.load(f) or {}
+    except Exception:
+        return {}
+
+
+def _save_this_week_metrics(metrics: dict) -> None:
+    """Persist current week's snapshot for next week's diff."""
+    try:
+        with open(WEEKLY_METRICS_FILE, "w") as f:
+            json.dump(metrics, f, indent=2)
+    except Exception as e:
+        print(f"[WARN] Could not save {WEEKLY_METRICS_FILE}: {e}")
+
+
+def _compute_wow_deltas(cur: dict, prev: dict) -> list:
+    """Return a list of human-readable delta lines. Empty list if no shared keys."""
+    lines = []
+    try:
+        _da = int(cur.get("active", 0)) - int(prev.get("active", 0))
+        _dw = int(cur.get("watching", 0)) - int(prev.get("watching", 0))
+        _dc = int(cur.get("completed", 0)) - int(prev.get("completed", 0))
+        lines.append(f"Active: {prev.get('active', 0)} \u2192 {cur.get('active', 0)} ({_da:+d})")
+        lines.append(f"Watching: {prev.get('watching', 0)} \u2192 {cur.get('watching', 0)} ({_dw:+d})")
+        lines.append(f"Completed: {prev.get('completed', 0)} \u2192 {cur.get('completed', 0)} ({_dc:+d})")
+    except Exception:
+        pass
+
+    def _pct_line(k, label, unit="%"):
+        try:
+            c = float(cur.get(k, 0) or 0)
+            p = float(prev.get(k, 0) or 0)
+            d = c - p
+            arrow = "\u2191" if d > 0.01 else ("\u2193" if d < -0.01 else "\u2192")
+            return f"{label}: {p:.1f}{unit} \u2192 {c:.1f}{unit} ({arrow} {d:+.2f})"
+        except Exception:
+            return None
+
+    for x in (_pct_line("win_rate", "Win rate"),
+              _pct_line("avg_win",  "Avg win"),
+              _pct_line("avg_loss", "Avg loss")):
+        if x:
+            lines.append(x)
+    return lines
+
+
 def run_weekly_summary():
     today      = datetime.now()
     week_start = (today - timedelta(days=6)).strftime("%b %d")
@@ -453,12 +545,15 @@ def run_weekly_summary():
 
     # Load tracker
     tracker = {}
-    try:
-        if os.path.exists(TRACKER_FILE):
-            with open(TRACKER_FILE, "r") as f:
-                tracker = json.load(f)
-    except Exception as e:
-        print(f"[WARN] Tracker load failed: {e}")
+    if FRESH_START:
+        print("[FRESH_START] weekly_summary: ignoring old trade_tracker.json")
+    else:
+        try:
+            if os.path.exists(TRACKER_FILE):
+                with open(TRACKER_FILE, "r") as f:
+                    tracker = json.load(f)
+        except Exception as e:
+            print(f"[WARN] Tracker load failed: {e}")
 
     active    = tracker.get("buys", [])
     watching  = tracker.get("watchlist", [])
@@ -480,17 +575,28 @@ def run_weekly_summary():
 
     # Confidence history near miss rising stocks
     rising_stocks = []
-    try:
-        if os.path.exists(CONF_HISTORY_FILE):
-            with open(CONF_HISTORY_FILE, "r") as f:
-                conf_hist = json.load(f)
-            for sym, data in conf_hist.items():
-                confs = data.get("confs", [])
-                if len(confs) >= 3 and confs[-1] > confs[-3] + 3:
-                    rising_stocks.append((sym, confs[-3], confs[-1]))
-            rising_stocks.sort(key=lambda x: x[2] - x[1], reverse=True)
-    except Exception:
-        pass
+    falling_stocks = []  # Phase C7e: symmetric — surface stocks losing confidence
+    if FRESH_START:
+        print("[FRESH_START] weekly_summary: ignoring old confidence_history.json")
+    else:
+        try:
+            if os.path.exists(CONF_HISTORY_FILE):
+                with open(CONF_HISTORY_FILE, "r") as f:
+                    conf_hist = json.load(f)
+                for sym, data in conf_hist.items():
+                    confs = data.get("confs", [])
+                    if len(confs) >= 3:
+                        # Rising: last > 3-days-ago + 3
+                        if confs[-1] > confs[-3] + 3:
+                            rising_stocks.append((sym, confs[-3], confs[-1]))
+                        # Phase C7e: Falling — last < 3-days-ago - 5 (bigger threshold
+                        # to reduce noise; small dips are normal)
+                        elif confs[-1] < confs[-3] - 5:
+                            falling_stocks.append((sym, confs[-3], confs[-1]))
+                rising_stocks.sort(key=lambda x: x[2] - x[1], reverse=True)
+                falling_stocks.sort(key=lambda x: x[2] - x[1])  # most negative first
+        except Exception:
+            pass
 
     # Build message
     lines = []
@@ -524,6 +630,27 @@ def run_weekly_summary():
             f"Avg W {perf.get('avg_win', 0):+.1f}% | "
             f"Avg L {perf.get('avg_loss', 0):+.1f}%"
         )
+
+    # Phase C7e: week-over-week deltas
+    _cur_metrics = {
+        "week_end":   today.strftime("%Y-%m-%d"),
+        "active":     len(active),
+        "watching":   len(watching),
+        "completed":  len(completed),
+        "win_rate":   float(perf.get("win_rate", 0) or 0),
+        "avg_win":    float(perf.get("avg_win",  0) or 0),
+        "avg_loss":   float(perf.get("avg_loss", 0) or 0),
+        "nifty_pct":  nifty_pct,
+    }
+    _prev_metrics = _load_last_week_metrics() if not FRESH_START else {}
+    if _prev_metrics:
+        _wow = _compute_wow_deltas(_cur_metrics, _prev_metrics)
+        if _wow:
+            lines.append("")
+            lines.append("\U0001f4c9 WEEK-OVER-WEEK DELTAS")
+            for line in _wow:
+                lines.append(f"  {line}")
+    _save_this_week_metrics(_cur_metrics)
     lines.append("")
 
     # Active position summary
@@ -570,6 +697,14 @@ def run_weekly_summary():
         lines.append("\U0001f4c8 RISING CONFIDENCE THIS WEEK")
         for sym, c_old, c_new in rising_stocks[:5]:
             lines.append(f"  \u2191\u2191 {sym}: {c_old:.0f} \u2192 {c_new:.0f} (+{c_new-c_old:.0f})")
+        lines.append("")
+
+    # Phase C7e: symmetric — stocks LOSING confidence (candidate delisting)
+    if falling_stocks:
+        lines.append("\U0001f4c9 FALLING CONFIDENCE THIS WEEK")
+        lines.append("  Watch these — confidence dropped >5 pts in 3 days")
+        for sym, c_old, c_new in falling_stocks[:5]:
+            lines.append(f"  \u2193\u2193 {sym}: {c_old:.0f} \u2192 {c_new:.0f} ({c_new-c_old:+.0f})")
         lines.append("")
 
     # Near miss status
