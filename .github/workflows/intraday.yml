@@ -1,0 +1,119 @@
+name: Intraday Monitor
+
+# ─────────────────────────────────────────────────────────────────────────
+# Phase G3 (2026-07-02): intraday state-change alerts.
+# ─────────────────────────────────────────────────────────────────────────
+# Reads tracker.json (list of OPEN positions written by main.py's evening
+# job), fetches 5-min intraday bars via yfinance, and fires a Telegram
+# alert ONLY when a position crosses T1 / T2 / stop / parabolic — with
+# dedup via intraday_state.json (auto-resets each calendar day).
+#
+# Trigger:   workflow_dispatch (called by cron-job.org every 15 min
+#            during 09:30–15:30 IST).
+# Reads:     tracker.json (restored from the same cache main.yml writes)
+# Writes:    intraday_state.json (dedup cache, committed back to repo)
+#
+# The workflow is READ-ONLY for tracker.json / trade_tracker.json —
+# main.py's evening pipeline remains the sole writer for position state.
+#
+# cron-job.org payload example:
+#   POST https://api.github.com/repos/<owner>/<repo>/actions/workflows/intraday.yml/dispatches
+#   { "ref": "main", "inputs": { "fresh_start": "false" } }
+
+on:
+  workflow_dispatch:
+    inputs:
+      fresh_start:
+        description: "Skip this tick (safety valve — set true only if main.py just wiped state)."
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+permissions:
+  contents: write   # to commit updated intraday_state.json dedup cache
+  actions: read
+
+# One tick at a time per branch — a slow 15-min run shouldn't stack.
+concurrency:
+  group: intraday-monitor-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  intraday:
+    name: "Intraday Monitor — state-change alerts"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      # tracker.json is written by main.py's evening job to the shared cache
+      # (see main.yml "Save cache (includes tracker.json for morning job)").
+      # We use the same restore-keys chain so any recent evening run works.
+      - name: Restore cache (tracker.json + intraday_state.json)
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            tracker.json
+            trade_tracker.json
+            intraday_state.json
+          key: stock-reviewer-data-${{ runner.os }}-${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            stock-reviewer-data-${{ runner.os }}-${{ github.ref_name }}-
+            stock-reviewer-data-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          pip3 install requests yfinance python-dotenv
+
+      - name: Run intraday monitor
+        env:
+          # Same Telegram channel morning_check uses — alerts land where the
+          # user already watches for BUY signals.
+          BUY_BOT_TOKEN: ${{ secrets.BUY_BOT_TOKEN }}
+          BUY_CHAT_ID:   ${{ secrets.BUY_CHAT_ID }}
+
+          TRACKER_FILE:        tracker.json
+          INTRADAY_STATE_FILE: intraday_state.json
+
+          # Master kill switch — override to 'false' via the dispatch UI or
+          # cron-job.org payload to pause all intraday alerts.
+          INTRADAY_MONITOR_ENABLED: ${{ vars.INTRADAY_MONITOR_ENABLED || 'true' }}
+
+          # Parabolic thresholds — MUST mirror main.py's Phase F7b values so
+          # intraday alerts align with what tracker_job does at 4:30 PM.
+          PARABOLIC_DAY_PCT:  ${{ vars.PARABOLIC_DAY_PCT  || '8.0' }}
+          PARABOLIC_VOL_MULT: ${{ vars.PARABOLIC_VOL_MULT || '2.0' }}
+
+          # FRESH_START: safety valve — if main.py just wiped state, skip
+          # intraday alerts until tomorrow (they'd fire on stale data).
+          FRESH_START: ${{ github.event.inputs.fresh_start || 'false' }}
+        run: python3 intraday_monitor.py
+
+      # Persist the dedup cache back to the shared cache so subsequent
+      # 15-min ticks don't re-fire the same event. The file is tiny (a few
+      # KB) and auto-resets each calendar day.
+      - name: Save intraday_state.json to cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            intraday_state.json
+          key: stock-reviewer-data-${{ runner.os }}-${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}-intraday-${{ github.run_number }}
+
+      - name: Show result
+        if: always()
+        run: echo "Intraday monitor tick complete at $(date -u)"
