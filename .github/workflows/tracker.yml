@@ -12,6 +12,15 @@ on:
           - "manual"
           - "scheduled"
 
+      fresh_start:
+        description: "Phase C7c FRESH START — skip tracker update this run only (main.py owns the reset). Set back to false immediately after."
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
 permissions:
   contents: write   # needed for the git-commit-back step
   actions: read
@@ -50,6 +59,11 @@ jobs:
         env:
           TRACKER_XLSX: recommendation_tracker.xlsx
           SCHEDULED_RUN: ${{ github.event.inputs.run_mode == 'scheduled' && 'true' || 'false' }}
+          # Phase C7c: FRESH_START skips the tracker update on the reset run.
+          FRESH_START: ${{ github.event.inputs.fresh_start || 'false' }}
+          # Phase C7e: partial-exit stop sync reads trade_tracker.json to pick
+          # up main.py's trailed stops after T1 hits.
+          TRADE_TRACKER_V2_FILE: trade_tracker.json
         run: python tracker_job.py
 
       - uses: actions/upload-artifact@v4
@@ -67,7 +81,9 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           # tracker_job.py appends to Daily Tracking + rebuilds Performance Summary
           # in the xlsx. Persist so the accumulator survives beyond artifact retention.
-          files=(recommendation_tracker.xlsx trade_tracker.json)
+          # Phase C7e: also persist delivery_cache.json (fetch_delivery_cached
+          # updates it on every ACTIVE position probe).
+          files=(recommendation_tracker.xlsx trade_tracker.json delivery_cache.json)
           existing=()
           for f in "${files[@]}"; do [ -e "$f" ] && existing+=("$f"); done
           [ ${#existing[@]} -eq 0 ] && exit 0
