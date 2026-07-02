@@ -4531,10 +4531,16 @@ def format_upcoming_events_compact(events_config: list, holdings: list) -> list:
         return ["UPCOMING EVENTS"] + [f"  {html.escape(str(ev.get('name','')))} \u2014 {ev.get('date','')}" for ev in (events_config or [])]
 
 
-def score_to_regime(score: float, vix_in: float) -> str:
+def score_to_regime(score: float, vix_in: float,
+                     above_ema200: "bool | None" = None) -> str:
     """
-    Maps score to regime with VIX sanity check.
-    VIX-IN < 16 = market is NOT in high volatility regardless of score.
+    Maps score to regime with sanity checks:
+      - VIX-IN < 16 = market is NOT in high volatility regardless of score.
+      - STRONG_BULL / BULL require price above EMA200. If NIFTY is under its
+        200-day EMA the long-term trend is by definition NOT bullish, no
+        matter how strong today's breadth + calm VIX look. Without this cap,
+        the pipeline can produce contradictory output like
+        'REGIME: STRONG_BULL' followed by 'Nifty structure: below EMA200'.
     """
     if score >= 80:    base = "STRONG_BULL"
     elif score >= 65:  base = "BULL"
@@ -4543,6 +4549,24 @@ def score_to_regime(score: float, vix_in: float) -> str:
     elif score >= 28:  base = "HIGH_VOLATILITY"
     elif score >= 15:  base = "BEAR"
     else:              base = "STRONG_BEAR"
+
+    # EMA200 sanity check (Phase C4, 2026-07-02): can't be STRONG_BULL / BULL
+    # while price is under the 200-day EMA. Cap at SIDEWAYS/TRANSITION so
+    # downstream thresholds (min_confidence, max_buys) reflect the actual
+    # structural risk.
+    if above_ema200 is False:
+        if base == "STRONG_BULL":
+            _log(
+                f"[INFO] Regime override: score {score:.1f} → STRONG_BULL "
+                f"but NIFTY below EMA200 → capping at SIDEWAYS (long-term trend not bullish)"
+            )
+            base = "SIDEWAYS"
+        elif base == "BULL":
+            _log(
+                f"[INFO] Regime override: score {score:.1f} → BULL "
+                f"but NIFTY below EMA200 → capping at TRANSITION (long-term trend not bullish)"
+            )
+            base = "TRANSITION"
 
     # VIX sanity check: calm VIX cannot be HIGH_VOLATILITY
     if base == "HIGH_VOLATILITY" and vix_in < 16:
@@ -4602,9 +4626,17 @@ def detect_market_regime(nifty_df, breadth_data: dict, macro_signals: dict) -> d
 
     score = max(0, min(100, score))
 
-    # Use VIX-sanity-checked mapping instead of raw score boundaries
+    # Use VIX + EMA200 sanity-checked mapping instead of raw score boundaries.
+    # A STRONG_BULL score with price under EMA200 is contradictory — the cap
+    # lives inside score_to_regime().
     vix_for_regime = macro_signals.get("vix_in", 15)
-    regime = score_to_regime(score, vix_for_regime)
+    try:
+        last_close   = float(closes[-1])
+        ema200_last  = float(ema200[-1]) if ema200 is not None and len(ema200) else 0.0
+        above_ema200 = last_close > ema200_last if ema200_last > 0 else None
+    except Exception:
+        above_ema200 = None
+    regime = score_to_regime(score, vix_for_regime, above_ema200=above_ema200)
 
     return {
         "regime":     regime,
@@ -6894,6 +6926,98 @@ def format_watchlist_section(watchlist: list, regime: str,
     return lines
 
 
+def format_sector_lagging_rejects_section(rejected: list, regime: str,
+                                           max_rows: int = 12) -> list:
+    """
+    Phase C4 (2026-07-02): Surface high-quality stocks that were REJECTED
+    primarily because their sector is LAGGING.
+
+    Context: SECTOR_LAGGING is a "soft-scoreable" fail (see run_gates line ~5713).
+    A stock with SECTOR_LAGGING as its ONLY hard fail goes to WATCHLIST. But if
+    SECTOR_LAGGING combined with 2+ other hard fails pushed it past the budget,
+    it lands in REJECTED — and its name disappeared from the Telegram output
+    entirely (folded into "Rejected N" count).
+
+    That hides a genuinely interesting bucket: stocks with good internal setup
+    (high Conf/TQ) that are only rejected because their sector is out of favor
+    — i.e. contrarian / sector-rotation candidates worth watching.
+
+    Selection criteria (must satisfy ALL):
+      - stock is in REJECTED bucket
+      - SECTOR_LAGGING is in fail_reasons
+      - final_confidence is within `min_conf - 25` of the regime threshold
+        (i.e. the stock is at most 25 conf points below the buy bar — anything
+        weaker isn't a "contrarian setup", it's just a weak stock)
+
+    Rendered as a compact 1-line-per-stock block, sorted by confidence desc,
+    capped at `max_rows` to keep Telegram message small.
+    """
+    if not rejected:
+        return []
+
+    try:
+        thresh   = REGIME_THRESHOLDS[regime]
+        min_conf = float(thresh["min_confidence"])
+    except Exception:
+        min_conf = 75.0
+
+    # Filter: sector-lagging + high-enough conf to matter
+    lagging_rejects = []
+    for s in rejected:
+        try:
+            fr = s.get("fail_reasons", []) or []
+            if not any("SECTOR_LAGGING" in str(f) for f in fr):
+                continue
+            conf = float(s.get("final_confidence", 0) or 0)
+            # Only surface stocks that were close-ish to qualifying —
+            # a 50-conf stock in a lagging sector is not interesting.
+            if conf < (min_conf - 25):
+                continue
+            lagging_rejects.append(s)
+        except Exception:
+            continue
+
+    if not lagging_rejects:
+        return []
+
+    lagging_rejects.sort(
+        key=lambda x: float(x.get("final_confidence", 0) or 0),
+        reverse=True,
+    )
+
+    total = len(lagging_rejects)
+    shown = lagging_rejects[:max_rows]
+
+    lines = [
+        f"🟠 <b>SECTOR OUT OF FAVOR</b> ({total} rejected — contrarian setups)",
+        f"  <i>Good stock, wrong sector. Wait for sector rotation or use tight stop.</i>",
+    ]
+
+    for s in shown:
+        try:
+            sym    = html.escape(str(s.get("symbol", "?")).replace(".NS", ""))
+            sector = html.escape(str(s.get("sector", "") or get_sector(s.get("symbol", ""))))
+            conf   = float(s.get("final_confidence", 0) or 0)
+            tq     = float(s.get("trade_quality_score", 0) or 0)
+            opp    = float(s.get("opportunity_score", 0) or 0)
+            # Other fails beyond SECTOR_LAGGING (max 2 shown)
+            other_fails = [
+                str(f) for f in (s.get("fail_reasons", []) or [])
+                if "SECTOR_LAGGING" not in str(f)
+            ][:2]
+            of_str = (" · also: " + ", ".join(other_fails)) if other_fails else ""
+            lines.append(
+                f"  <b>{sym}</b> [{sector}] · Opp{opp:.0f} Conf{conf:.1f} TQ{tq:.1f}{html.escape(of_str)}"
+            )
+        except Exception:
+            continue
+
+    if total > max_rows:
+        lines.append(f"  <i>… and {total - max_rows} more (see decision_audit.csv)</i>")
+
+    return lines
+
+
 def format_no_buy_explanation(top_rejected: list, regime: str,
                                watchlist: list = None) -> list:
     """
@@ -7320,6 +7444,21 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
     )
     lines.extend(wl_lines)
     lines.append("")
+
+    # ── Sector-Out-of-Favor rejects (Phase C4) ─────────────────────────────
+    # Stocks with high Conf/TQ that got REJECTED (not just watchlisted)
+    # because SECTOR_LAGGING + other fails exceeded the 2-fail budget.
+    # Surfaces contrarian / sector-rotation candidates that used to be
+    # invisible in the "Rejected N" bucket.
+    try:
+        sl_lines = format_sector_lagging_rejects_section(
+            rejected_stocks or [], regime, max_rows=12,
+        )
+        if sl_lines:
+            lines.extend(sl_lines)
+            lines.append("")
+    except Exception as _e:
+        _log(f"[WARN] sector-lagging rejects render failed: {_e}")
 
     # ── Stop Watch Alert (FIX 5: appears BEFORE portfolio, cannot be missed) ──
     _cur_prices_port = {a["symbol"]: float(a.get("current", a.get("entry", 0)) or 0)
