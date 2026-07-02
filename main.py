@@ -293,6 +293,238 @@ SECTOR_RANK_HISTORY_FILE = os.getenv("SECTOR_RANK_HISTORY_FILE", "sector_rank_hi
 VIX_HISTORY_CACHE_FILE  = os.getenv("VIX_HISTORY_CACHE_FILE", "vix_history_cache.json")
 # True only when triggered by GitHub Actions cron schedule — never for manual runs
 IS_SCHEDULED        = os.getenv("SCHEDULED_RUN", "false").lower() == "true"
+
+# ─── Phase C7c (2026-07-02): FRESH_START switch ─────────────────────────────
+# Set FRESH_START=true in the GitHub Actions env (or as a workflow_dispatch
+# input) for ONE run to wipe all decision-tainted state and start clean.
+# What it does on that single run:
+#   • load_tracker(), load_tracker_v2()         → return empty (skips old trades)
+#   • initialize_tracker_if_new()               → skips Jun 25 seed data
+#   • load_gate_memory()                        → returns {} (no stale 5d window)
+#   • load_regime_calibration()                 → returns {} (no stale deltas)
+#   • load_watchlist_persist() / conf_history   → return empty
+#   • recommendation_tracker.xlsx               → renamed to .stale_<date>
+#   • decision_audit_*.jsonl                    → new file naturally (date-suffixed)
+# What it does NOT touch (rebuild-cost is high, not decision-tainted):
+#   • fundamentals_cache.json, sector_cache.json, delivery_cache.json
+#   • sector_master.csv, nse_all_symbols.csv, events_config.json
+#   • vix_history_cache.json, sector_rank_history.json
+# After the fresh run creates new (empty-ish) state files, unset FRESH_START
+# for subsequent runs — they'll build on the clean baseline naturally.
+FRESH_START = os.getenv("FRESH_START", "false").lower() == "true"
+if FRESH_START:
+    print("[FRESH_START] Enabled — old tracker/audit/memory state will be ignored this run")
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Phase E1 (2026-07-02): PROFESSIONAL EXIT STACK — 5-layer system
+# ═════════════════════════════════════════════════════════════════════════════
+# All exit enhancements are ADDITIVE and ENV-GATED. Defaults preserve the
+# legacy 'exit-fully-at-T2 + break-even trail after T1' behavior.
+#
+# Layer 1  Hard stop + T1 partial + T2 exit (existing legacy behavior — always on).
+# Layer 2  Runner mode (E1a): at T2, book RUNNER_PARTIAL_PCT of what remains
+#          after T1 partial (default 50%) and let the residual run on a
+#          chandelier trail. Enabled by RUNNER_MODE_ENABLED.
+# Layer 3  ATR trail after T1 (E1b): instead of break-even, use
+#          max(entry, current − TRAIL_ATR_MULT × ATR14) once T1 hits. Enabled
+#          by TRAIL_MODE=atr (default 'breakeven' = legacy).
+# Layer 4  Conditional time exit (E1c): only expire flat/losing/stalled trades
+#          at day N; let winners run. Enabled by TIME_EXIT_MODE=conditional
+#          (default 'calendar' = legacy).
+# Layer 5  Regime-aware tightening (E1d): tighten trails and skip runner mode
+#          in risk-off regimes. Enabled by REGIME_AWARE_EXITS.
+#
+# Every rule falls back to legacy behavior when its flag is off, so you can
+# roll them out one at a time (E1a → E1b → E1c → E1d).
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Layer 2: Runner mode at T2 (Phase E1a) ────────────────────────────────
+# When ON: at T2, book part of the residual and let a runner ride a chandelier
+# trail until (a) trail hits, (b) trend-break (close < EMA21 for N days), or
+# (c) volume fade (close < 20d avg for N days).
+RUNNER_MODE_ENABLED     = os.getenv("RUNNER_MODE_ENABLED", "false").lower() == "true"
+RUNNER_PARTIAL_PCT      = float(os.getenv("RUNNER_PARTIAL_PCT", "50"))   # % of residual to book at T2
+RUNNER_ATR_MULT         = float(os.getenv("RUNNER_ATR_MULT",    "3.0"))  # chandelier: highest close − mult × ATR14
+RUNNER_TREND_EMA        = int(os.getenv("RUNNER_TREND_EMA",     "21"))    # EMA period for trend-break exit
+RUNNER_TREND_BREAK_DAYS = int(os.getenv("RUNNER_TREND_BREAK_DAYS", "2"))  # consecutive closes below EMA to exit
+RUNNER_VOL_FADE_DAYS    = int(os.getenv("RUNNER_VOL_FADE_DAYS",  "3"))    # consecutive low-volume closes to exit
+RUNNER_MAX_DAYS         = int(os.getenv("RUNNER_MAX_DAYS",       "45"))   # hard ceiling after T2 hit
+
+# ── Layer 3: ATR trail after T1 (Phase E1b) ───────────────────────────────
+# 'breakeven' (default, legacy): stop → entry once T1 hits.
+# 'atr'      : stop → max(entry, current − TRAIL_ATR_MULT × ATR14), ratcheted daily.
+TRAIL_MODE              = os.getenv("TRAIL_MODE", "breakeven").lower()
+TRAIL_ATR_MULT          = float(os.getenv("TRAIL_ATR_MULT", "2.5"))
+
+# ── Layer 4: Conditional time exit (Phase E1c) ────────────────────────────
+# 'calendar'    (default, legacy): expire at TIME_EXIT_MAX_DAYS if under T1.
+# 'conditional' : keep winners past N days; only expire flat/losing OR when 10d slope <= 0.
+TIME_EXIT_MODE            = os.getenv("TIME_EXIT_MODE", "calendar").lower()
+TIME_EXIT_MAX_DAYS        = int(os.getenv("TIME_EXIT_MAX_DAYS", "15"))       # legacy day floor
+TIME_EXIT_HARD_MAX_DAYS   = int(os.getenv("TIME_EXIT_HARD_MAX_DAYS", "30"))  # even winners exit at this
+TIME_EXIT_MIN_WIN_PCT     = float(os.getenv("TIME_EXIT_MIN_WIN_PCT", "5.0")) # < this % after N days = expire
+TIME_EXIT_STAGNATION_DAYS = int(os.getenv("TIME_EXIT_STAGNATION_DAYS", "25"))
+TIME_EXIT_STAGNATION_PCT  = float(os.getenv("TIME_EXIT_STAGNATION_PCT", "10.0"))
+
+# ── Layer 5: Regime-aware exit tightening (Phase E1d) ─────────────────────
+# When ON, in BEAR / STRONG_BEAR / HIGH_VOLATILITY:
+#   - runner mode is disabled (take T2 fully)
+#   - ATR trail multiplier reduced by REGIME_TIGHTEN_FACTOR (e.g. 2.5 → 1.5)
+#   - conditional time exit uses shorter windows
+REGIME_AWARE_EXITS      = os.getenv("REGIME_AWARE_EXITS", "false").lower() == "true"
+REGIME_TIGHTEN_FACTOR   = float(os.getenv("REGIME_TIGHTEN_FACTOR", "0.6"))  # multiplier applied to trail ATR mult
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Phase F (2026-07-02): PROFESSIONAL POLISH LAYER — 5 additive features
+# ═════════════════════════════════════════════════════════════════════════════
+# All F-series features are ADDITIVE and ENV-GATED. Defaults preserve legacy.
+#
+# F5  Runner "moonshot" scaling — when a runner is +N% above T2 and volume is
+#     expanding, book an additional slice. Locks profit on exceptional moves.
+# F7a Portfolio-level risk sheet — total exposure, sector concentration,
+#     rolling drawdown, VaR-95 estimate. Written into tracker.xlsx.
+# F7b Parabolic exit — if a position gaps >X% in a single day (blow-off),
+#     force a partial or full exit at close.
+# F8  P&L attribution — split Avg Return% by exit bucket (T1-only, T2-hit,
+#     Runner-closed, Stopped, Expired). Answers "where does alpha come from?".
+# F9  Strategy-vs-NIFTY overlay — cumulative NIFTY return recorded alongside
+#     tracker rows so we can plot alpha over time.
+
+# ── F5: Runner scaling ────────────────────────────────────────────────────
+RUNNER_SCALE_ENABLED    = os.getenv("RUNNER_SCALE_ENABLED", "false").lower() == "true"
+RUNNER_SCALE_TRIGGER_PCT = float(os.getenv("RUNNER_SCALE_TRIGGER_PCT", "30"))  # % above T2 to trigger
+RUNNER_SCALE_BOOK_PCT   = float(os.getenv("RUNNER_SCALE_BOOK_PCT",   "50"))    # % of remaining runner to book
+RUNNER_SCALE_VOL_MULT   = float(os.getenv("RUNNER_SCALE_VOL_MULT",   "1.2"))   # volume must be ≥N× 20d avg
+
+# ── F7b: Parabolic exit ───────────────────────────────────────────────────
+PARABOLIC_EXIT_ENABLED  = os.getenv("PARABOLIC_EXIT_ENABLED", "false").lower() == "true"
+PARABOLIC_DAY_PCT       = float(os.getenv("PARABOLIC_DAY_PCT",  "8.0"))    # single-day gain to trigger
+PARABOLIC_VOL_MULT      = float(os.getenv("PARABOLIC_VOL_MULT", "2.0"))    # volume must be ≥N× 20d avg
+PARABOLIC_BOOK_PCT      = float(os.getenv("PARABOLIC_BOOK_PCT", "50"))     # % of current position to book
+
+# ── F7a / F8 / F9: reporting toggles ──────────────────────────────────────
+# These are auto-populated by tracker_job.py; the env vars merely control
+# whether the extra sheets/rows are written. All default TRUE (they're
+# read-only additions to the xlsx and never touch trading logic).
+PORTFOLIO_RISK_SHEET    = os.getenv("PORTFOLIO_RISK_SHEET",    "true").lower() == "true"
+PNL_ATTRIBUTION_ROWS    = os.getenv("PNL_ATTRIBUTION_ROWS",    "true").lower() == "true"
+BENCHMARK_OVERLAY       = os.getenv("BENCHMARK_OVERLAY",       "true").lower() == "true"
+BENCHMARK_SYMBOL        = os.getenv("BENCHMARK_SYMBOL",        "^NSEI")
+
+# Pipeline-level regime snapshot — set by the pipeline at scoring time so
+# tracker updates (which run later, without regime state) can consult it.
+# NEVER read this in scoring/gate math — exits only.
+_PIPELINE_REGIME: str = ""
+
+
+def _current_exit_regime() -> str:
+    """Return regime string used by exit logic (empty = unknown, treat as neutral)."""
+    return str(_PIPELINE_REGIME or "").upper()
+
+
+def _is_risk_off_regime(regime: str = "") -> bool:
+    r = (regime or _current_exit_regime()).upper()
+    return r in ("BEAR", "STRONG_BEAR", "HIGH_VOLATILITY")
+
+
+def _effective_trail_atr_mult(regime: str = "") -> float:
+    """ATR trail multiplier, tightened in risk-off regimes when E1d is on."""
+    base = TRAIL_ATR_MULT
+    if REGIME_AWARE_EXITS and _is_risk_off_regime(regime):
+        return round(max(1.0, base * REGIME_TIGHTEN_FACTOR), 2)
+    return base
+
+
+def _effective_runner_atr_mult(regime: str = "") -> float:
+    base = RUNNER_ATR_MULT
+    if REGIME_AWARE_EXITS and _is_risk_off_regime(regime):
+        return round(max(1.5, base * REGIME_TIGHTEN_FACTOR), 2)
+    return base
+
+
+def _runner_enabled(regime: str = "") -> bool:
+    """Runner mode ON only if flag set AND regime not risk-off (when E1d on)."""
+    if not RUNNER_MODE_ENABLED:
+        return False
+    if REGIME_AWARE_EXITS and _is_risk_off_regime(regime):
+        return False
+    return True
+
+
+def _compute_exit_context(symbol: str) -> dict:
+    """Fetch a ~60-day daily df once and derive everything the exit engines
+    need: ATR14, EMA21, high_since (highest close across window), avg_vol20,
+    consecutive-below-EMA, consecutive-low-volume, 10d slope.
+
+    Returns {} on any failure — callers MUST treat empty dict as 'skip
+    enhanced rules, fall back to legacy exit path'. Never raises.
+    """
+    try:
+        df = fetch_price_data(symbol, period="60d")
+        if df is None or len(df) < 22:
+            return {}
+        closes = df["Close"].squeeze().astype(float).values
+        highs  = df["High"].squeeze().astype(float).values
+        lows   = df["Low"].squeeze().astype(float).values
+        vols   = df["Volume"].squeeze().astype(float).values
+
+        # ATR14 (Wilder-style approximation using SMA of True Range)
+        tr = np.maximum(
+            highs[1:] - lows[1:],
+            np.maximum(
+                np.abs(highs[1:] - closes[:-1]),
+                np.abs(lows[1:]  - closes[:-1]),
+            ),
+        )
+        atr14 = float(np.mean(tr[-14:])) if len(tr) >= 14 else float(np.mean(tr)) if len(tr) else 0.0
+
+        ema21 = float(pd.Series(closes).ewm(span=RUNNER_TREND_EMA, adjust=False).mean().iloc[-1])
+        avg_vol20 = float(pd.Series(vols).rolling(20).mean().iloc[-1]) if len(vols) >= 20 else float(np.mean(vols) if len(vols) else 0.0)
+
+        # Consecutive closes below EMA21
+        ema_series = pd.Series(closes).ewm(span=RUNNER_TREND_EMA, adjust=False).mean().values
+        below = 0
+        for i in range(len(closes) - 1, -1, -1):
+            if closes[i] < ema_series[i]:
+                below += 1
+            else:
+                break
+
+        # Consecutive low-volume days
+        vol_avg_series = pd.Series(vols).rolling(20).mean().values
+        low_vol = 0
+        for i in range(len(vols) - 1, -1, -1):
+            if not np.isnan(vol_avg_series[i]) and vols[i] < vol_avg_series[i]:
+                low_vol += 1
+            else:
+                break
+
+        # 10-day slope (last-close vs close-10d-ago)
+        slope10 = 0.0
+        if len(closes) >= 11:
+            slope10 = float(closes[-1] - closes[-11])
+
+        # Phase F: prev_close + last_volume needed by F5 scaling / F7b parabolic
+        prev_close  = float(closes[-2]) if len(closes) >= 2 else float(closes[-1])
+        last_volume = float(vols[-1])   if len(vols)   >= 1 else 0.0
+
+        return {
+            "close":       float(closes[-1]),
+            "prev_close":  prev_close,
+            "last_volume": last_volume,
+            "atr14":       atr14,
+            "ema21":       ema21,
+            "avg_vol20":   avg_vol20,
+            "below_ema_streak": int(below),
+            "low_vol_streak":   int(low_vol),
+            "slope10":     slope10,
+            "highest_close_60d": float(np.max(closes)),
+        }
+    except Exception as ex:
+        _log(f"[WARN] _compute_exit_context({symbol}) failed: {ex}")
+        return {}
+
+
 TELEGRAM_MAX_CHARS  = 3800  # buffer below 4096 hard limit
 
 # Regime thresholds — v6.0 calibrated (Bug 2 fix)
@@ -347,6 +579,10 @@ def load_regime_calibration() -> dict:
     min_tq_delta: int, min_rr_delta: float, closed_trades: int, win_rate: float}}.
     Returns {} if missing/bad. Deltas are applied ADDITIVELY on top of
     REGIME_THRESHOLDS (positive = tighter, negative = looser)."""
+    # Phase C7c: FRESH_START ignores stale calibration (built from old regime data)
+    if FRESH_START:
+        _log("[FRESH_START] load_regime_calibration → returning {} (old calibration ignored)")
+        return {}
     try:
         if not os.path.exists(REGIME_CALIBRATION_FILE):
             return {}
@@ -407,11 +643,28 @@ def _update_ownership_quality(stock: dict) -> None:
       Pledge > 30% = bad (-20), 15-30% = caution (-10), < 5% = clean (+10)
       D/E > 2.0 = leveraged (-10), < 0.5 = clean (+10)
     Baseline 50; clamped 0-100.
+
+    Phase C5 (rating ≥ 9.0): if ROE == 0 AND D/E == 0 AND pledge == 0 AND the
+    fundamentals source is NEUTRAL_DEFAULT/screener_partial, this is a
+    MISSING-DATA case — return None so compute_base_confidence redistributes
+    the ownership weight instead of diluting toward neutral 50.
     """
     try:
         roe    = float(stock.get("roe", 0) or 0)
         pledge = float(stock.get("promoter_pledge_pct", 0) or 0)
         de     = float(stock.get("de_ratio", 0) or 0)
+        src    = str(stock.get("fundamentals_source", "") or "").lower()
+
+        # MISSING-DATA detection: all three metrics are zero AND source
+        # indicates we didn't successfully retrieve fundamentals.
+        if roe == 0 and de == 0 and pledge == 0 and src in (
+            "", "neutral_default", "screener_partial", "rate_limited", "error"
+        ):
+            stock["ownership_quality"] = None
+            stock["ownership_missing"] = True
+            if "factor_scores" in stock:
+                stock["factor_scores"]["ownership_quality"] = None
+            return
 
         score = 50.0
         # ROE component
@@ -429,6 +682,7 @@ def _update_ownership_quality(stock: dict) -> None:
         elif de < 0.5:  score += 10
 
         stock["ownership_quality"] = round(max(0.0, min(100.0, score)), 1)
+        stock["ownership_missing"] = False
         # Keep factor_scores in sync
         if "factor_scores" in stock:
             stock["factor_scores"]["ownership_quality"] = stock["ownership_quality"]
@@ -925,13 +1179,87 @@ def close_run_log():
             pass
 
 
-# NSE trading holidays 2026
-NSE_HOLIDAYS_2026 = {
+# ─── Market Calendars (Phase C7e 2026-07-02): JSON-first, hardcoded fallback ─
+# Historical bug: NSE_HOLIDAYS_2026 / _RBI_MPC_DATES_2026 / _FOMC_DATES_2026 were
+# hardcoded 2026-only literals. Silently wrong on 2027-01-01 (holidays evaluate
+# to False every day, event blackouts vanish). Now driven by market_calendars.json.
+# Additive-only — no scoring/gate impact. If the JSON is missing or corrupt, the
+# hardcoded 2026 defaults kick in exactly as before, so behaviour is unchanged.
+MARKET_CALENDARS_FILE = "market_calendars.json"
+
+# Hardcoded 2026 defaults — used only if market_calendars.json is missing/broken.
+_NSE_HOLIDAYS_2026_DEFAULT = {
     "2026-01-26","2026-02-19","2026-03-25","2026-04-02",
     "2026-04-10","2026-04-14","2026-04-17","2026-05-01",
     "2026-06-17","2026-08-15","2026-10-02","2026-10-20",
     "2026-11-05","2026-11-16","2026-12-25",
 }
+_RBI_MPC_2026_DEFAULT = [
+    "2026-02-07", "2026-04-09", "2026-06-06",
+    "2026-08-08", "2026-10-07", "2026-12-05",
+]
+_FOMC_2026_DEFAULT = [
+    "2026-01-29", "2026-03-19", "2026-05-07",
+    "2026-06-18", "2026-07-30", "2026-09-17",
+    "2026-11-05", "2026-12-17",
+]
+
+
+def _load_market_calendars() -> dict:
+    """Read market_calendars.json → dict with keys nse_holidays/rbi_mpc/fomc,
+    each a flat list-of-strings covering all years present in the file.
+    Silently falls back to hardcoded 2026 defaults on any error."""
+    result = {
+        "nse_holidays": set(_NSE_HOLIDAYS_2026_DEFAULT),
+        "rbi_mpc":      list(_RBI_MPC_2026_DEFAULT),
+        "fomc":         list(_FOMC_2026_DEFAULT),
+    }
+    try:
+        if not os.path.exists(MARKET_CALENDARS_FILE):
+            return result
+        with open(MARKET_CALENDARS_FILE, "r", encoding="utf-8") as f:
+            raw = json.load(f)
+        if not isinstance(raw, dict):
+            return result
+
+        def _flatten(section):
+            """Section is {year: [dates]} — flatten to a list of date strings."""
+            out = []
+            block = raw.get(section, {})
+            if isinstance(block, dict):
+                for _year, dates in block.items():
+                    if isinstance(dates, list):
+                        out.extend(str(d) for d in dates if isinstance(d, str))
+            elif isinstance(block, list):  # tolerate flat-list shape too
+                out = [str(d) for d in block if isinstance(d, str)]
+            return out
+
+        hols = _flatten("nse_holidays")
+        rbi  = _flatten("rbi_mpc_dates")
+        fom  = _flatten("fomc_dates")
+
+        if hols: result["nse_holidays"] = set(hols)
+        if rbi:  result["rbi_mpc"]      = rbi
+        if fom:  result["fomc"]         = fom
+    except Exception as e:
+        # _log may not exist yet at module-import time; use print as a safe floor
+        try:
+            _log(f"[WARN] _load_market_calendars failed, using 2026 fallback: {e}")
+        except Exception:
+            print(f"[WARN] _load_market_calendars failed, using 2026 fallback: {e}")
+    return result
+
+
+_MARKET_CALENDARS      = _load_market_calendars()
+NSE_HOLIDAYS           = _MARKET_CALENDARS["nse_holidays"]   # set of "YYYY-MM-DD"
+_RBI_MPC_DATES         = _MARKET_CALENDARS["rbi_mpc"]        # list of "YYYY-MM-DD"
+_FOMC_DATES            = _MARKET_CALENDARS["fomc"]           # list of "YYYY-MM-DD"
+
+# Back-compat aliases — some external tooling / tests may still import the
+# original 2026-suffixed names. Safe to remove after downstream is verified.
+NSE_HOLIDAYS_2026      = NSE_HOLIDAYS
+_RBI_MPC_DATES_2026    = _RBI_MPC_DATES
+_FOMC_DATES_2026       = _FOMC_DATES
 
 
 def is_market_open(check_date=None) -> bool:
@@ -939,7 +1267,7 @@ def is_market_open(check_date=None) -> bool:
         check_date = datetime.date.today()
     if check_date.weekday() >= 5:
         return False
-    if check_date.strftime("%Y-%m-%d") in NSE_HOLIDAYS_2026:
+    if check_date.strftime("%Y-%m-%d") in NSE_HOLIDAYS:
         return False
     return True
 
@@ -1841,14 +2169,17 @@ def run_all_ai_calls(
                     regime        = regime,
                     risk_pct      = stock.get("risk_pct", 0),
                     factor_scores = stock.get("factor_scores", {}) or {
-                        "trend":     stock.get("trend_quality", 50),
-                        "momentum":  stock.get("momentum_quality", 50),
-                        "volume":    stock.get("volume_delivery", 50),
-                        "sector":    stock.get("sector_strength", 50),
-                        "rs":        stock.get("rs_vs_nifty", 50),
-                        "news":      stock.get("news_risk", 50),
-                        "ownership": stock.get("ownership_quality", 50),
-                        "macro":     stock.get("macro_alignment", 50),
+                        # Phase C5: coalesce None (MISSING) → 50 for display/AI.
+                        # None is a signal to compute_base_confidence to reweight;
+                        # the AI thesis just needs a numeric neutral fallback.
+                        "trend":     stock.get("trend_quality") or 50,
+                        "momentum":  stock.get("momentum_quality") or 50,
+                        "volume":    stock.get("volume_delivery") or 50,
+                        "sector":    stock.get("sector_strength") or 50,
+                        "rs":        stock.get("rs_vs_nifty") or 50,
+                        "news":      stock.get("news_risk") or 50,
+                        "ownership": stock.get("ownership_quality") or 50,
+                        "macro":     stock.get("macro_alignment") or 50,
                     },
                     soft_warnings = stock.get("_soft_warnings", []) or [],
                     rs_diff21     = float(stock.get("rs_diff21", 0) or 0),
@@ -3328,22 +3659,34 @@ def _fetch_fii_dii_google_news() -> "dict | None":
         from urllib.parse import quote
         today_str = datetime.date.today().strftime("%d %b").lstrip("0")  # "29 Jun"
 
-        _CUMULATIVE_PHRASES = (
+        _CUMULATIVE_PHRASES_STATIC = (
             "so far", "lakh crore", "ytd", "cumulative",
             "month to date", "year to date", "this month", "this year",
             "in the month", "for the month", "during the month",
-            "total outflow", "total inflow", "total 2024", "total 2025", "total 2026",
+            "total outflow", "total inflow",
             "since january", "since april", "outflows reach", "inflows reach",
             # Phase B1 (2026-06-30): kill historical-record headlines that misled the parser.
             # Phase B2 (2026-07-02): removed "single-day" / "single day" — legitimate daily
             # prints often use that phrasing (e.g. "largest single-day outflow" IS today's
             # data). Keep only unambiguously historical markers.
             "largest", "biggest", "record",
-            "all-time", "all time", "outflow in 2024", "outflow in 2025", "outflow in 2026",
-            "inflow in 2024",  "inflow in 2025",  "inflow in 2026",
-            "outflow of 2024", "outflow of 2025", "outflow of 2026",
+            "all-time", "all time",
             "highest ever", "lowest ever", "biggest ever", "largest ever",
         )
+        # Phase C7e (2026-07-02): year-specific "total 2024" / "outflow in 2025" phrases
+        # were hardcoded. Now generated dynamically from all years up to today so this
+        # filter never goes stale on Jan 1 of a new year.
+        _cur_year = datetime.date.today().year
+        _year_phrases = tuple(
+            phrase
+            for y in range(2020, _cur_year + 1)
+            for phrase in (
+                f"total {y}",
+                f"outflow in {y}", f"inflow in {y}",
+                f"outflow of {y}", f"inflow of {y}",
+            )
+        )
+        _CUMULATIVE_PHRASES = _CUMULATIVE_PHRASES_STATIC + _year_phrases
 
         # Try combined query first (best chance of finding both FII + DII in one article),
         # then fall back to FII-only
@@ -4391,16 +4734,12 @@ def is_near_event(symbol_clean: str, results_dates: list,
 # Known market events with sector impact (FEATURE 5)
 EVENTS_CONFIG_FILE = "events_config.json"
 
-# ── Known annual schedules (update once per year) ─────────────────────────────
-_RBI_MPC_DATES_2026 = [
-    "2026-02-07", "2026-04-09", "2026-06-06",
-    "2026-08-08", "2026-10-07", "2026-12-05",
-]
-_FOMC_DATES_2026 = [
-    "2026-01-29", "2026-03-19", "2026-05-07",
-    "2026-06-18", "2026-07-30", "2026-09-17",
-    "2026-11-05", "2026-12-17",
-]
+# ── Annual event schedules ────────────────────────────────────────────────────
+# Phase C7e (2026-07-02): _RBI_MPC_DATES_2026 / _FOMC_DATES_2026 were relocated
+# to market_calendars.json and are now loaded (with hardcoded 2026 fallback) at
+# module import (see _load_market_calendars near L975). The names _RBI_MPC_DATES
+# and _FOMC_DATES are the current canonical form. The *_2026 back-compat aliases
+# still exist for any external tooling that imports them.
 
 
 def _nse_expiry_dates(lookahead_days: int = 60) -> list:
@@ -4433,11 +4772,11 @@ def _nse_expiry_dates(lookahead_days: int = 60) -> list:
 
 
 def _rbi_mpc_events(lookahead_days: int = 60) -> list:
-    """Returns upcoming RBI MPC decision dates from known 2026 schedule."""
+    """Returns upcoming RBI MPC decision dates from the loaded schedule."""
     today  = datetime.date.today()
     end    = today + datetime.timedelta(days=lookahead_days)
     events = []
-    for ds in _RBI_MPC_DATES_2026:
+    for ds in _RBI_MPC_DATES:
         try:
             d = datetime.date.fromisoformat(ds)
             if today <= d <= end:
@@ -4459,7 +4798,7 @@ def _fomc_events(lookahead_days: int = 60) -> list:
     today  = datetime.date.today()
     end    = today + datetime.timedelta(days=lookahead_days)
     events = []
-    for ds in _FOMC_DATES_2026:
+    for ds in _FOMC_DATES:
         try:
             d = datetime.date.fromisoformat(ds)
             if today <= d <= end:
@@ -4595,15 +4934,19 @@ def format_upcoming_events_compact(events_config: list, holdings: list) -> list:
 
 
 def score_to_regime(score: float, vix_in: float,
-                     above_ema200: "bool | None" = None) -> str:
+                     above_ema200: "bool | None" = None,
+                     above_ema20:  "bool | None" = None,
+                     above_ema50:  "bool | None" = None) -> str:
     """
     Maps score to regime with sanity checks:
       - VIX-IN < 16 = market is NOT in high volatility regardless of score.
-      - STRONG_BULL / BULL require price above EMA200. If NIFTY is under its
-        200-day EMA the long-term trend is by definition NOT bullish, no
-        matter how strong today's breadth + calm VIX look. Without this cap,
-        the pipeline can produce contradictory output like
-        'REGIME: STRONG_BULL' followed by 'Nifty structure: below EMA200'.
+      - STRONG_BULL / BULL require price above EMA200 *only if* the short-term
+        structure (EMA20/50) is ALSO broken. If NIFTY is above EMA20 and EMA50
+        but below EMA200, we are in a "recovery" pattern — the current uptrend
+        is real and tradable, just not yet long enough to reclaim the 200-day.
+        In that case we soften by 1 tier only.
+      - If NIFTY is below EMA20/50/200 all three, that IS a broad correction,
+        so we cap harder (2 tiers).
     """
     if score >= 80:    base = "STRONG_BULL"
     elif score >= 65:  base = "BULL"
@@ -4613,23 +4956,24 @@ def score_to_regime(score: float, vix_in: float,
     elif score >= 15:  base = "BEAR"
     else:              base = "STRONG_BEAR"
 
-    # EMA200 sanity check (Phase C4, 2026-07-02): can't be STRONG_BULL / BULL
-    # while price is under the 200-day EMA. Cap at SIDEWAYS/TRANSITION so
-    # downstream thresholds (min_confidence, max_buys) reflect the actual
-    # structural risk.
+    # EMA-structure sanity check (Phase C4, revised 2026-07-02):
+    #   Short-term EMAs intact (EMA20 ✓ AND EMA50 ✓) + only EMA200 below
+    #        → 1-tier softening (recovery pattern, uptrend is real)
+    #   Short-term EMAs also broken (EMA20 ✗ or EMA50 ✗) + EMA200 below
+    #        → 2-tier hard cap (broad correction, don't chase)
     if above_ema200 is False:
-        if base == "STRONG_BULL":
+        short_ok = (above_ema20 is True) and (above_ema50 is True)
+        soft_map = {"STRONG_BULL": "BULL", "BULL": "SIDEWAYS"}
+        hard_map = {"STRONG_BULL": "SIDEWAYS", "BULL": "TRANSITION"}
+        cap_map = soft_map if short_ok else hard_map
+        if base in cap_map:
+            new_base = cap_map[base]
+            kind = "soft (short-term structure intact)" if short_ok else "hard (broad correction)"
             _log(
-                f"[INFO] Regime override: score {score:.1f} → STRONG_BULL "
-                f"but NIFTY below EMA200 → capping at SIDEWAYS (long-term trend not bullish)"
+                f"[INFO] Regime override: score {score:.1f} → {base} "
+                f"but NIFTY below EMA200 → capping at {new_base} [{kind}]"
             )
-            base = "SIDEWAYS"
-        elif base == "BULL":
-            _log(
-                f"[INFO] Regime override: score {score:.1f} → BULL "
-                f"but NIFTY below EMA200 → capping at TRANSITION (long-term trend not bullish)"
-            )
-            base = "TRANSITION"
+            base = new_base
 
     # VIX sanity check: calm VIX cannot be HIGH_VOLATILITY
     if base == "HIGH_VOLATILITY" and vix_in < 16:
@@ -4696,10 +5040,19 @@ def detect_market_regime(nifty_df, breadth_data: dict, macro_signals: dict) -> d
     try:
         last_close   = float(closes[-1])
         ema200_last  = float(ema200[-1]) if ema200 is not None and len(ema200) else 0.0
+        ema50_last   = float(ema50[-1])  if ema50  is not None and len(ema50)  else 0.0
+        ema20_last   = float(ema20[-1])  if ema20  is not None and len(ema20)  else 0.0
         above_ema200 = last_close > ema200_last if ema200_last > 0 else None
+        above_ema50  = last_close > ema50_last  if ema50_last  > 0 else None
+        above_ema20  = last_close > ema20_last  if ema20_last  > 0 else None
     except Exception:
         above_ema200 = None
-    regime = score_to_regime(score, vix_for_regime, above_ema200=above_ema200)
+        above_ema50  = None
+        above_ema20  = None
+    regime = score_to_regime(score, vix_for_regime,
+                              above_ema200=above_ema200,
+                              above_ema20=above_ema20,
+                              above_ema50=above_ema50)
 
     return {
         "regime":     regime,
@@ -4803,7 +5156,35 @@ def accumulation_score(closes: np.ndarray, volumes: np.ndarray,
 
 
 def compute_base_confidence(scores: dict) -> float:
-    return round(sum(FACTOR_WEIGHTS[k] * float(scores.get(k, 50)) for k in FACTOR_WEIGHTS), 2)
+    """Weighted average of factor scores with MISSING-DATA reweighting.
+
+    Phase C5 (rating ≥ 9.0):
+      When a factor score is `None` (i.e. we couldn't measure it — rate-limited,
+      unmapped sector, news not fetched), we redistribute its weight over the
+      factors we DID measure, instead of silently defaulting to 50 and
+      diluting the confidence toward the middle.
+
+    Contract:
+      - `scores[k] is None`  → factor MISSING → excluded from sum and denominator
+      - `scores.get(k)` is a number → factor PRESENT → contributes normally
+      - key not in scores at all → treated as MISSING (safe default)
+
+    If ALL factors are missing (should never happen) → returns 50.0.
+    """
+    num = 0.0
+    den = 0.0
+    for k, w in FACTOR_WEIGHTS.items():
+        v = scores.get(k, None)
+        if v is None:
+            continue
+        try:
+            num += w * float(v)
+            den += w
+        except (TypeError, ValueError):
+            continue
+    if den <= 0:
+        return 50.0
+    return round(num / den, 2)
 
 
 def compute_news_penalty(ai_result: dict, age_days: int) -> float:
@@ -4919,6 +5300,192 @@ def compute_portfolio_heat(holdings: list, current_prices: dict,
         _log(f"[WARN] compute_portfolio_heat failed: {e}")
         return {"heat_pct": 0.0, "positions_count": 0,
                 "max_heat_pct": 6.0, "heat_ok": True, "heat_remaining_pct": 6.0}
+
+
+# ─── Phase C7 (2026-07-02): Equity-curve kill switch ────────────────────────
+# Rating ≥ 9.5 requires a portfolio-level circuit breaker, not just per-trade
+# stops. Real desks halt new entries after a losing streak or drawdown day —
+# this prevents "revenge trading" through a regime change and caps monthly
+# blow-up risk. Reads ONLY from tracker.completed, which has final_pnl and
+# stop_hit_date / t2_hit_date / etc. already computed by update_tracker_v2_pnl.
+def compute_kill_switch_state(tracker: dict, capital: float = None) -> dict:
+    """Portfolio-level circuit breaker based on realized P&L trajectory.
+
+    Reads tracker.completed (list of closed positions each with final_pnl %,
+    and one of stop_hit_date / t2_hit_date / t1_hit_date / expired_date /
+    stop_hit_date). Returns:
+      {
+        "buys_paused":       bool  — HALT all new BUYs today
+        "size_multiplier":   float — 1.0 normal, 0.5 damped, 0.0 halted
+        "reason":            str   — human-readable why
+        "consecutive_losses": int
+        "day_pnl_pct":       float — realized % of capital today
+        "week_pnl_pct":      float — realized % of capital last 5 sessions
+        "drawdown_from_peak_pct": float
+      }
+
+    Rules (all env-tunable):
+      - 3 consecutive losses          → PAUSE (24h)
+      - Day realized ≤ -DAY_STOP_PCT  → PAUSE for the rest of the day
+      - Week realized ≤ -WEEK_STOP_PCT → PAUSE for the rest of the week
+      - Drawdown ≥ DD_HALVE_PCT       → HALVE size (multiplier=0.5)
+      - Drawdown ≥ DD_HALT_PCT        → PAUSE
+    """
+    # Env-tunable knobs — defaults are conservative professional levels
+    MAX_CONSEC_LOSSES = int(os.getenv("KS_MAX_CONSEC_LOSSES", "3"))
+    DAY_STOP_PCT      = float(os.getenv("KS_DAY_STOP_PCT",   "2.0"))   # -2% day
+    WEEK_STOP_PCT     = float(os.getenv("KS_WEEK_STOP_PCT",  "3.0"))   # -3% week
+    DD_HALVE_PCT      = float(os.getenv("KS_DD_HALVE_PCT",   "5.0"))   # -5% dd → halve
+    DD_HALT_PCT       = float(os.getenv("KS_DD_HALT_PCT",   "10.0"))   # -10% dd → halt
+
+    default = {
+        "buys_paused": False, "size_multiplier": 1.0, "reason": "OK",
+        "consecutive_losses": 0, "day_pnl_pct": 0.0, "week_pnl_pct": 0.0,
+        "drawdown_from_peak_pct": 0.0,
+    }
+    try:
+        completed = tracker.get("completed", []) if isinstance(tracker, dict) else []
+        if not completed:
+            return default
+
+        today = datetime.date.today()
+
+        def _close_date(pos: dict) -> datetime.date:
+            """Best-effort close date from the various *_date fields."""
+            for k in ("stop_hit_date", "t2_hit_date", "t1_hit_date",
+                      "expired_date", "close_date"):
+                v = pos.get(k)
+                if v:
+                    try:
+                        return datetime.date.fromisoformat(str(v)[:10])
+                    except Exception:
+                        continue
+            # Fallback: rec_date + days_tracked
+            try:
+                rd = datetime.date.fromisoformat(pos.get("rec_date", "")[:10])
+                return rd + datetime.timedelta(days=int(pos.get("days_tracked", 0) or 0))
+            except Exception:
+                return today  # unknown → treat as today so it still counts
+
+        # Sort chronologically by close date
+        closed_sorted = sorted(
+            [(p, _close_date(p)) for p in completed],
+            key=lambda x: x[1],
+        )
+
+        # 1) Consecutive-loss streak (walk BACKWARD from most recent close)
+        consec = 0
+        for pos, _dt in reversed(closed_sorted):
+            pnl = float(pos.get("final_pnl", 0) or 0)
+            if pnl < 0:
+                consec += 1
+            else:
+                break
+
+        # 2) Realized P&L windows (day / week) — sum final_pnl % contributions
+        #    Each trade risked ~1.5% of capital, so we approximate its capital
+        #    contribution as final_pnl_pct × position_pct_of_capital / 100.
+        #    Fallback: if position_pct absent, assume 5% of capital (conservative).
+        def _cap_contrib(pos):
+            pos_pct = float(pos.get("position_pct", 5.0) or 5.0)
+            pnl_pct = float(pos.get("final_pnl",   0.0) or 0.0)
+            return pnl_pct * (pos_pct / 100.0)   # % of capital, signed
+
+        day_pnl  = sum(_cap_contrib(p) for p, d in closed_sorted if d == today)
+        wk_start = today - datetime.timedelta(days=7)
+        week_pnl = sum(_cap_contrib(p) for p, d in closed_sorted if d >= wk_start)
+
+        # 3) Equity-curve peak drawdown (from cumulative realized P&L)
+        cum = 0.0
+        peak = 0.0
+        dd = 0.0
+        for pos, _dt in closed_sorted:
+            cum += _cap_contrib(pos)
+            if cum > peak:
+                peak = cum
+            _cur_dd = peak - cum
+            if _cur_dd > dd:
+                dd = _cur_dd
+
+        # ── Decide state (worst rule wins) ──
+        buys_paused    = False
+        size_mult      = 1.0
+        reason_parts   = []
+
+        if consec >= MAX_CONSEC_LOSSES:
+            buys_paused = True
+            reason_parts.append(f"CONSEC_LOSSES={consec}")
+
+        if day_pnl <= -DAY_STOP_PCT:
+            buys_paused = True
+            reason_parts.append(f"DAY_STOP({day_pnl:.1f}%)")
+
+        if week_pnl <= -WEEK_STOP_PCT:
+            buys_paused = True
+            reason_parts.append(f"WEEK_STOP({week_pnl:.1f}%)")
+
+        if dd >= DD_HALT_PCT:
+            buys_paused = True
+            reason_parts.append(f"DD_HALT({dd:.1f}%)")
+        elif dd >= DD_HALVE_PCT:
+            size_mult = 0.5
+            reason_parts.append(f"DD_HALVE({dd:.1f}%)")
+
+        if buys_paused:
+            size_mult = 0.0
+
+        return {
+            "buys_paused":            buys_paused,
+            "size_multiplier":        size_mult,
+            "reason":                 " | ".join(reason_parts) if reason_parts else "OK",
+            "consecutive_losses":     consec,
+            "day_pnl_pct":            round(day_pnl,  2),
+            "week_pnl_pct":           round(week_pnl, 2),
+            "drawdown_from_peak_pct": round(dd,       2),
+        }
+    except Exception as e:
+        _log(f"[WARN] compute_kill_switch_state failed: {e}")
+        return default
+
+
+# ─── Phase C7 (2026-07-02): Sector concentration cap ────────────────────────
+# Correlation gate 14 catches ticker-level pair correlation (>0.75) but does
+# NOT catch the more common case of "5 IT stocks all trending together on the
+# same tailwind". If Nifty IT drops 5%, all 5 stops fire on the same day.
+# This gate caps open positions per NIFTY sector.
+def check_sector_concentration(candidate_sector: str,
+                                holdings: list,
+                                max_per_sector: int = None) -> dict:
+    """Return {'blocked': bool, 'count': int, 'max': int, 'reason': str}.
+
+    Counts how many existing OPEN holdings share candidate_sector. If count
+    ≥ max_per_sector, blocks. Default cap = 2 (professional standard).
+    """
+    if max_per_sector is None:
+        max_per_sector = int(os.getenv("MAX_POSITIONS_PER_SECTOR", "2"))
+
+    default = {"blocked": False, "count": 0, "max": max_per_sector, "reason": "OK"}
+    try:
+        if not candidate_sector or candidate_sector == "OTHERS" or not holdings:
+            return default
+
+        cand = str(candidate_sector).strip().upper()
+        same_sector = [
+            h for h in holdings
+            if str(h.get("sector", "") or "").strip().upper() == cand
+        ]
+        count = len(same_sector)
+
+        if count >= max_per_sector:
+            return {
+                "blocked": True, "count": count, "max": max_per_sector,
+                "reason": f"SECTOR_CAP({cand}: {count}/{max_per_sector})",
+            }
+        return {"blocked": False, "count": count, "max": max_per_sector,
+                "reason": f"OK ({cand}: {count}/{max_per_sector})"}
+    except Exception as e:
+        _log(f"[WARN] check_sector_concentration failed: {e}")
+        return default
 
 
 def kelly_position_size(entry: float, stop: float, capital: float,
@@ -5545,7 +6112,21 @@ def compute_all_factors(symbol: str, df,
             except Exception:
                 rotation_hit = False
             rotation_adj, sector_status = sector_rotation_score(sector, sector_rotation)
-        result["sector_strength"] = max(0, min(100, 50 + rotation_adj))
+        # Phase C5 (rating ≥ 9.0): if sector is unmapped ("OTHERS"/"" ) AND
+        # we couldn't find it in the rotation map, treat sector_strength as
+        # MISSING (None). compute_base_confidence redistributes weight to
+        # avoid diluting toward neutral 50 for well-behaving mid-caps whose
+        # industry simply isn't in sector_master.csv yet.
+        _sec_unmapped = (
+            not sector
+            or str(sector).strip().upper() in ("OTHERS", "OTHER", "UNKNOWN", "")
+        )
+        if _sec_unmapped and not rotation_hit:
+            result["sector_strength"] = None
+            result["sector_missing"]  = True
+        else:
+            result["sector_strength"] = max(0, min(100, 50 + rotation_adj))
+            result["sector_missing"]  = False
         result["sector_status"]   = sector_status
         # Phase 4 (2026-07-01): surface rotation velocity + 5d rank delta on
         # the stock dict so Gate 9 (SECTOR_LAGGING) and Telegram formatters can
@@ -5581,7 +6162,11 @@ def compute_all_factors(symbol: str, df,
         result["rs_diff21"]   = round(rs_diff21, 2)
 
         # ── Factor 6: News Risk (placeholder — filled by pipeline after AI) ──
-        result["news_risk"] = 50
+        # Phase C5 (rating ≥ 9.0): use None (MISSING) instead of 50 so
+        # compute_base_confidence redistributes weight instead of diluting.
+        # The pipeline overwrites this with a real score for the top 40 stocks
+        # (AI-derived: 100 if NO_NEWS, lower if penalty > 0).
+        result["news_risk"] = None
 
         # ── Factor 7: Risk / Reward ──
         entry = round(last, 2)
@@ -5700,8 +6285,18 @@ def compute_all_factors(symbol: str, df,
         result["rsi14"]           = round(rsi, 1)
 
         # ── factor_scores mirror dict — used by format_confidence_breakdown() ──
-        result["factor_scores"] = {k: round(float(result.get(k, 50) or 50), 1)
-                                    for k in FACTOR_WEIGHTS}
+        # Phase C5 (rating ≥ 9.0): preserve None (MISSING) so downstream code
+        # can distinguish "measured neutral 50" from "not measured at all".
+        # compute_base_confidence uses this signal to redistribute weight
+        # instead of diluting toward neutral 50.
+        def _mirror(v):
+            if v is None:
+                return None
+            try:
+                return round(float(v), 1)
+            except (TypeError, ValueError):
+                return None
+        result["factor_scores"] = {k: _mirror(result.get(k)) for k in FACTOR_WEIGHTS}
 
     except Exception as e:
         _log(f"[WARN] compute_all_factors failed for {symbol}: {e}")
@@ -5817,20 +6412,51 @@ def monitor_portfolio(holdings: list, price_data: dict, regime: str) -> list:
         # Phase C4 (Gap #6): partial-exit-at-T1 recognition from holdings CSV.
         # If holdings has a "partial_closed" flag from an earlier day, don't
         # re-suggest T1_PARTIAL_EXIT — instead show TRAIL_STOP for the residual.
-        partial_done = bool(holding.get("partial_closed", False))
+        partial_done  = bool(holding.get("partial_closed", False))
+        # Phase E1a: recognize a runner position from holdings CSV. Once T2 has
+        # been hit and a runner is riding, alerts should suggest RUNNER_TRAIL
+        # (not a stale "EXIT_FULL at T2") unless the price actually crossed
+        # the current trailed stop.
+        runner_active = bool(holding.get("runner_active", False))
         if stop > 0 and current <= stop:
-            alerts.append({**base, "action": "EXIT",       "reason": "HARD_STOP_HIT"})
+            reason = "RUNNER_TRAIL_HIT" if runner_active else "HARD_STOP_HIT"
+            alerts.append({**base, "action": "EXIT", "reason": reason})
         elif regime in ("BEAR", "STRONG_BEAR"):
             alerts.append({**base, "action": "EXIT",       "reason": "REGIME_BEAR"})
+        elif runner_active:
+            # Runner is active. Suggest the trail action; the tracker's chandelier
+            # rules (in update_tracker) decide when to actually exit.
+            atr_mult = _effective_runner_atr_mult(regime)
+            alerts.append({
+                **base,
+                "action": "RUNNER_TRAIL",
+                "reason": f"POST_T2_RUNNER · chandelier trail ATR×{atr_mult:.1f} · stop ₹{stop:.2f}",
+            })
         elif target2 > 0 and current >= target2:
-            alerts.append({**base, "action": "EXIT_FULL",  "reason": "TARGET2_HIT"})
+            # E1a: if runner mode is on AND T1 was already booked, this is
+            # runner-entry, not full-exit. Otherwise legacy full exit.
+            if _runner_enabled(regime) and partial_done:
+                rp_pct = max(0.0, min(100.0, RUNNER_PARTIAL_PCT))
+                alerts.append({
+                    **base,
+                    "action": "T2_RUNNER_START",
+                    "reason": f"TARGET2_HIT · book {rp_pct:.0f}% of residual · runner rides chandelier",
+                    "runner_partial_pct": rp_pct,
+                })
+            else:
+                alerts.append({**base, "action": "EXIT_FULL",  "reason": "TARGET2_HIT"})
         elif not partial_done and target1 > 0 and current >= target1:
-            # First time T1 is hit — book 50%, trail rest to entry (break-even)
+            # First time T1 is hit — book PARTIAL_EXIT_PCT, trail rest
             pe_pct = float(os.getenv("PARTIAL_EXIT_PCT", "50"))
+            if TRAIL_MODE == "atr":
+                mult = _effective_trail_atr_mult(regime)
+                trail_desc = f"ATR trail (×{mult:.1f})"
+            else:
+                trail_desc = f"break-even ₹{entry:.2f}"
             alerts.append({
                 **base,
                 "action": "T1_PARTIAL_EXIT",
-                "reason": f"TARGET1_HIT · sell {pe_pct:.0f}% @ ~₹{current:.2f} · trail residual stop to entry ₹{entry:.2f}",
+                "reason": f"TARGET1_HIT · sell {pe_pct:.0f}% @ ~₹{current:.2f} · trail residual via {trail_desc}",
                 "partial_exit_pct":   pe_pct,
                 "trail_stop_to":      entry,
                 "residual_target":    target2,
@@ -5920,10 +6546,40 @@ def run_gates(stock: dict, regime: str, thresholds: dict,
     if thresh["max_buys"] == 0:
         return {"decision": "REJECTED", "fail_reasons": ["REGIME_NO_BUY"], "warnings": []}
 
-    # Gate 6: Confidence (HARD)
+    # Gate 5b (Phase C7): Kill switch — portfolio-level circuit breaker.
+    # If the equity curve is bleeding (3 consec losses, -2% day, -3% week,
+    # or ≥10% drawdown), HALT all new BUYs until the pause window expires.
+    # Never blocks WATCHLIST — losing streaks don't invalidate the setup,
+    # they just say "not now". Read once via portfolio_context to avoid
+    # recomputing per stock.
+    ks = (portfolio or {}).get("kill_switch") or {}
+    if ks.get("buys_paused"):
+        fail_reasons.append(f"KILL_SWITCH({ks.get('reason', 'ACTIVE')})")
+        warnings.append(f"KILL_SWITCH_ACTIVE: {ks.get('reason', '?')}")
+
+    # Gate 6: Confidence (HARD with grace band)
+    # Phase C5 (rating ≥ 9.0): if conf is within 1.0 pt of the threshold AND
+    # the stock already comfortably exceeds TQ + R/R thresholds, accept it as
+    # a MARGINAL_CONF pass rather than a rigid reject. Prevents the "cliff at
+    # 81.5 for a BULL threshold of 82" scenario where a legit setup dies for
+    # 0.5 pt of confidence dilution while its trade-quality is 85+ and R/R 2.4x.
     conf = stock.get("final_confidence", 0)
-    if conf < thresh["min_confidence"]:
-        fail_reasons.append(f"CONF_FAIL(got {conf:.1f}, need {thresh['min_confidence']})")
+    _min_conf = thresh["min_confidence"]
+    _grace    = 1.0
+    _tq_prev  = stock.get("trade_quality_score", 0)
+    _rr_prev  = stock.get("rr_ratio", 0)
+    _quality_bonus = (
+        _tq_prev >= thresh["min_tq"] + 2.0
+        and _rr_prev >= thresh["min_rr"] + 0.2
+    )
+    if conf < _min_conf:
+        if conf >= _min_conf - _grace and _quality_bonus:
+            warnings.append(
+                f"MARGINAL_CONF({conf:.1f}<{_min_conf}, grace-band; "
+                f"TQ {_tq_prev:.1f} & R/R {_rr_prev:.2f}x compensate)"
+            )
+        else:
+            fail_reasons.append(f"CONF_FAIL(got {conf:.1f}, need {_min_conf})")
 
     # Gate 7: Trade Quality (HARD)
     tq = stock.get("trade_quality_score", 0)
@@ -6021,6 +6677,19 @@ def run_gates(stock: dict, regime: str, thresholds: dict,
         elif worst_corr >= 0.60:
             warnings.append(f"MODERATE_CORR_{worst_corr:.2f}_WITH_{corr_sym.replace('.NS','')}")
 
+    # Gate 14b (Phase C7): Sector concentration cap (SOFT — watchlist-eligible).
+    # Correlation gate catches pair-wise ticker linkage, but does NOT catch
+    # "3 IT stocks all riding the same Nifty-IT tailwind". This caps open
+    # positions per sector to MAX_POSITIONS_PER_SECTOR (default 2). Soft-fail
+    # so the setup can still reach WATCHLIST — user can promote later when a
+    # sector slot frees up.
+    if holdings:
+        _cand_sector = stock.get("sector") or get_sector(stock.get("symbol", ""))
+        _sc = check_sector_concentration(_cand_sector, holdings)
+        if _sc.get("blocked"):
+            fail_reasons.append(_sc["reason"])
+            warnings.append(f"SECTOR_CONCENTRATION: {_sc['reason']}")
+
     # Gate 15: Delivery Quality (SOFT — pump detection & institutional exit)
     # Phase C3 (2026-07-02): only fires when we actually got real nselib
     # delivery data (source == "nselib"). Two cases:
@@ -6071,15 +6740,32 @@ def run_gates(stock: dict, regime: str, thresholds: dict,
         # Phase C3 (2026-07-02): INSTITUTIONAL_EXIT also soft-scoreable
         # (allow watchlist tier for post-distribution rebounds). SUSPECT_PUMP
         # stays HARD because pump patterns rarely recover cleanly.
+        # Phase C7 (2026-07-02): SECTOR_CAP is soft — cap will free up over
+        # days as positions close, so a valid setup should be preserved on
+        # watchlist rather than lost. KILL_SWITCH stays HARD (portfolio-wide
+        # halt) — a losing streak invalidates *entries*, but a setup that
+        # survives to next session is still tracked, so we push to WATCHLIST
+        # only via the same soft-fail path (see soft_only clause below).
         soft_only = all(
             "EVENT_BLOCK" in f or "HIGH_CORR" in f or "SECTOR_LAGGING" in f
-            or "INSTITUTIONAL_EXIT" in f
+            or "INSTITUTIONAL_EXIT" in f or "SECTOR_CAP" in f
+            or "KILL_SWITCH" in f
+            for f in scoreable_fails
+        )
+        # Phase C6 (2026-07-02): make the "score-based fail" whitelist EXPLICIT
+        # instead of relying on the substring match `"FAIL" in f`, which was
+        # accidental and fragile (any future gate whose label happens to contain
+        # the substring "FAIL" would auto-qualify for watchlist).
+        # Explicit whitelist of score-based fails that CAN reach watchlist:
+        SCORE_FAIL_TAGS = ("CONF_FAIL", "TQ_FAIL", "RR_FAIL")
+        score_based = all(
+            any(tag in f for tag in SCORE_FAIL_TAGS)
             for f in scoreable_fails
         )
         if not scoreable_fails:
             # Only PORTFOLIO_FULL failed — valid setup, just no room
             decision = "WATCHLIST"
-        elif len(scoreable_fails) <= 2 and (soft_only or all("FAIL" in f for f in scoreable_fails)):
+        elif len(scoreable_fails) <= 2 and (soft_only or score_based):
             decision = "WATCHLIST"
         else:
             decision = "REJECTED"
@@ -6256,7 +6942,8 @@ def get_stock_rr(stock: dict, levels: dict) -> float:
     return 0.0
 
 
-def classify_watchlist(stock: dict, regime: str, thresholds: dict) -> dict:
+def classify_watchlist(stock: dict, regime: str, thresholds: dict,
+                        conf_history: dict = None) -> dict:
     thresh   = (thresholds or REGIME_THRESHOLDS)[regime]
     min_conf = thresh["min_confidence"]
     conf     = stock.get("final_confidence", 0)
@@ -6268,6 +6955,26 @@ def classify_watchlist(stock: dict, regime: str, thresholds: dict) -> dict:
 
     # Always compute price levels — every watchlist entry shows them
     levels = calculate_watchlist_levels(stock)
+
+    # Phase C5 (rating ≥ 9.0): trajectory awareness for tier assignment.
+    # Split a static NEAR_MISS into RISING vs FADING using 3-day conf history.
+    # A stock at 78 conf climbing 72→75→78 is a much stronger watch target
+    # than one at 78 falling 85→82→78. `traj` ∈ {"RISING","FADING","FLAT",""}.
+    traj = ""
+    traj_delta = 0.0
+    try:
+        sym = stock.get("symbol", "")
+        confs = ((conf_history or {}).get(sym) or {}).get("confs", []) or []
+        if len(confs) >= 2:
+            traj_delta = float(confs[-1]) - float(confs[0])
+            if traj_delta >= 3.0:
+                traj = "RISING"
+            elif traj_delta <= -3.0:
+                traj = "FADING"
+            else:
+                traj = "FLAT"
+    except Exception:
+        pass
 
     base = {
         "conf":     conf,
@@ -6284,16 +6991,29 @@ def classify_watchlist(stock: dict, regime: str, thresholds: dict) -> dict:
         "current":  levels["current"],
         "fail_reasons": stock.get("fail_reasons", []),
         "warnings":     stock.get("warnings", []),
+        "trajectory":    traj,
+        "traj_delta":    round(traj_delta, 1),
     }
 
-    # Tier logic: relative to regime gap size (not absolute confidence)
-    # NEAR_MISS  = gap <= 15  (within striking distance — watch daily)
-    # DEVELOPING = gap <= 25  (building — watch weekly)
-    # MONITOR    = gap > 25   (early stage — track loosely)
+    # Tier logic — trajectory-aware (Phase C5):
+    #   NEAR_MISS_RISING  : gap ≤ 15 AND traj == RISING     → prioritize (2d watch)
+    #   NEAR_MISS         : gap ≤ 15 AND traj != FADING     → standard (3d watch)
+    #   NEAR_MISS_FADING  : gap ≤ 15 AND traj == FADING     → deprioritize (5d watch)
+    #   DEVELOPING        : gap ≤ 25 AND tq >= 70           → weekly watch
+    #   MONITOR           : gap  > 25                       → early stage
     if conf_gap <= 15 and tq >= thresh["min_tq"] - 5:
-        return {**base, "tier": "NEAR_MISS",
-                "note": f"Needs +{conf_gap:.1f} conf. Watch for volume trigger.",
-                "days_to_watch": 3, "watch_days": 3}
+        if traj == "RISING":
+            return {**base, "tier": "NEAR_MISS_RISING",
+                    "note": f"↑ Trajectory rising ({traj_delta:+.1f}). Watch daily — trigger imminent.",
+                    "days_to_watch": 2, "watch_days": 2}
+        elif traj == "FADING":
+            return {**base, "tier": "NEAR_MISS_FADING",
+                    "note": f"↓ Trajectory fading ({traj_delta:+.1f}). Needs re-entry signal to re-qualify.",
+                    "days_to_watch": 5, "watch_days": 5}
+        else:
+            return {**base, "tier": "NEAR_MISS",
+                    "note": f"Needs +{conf_gap:.1f} conf. Watch for volume trigger.",
+                    "days_to_watch": 3, "watch_days": 3}
     elif conf_gap <= 25 and tq >= 70:
         return {**base, "tier": "DEVELOPING",
                 "note": f"TQ {tq:.1f} building. Conf gap {conf_gap:.1f}.",
@@ -6309,6 +7029,10 @@ def classify_watchlist(stock: dict, regime: str, thresholds: dict) -> dict:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def load_persistent_watchlist() -> dict:
+    # Phase C7c: FRESH_START wipes persistent watchlist for one run
+    if FRESH_START:
+        _log("[FRESH_START] load_persistent_watchlist → returning {} (old watchlist_persist.json ignored)")
+        return {}
     try:
         if os.path.exists(WATCHLIST_FILE):
             with open(WATCHLIST_FILE, "r") as f:
@@ -6374,6 +7098,10 @@ def tag_repeat_buy_signals(buys: list, tracker_entries: list) -> list:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def load_tracker() -> list:
+    # Phase C7c: FRESH_START wipes tracker state for one run
+    if FRESH_START:
+        _log("[FRESH_START] load_tracker → returning empty list (old tracker.json ignored)")
+        return []
     try:
         if os.path.exists(TRACKER_FILE):
             with open(TRACKER_FILE, "r") as f:
@@ -6418,6 +7146,19 @@ def add_to_tracker(entries: list, stock: dict, sig_type: str) -> list:
         "close_date":      None,
         "max_gain_pct":    0.0,
         "max_loss_pct":    0.0,
+        # Phase E1 runner-mode fields (default off — populated when T1/T2 hit)
+        "partial_closed":       False,
+        "partial_exit_pct":     0.0,
+        "partial_exit_price":   0.0,
+        "partial_exit_date":    None,
+        "partial_exit_pnl_pct": 0.0,
+        "runner_active":        False,
+        "runner_partial_pct":   0.0,
+        "runner_partial_price": 0.0,
+        "runner_partial_pnl":   0.0,
+        "runner_high_water":    0.0,
+        "t2_hit_date":          None,
+        "trail_note":           "",
     }
     entries.append(entry)
     return entries
@@ -6444,7 +7185,32 @@ def update_tracker_trailing_stop(entries: list) -> list:
 
 
 def update_tracker(entries: list) -> tuple:
+    """Daily update for the v1 flat tracker (tracker.json).
+
+    Phase E1 (2026-07-02): 5-layer professional exit stack — see the config
+    block near IS_SCHEDULED for the full description. Every layer is
+    env-gated; when a layer's flag is off, its rule is a no-op and the legacy
+    behavior applies.
+
+    Legacy behavior (all flags off, default):
+      • close ≤ stop            → EXIT full  (STOP_HIT / STOP_HIT_RESIDUAL)
+      • close ≥ t2              → EXIT full  (TARGET2_HIT)
+      • close ≥ t1 (first time) → book PARTIAL_EXIT_PCT, trail residual to entry
+      • no time exit here (v1 tracker has no time-decay closure)
+
+    E1a (RUNNER_MODE_ENABLED=true): at T2, book RUNNER_PARTIAL_PCT of the
+    residual and let the runner ride a chandelier trail until trail-hit,
+    trend-break, volume-fade, or RUNNER_MAX_DAYS.
+
+    E1b (TRAIL_MODE=atr): after T1, trail residual with a ratcheted
+    max(entry, close − TRAIL_ATR_MULT × ATR14) instead of a hard break-even.
+
+    E1d (REGIME_AWARE_EXITS=true): in risk-off regimes, runner is skipped
+    and trail multiplier is tightened by REGIME_TIGHTEN_FACTOR.
+    """
     closed_today = []
+    today_iso = datetime.date.today().isoformat()
+    regime = _current_exit_regime()
     for e in entries:
         if e["status"] != "OPEN":
             continue
@@ -6464,45 +7230,189 @@ def update_tracker(entries: list) -> tuple:
                 e["max_gain_pct"] = chg_pct
             if chg_pct < e["max_loss_pct"]:
                 e["max_loss_pct"] = chg_pct
-            # Phase C4 (Gap #6): partial-exit-at-T1 pattern.  At T1 → close 50%,
-            # trail stop of the residual 50% up to entry (break-even), and let
-            # it run to T2 or a trailing stop.
-            # State: e["partial_closed"] is True after T1 has fired once.
-            partial_done = bool(e.get("partial_closed", False))
-            close_reason = None
-            if stop > 0 and current <= stop:
-                # Hard stop hit — close whatever's left
-                close_reason = "STOP_HIT" if not partial_done else "STOP_HIT_RESIDUAL"
-            elif t2 > 0 and current >= t2:
-                # Full target hit — close residual
-                close_reason = "TARGET2_HIT"
-            elif not partial_done and t1 > 0 and current >= t1:
-                # First time crossing T1 — record the partial exit and continue running
-                e["partial_closed"]   = True
-                e["partial_exit_pct"] = float(os.getenv("PARTIAL_EXIT_PCT", "50"))
-                e["partial_exit_price"] = current
-                e["partial_exit_date"]  = datetime.date.today().isoformat()
-                e["partial_exit_pnl_pct"] = chg_pct
-                # Trail stop of the residual up to entry price (break-even)
-                if entry_px > stop:
-                    e["stop"] = entry_px
-                    e["trail_note"] = (
-                        f"T1 hit @ ₹{current:.2f} (+{chg_pct:.1f}%). "
-                        f"Sold {e['partial_exit_pct']:.0f}% · trailed rest to entry ₹{entry_px:.2f}"
-                    )
-                # Not closed — position remains OPEN with residual 50%
+
+            # State flags carried across days
+            partial_done  = bool(e.get("partial_closed", False))
+            runner_active = bool(e.get("runner_active", False))
+            close_reason  = None
+
+            # Fetch richer context only if any advanced layer is enabled
+            ctx = {}
+            if (TRAIL_MODE == "atr" and partial_done) or (runner_active) or (
+                RUNNER_MODE_ENABLED and t2 > 0 and current >= t2 and partial_done
+            ):
+                ctx = _compute_exit_context(e["symbol"])
+
+            # ── PATH A: runner already active (post-T2 tail) ──────────────
+            if runner_active:
+                hw = float(e.get("runner_high_water", current) or current)
+                if current > hw:
+                    hw = current
+                    e["runner_high_water"] = round(hw, 2)
+                # Chandelier trail: max(entry, hw − mult × ATR)
+                atr14 = float(ctx.get("atr14", 0.0) or 0.0)
+                mult  = _effective_runner_atr_mult(regime)
+                trail = max(entry_px, round(hw - mult * atr14, 2)) if atr14 > 0 else float(e.get("stop", entry_px) or entry_px)
+                if trail > float(e.get("stop", 0) or 0):
+                    e["stop"] = trail
+
+                # ── F5: Runner "moonshot" scaling ─────────────────────────
+                # When a runner has run +N% above T2 on strong volume, book
+                # RUNNER_SCALE_BOOK_PCT of what's left to lock the exceptional
+                # move. Only fires ONCE per position (runner_scale_done flag).
+                if (RUNNER_SCALE_ENABLED
+                        and t2 > 0
+                        and not e.get("runner_scale_done", False)
+                        and current >= t2 * (1.0 + RUNNER_SCALE_TRIGGER_PCT / 100.0)):
+                    vols = ctx.get("avg_vol20", 0.0) or 0.0
+                    last_vol = ctx.get("last_volume", vols) or vols
+                    vol_ok = (vols > 0 and last_vol >= vols * RUNNER_SCALE_VOL_MULT) or vols == 0
+                    if vol_ok:
+                        rs_pct = max(0.0, min(100.0, RUNNER_SCALE_BOOK_PCT))
+                        # Runner P&L at the scale point (relative to entry)
+                        rs_pnl = round((current - entry_px) / entry_px * 100, 2) if entry_px else 0.0
+                        e["runner_scale_done"]       = True
+                        e["runner_scale_pct"]        = rs_pct
+                        e["runner_scale_price"]      = round(current, 2)
+                        e["runner_scale_date"]       = today_iso
+                        e["runner_scale_pnl_pct"]    = rs_pnl
+                        e["trail_note"] = (e.get("trail_note", "") +
+                                           f" F5: booked {rs_pct:.0f}% @ ₹{current:.2f} (+{rs_pnl:.1f}%)").strip()
+
+                # Exit rules on the runner
+                days_in_runner = 0
+                try:
+                    days_in_runner = (datetime.date.today() -
+                                      datetime.date.fromisoformat(str(e.get("t2_hit_date", today_iso))[:10])).days
+                except Exception:
+                    pass
+
+                # ── F7b: Parabolic single-day blow-off exit ──────────────
+                # A single-day gain >= PARABOLIC_DAY_PCT on ≥N×20d volume is
+                # a classic distribution / exhaustion signal — book profit.
+                parabolic_hit = False
+                if PARABOLIC_EXIT_ENABLED and not e.get("parabolic_done", False):
+                    prev_close = ctx.get("prev_close", 0.0) or 0.0
+                    if prev_close > 0:
+                        day_pct = (current - prev_close) / prev_close * 100
+                        vols = ctx.get("avg_vol20", 0.0) or 0.0
+                        last_vol = ctx.get("last_volume", vols) or vols
+                        vol_ok = (vols > 0 and last_vol >= vols * PARABOLIC_VOL_MULT)
+                        if day_pct >= PARABOLIC_DAY_PCT and vol_ok:
+                            parabolic_hit = True
+                            e["parabolic_done"] = True
+                            e["parabolic_date"]  = today_iso
+                            e["parabolic_price"] = round(current, 2)
+
+                if current <= trail:
+                    close_reason = "RUNNER_TRAIL_HIT"
+                elif parabolic_hit:
+                    close_reason = "PARABOLIC_BLOWOFF"
+                elif ctx.get("below_ema_streak", 0) >= RUNNER_TREND_BREAK_DAYS:
+                    close_reason = "RUNNER_TREND_BREAK"
+                elif ctx.get("low_vol_streak", 0) >= RUNNER_VOL_FADE_DAYS:
+                    close_reason = "RUNNER_VOLUME_FADE"
+                elif days_in_runner >= RUNNER_MAX_DAYS:
+                    close_reason = "RUNNER_MAX_DAYS"
+                elif stop > 0 and current <= stop:
+                    close_reason = "RUNNER_TRAIL_HIT"
+
+            # ── PATH B: legacy — hard stop / T2 exit / T1 partial ─────────
+            if not close_reason and not runner_active:
+                if stop > 0 and current <= stop:
+                    close_reason = "STOP_HIT" if not partial_done else "STOP_HIT_RESIDUAL"
+                elif t2 > 0 and current >= t2:
+                    # E1a: runner mode? convert to runner instead of closing
+                    if _runner_enabled(regime) and partial_done:
+                        # Book RUNNER_PARTIAL_PCT of what's left; the rest rides
+                        rp_pct = max(0.0, min(100.0, RUNNER_PARTIAL_PCT))
+                        e["runner_active"]         = True
+                        e["t2_hit_date"]           = today_iso
+                        e["runner_partial_pct"]    = rp_pct
+                        e["runner_partial_price"]  = current
+                        e["runner_partial_pnl"]    = chg_pct
+                        e["runner_high_water"]     = current
+                        # Trail stop starts at entry (never below) — tightens daily via PATH A
+                        atr14 = float(ctx.get("atr14", 0.0) or 0.0)
+                        mult  = _effective_runner_atr_mult(regime)
+                        init_trail = max(entry_px, round(current - mult * atr14, 2)) if atr14 > 0 else entry_px
+                        if init_trail > float(e.get("stop", 0) or 0):
+                            e["stop"] = init_trail
+                        e["trail_note"] = (
+                            f"T2 hit @ ₹{current:.2f} (+{chg_pct:.1f}%). "
+                            f"Booked {rp_pct:.0f}% of residual · runner riding chandelier "
+                            f"(ATR×{mult:.1f}) from ₹{init_trail:.2f}"
+                        )
+                        # Not closed — continue riding
+                    else:
+                        close_reason = "TARGET2_HIT"
+                elif not partial_done and t1 > 0 and current >= t1:
+                    # First-time T1: book PARTIAL_EXIT_PCT, then trail residual
+                    e["partial_closed"]       = True
+                    e["partial_exit_pct"]     = float(os.getenv("PARTIAL_EXIT_PCT", "50"))
+                    e["partial_exit_price"]   = current
+                    e["partial_exit_date"]    = today_iso
+                    e["partial_exit_pnl_pct"] = chg_pct
+                    # E1b: ATR trail vs. break-even
+                    if TRAIL_MODE == "atr":
+                        atr14 = float(ctx.get("atr14", 0.0) or 0.0)
+                        mult  = _effective_trail_atr_mult(regime)
+                        atr_trail = round(current - mult * atr14, 2) if atr14 > 0 else entry_px
+                        new_stop = max(entry_px, atr_trail)
+                        if new_stop > stop:
+                            e["stop"] = new_stop
+                            e["trail_note"] = (
+                                f"T1 hit @ ₹{current:.2f} (+{chg_pct:.1f}%). "
+                                f"Sold {e['partial_exit_pct']:.0f}% · ATR trail (×{mult:.1f}) → ₹{new_stop:.2f}"
+                            )
+                    else:
+                        # legacy break-even
+                        if entry_px > stop:
+                            e["stop"] = entry_px
+                            e["trail_note"] = (
+                                f"T1 hit @ ₹{current:.2f} (+{chg_pct:.1f}%). "
+                                f"Sold {e['partial_exit_pct']:.0f}% · trailed rest to entry ₹{entry_px:.2f}"
+                            )
+                    # residual OPEN
+                elif partial_done and TRAIL_MODE == "atr":
+                    # E1b daily ratchet after T1 — before T2, keep tightening the ATR trail
+                    if not ctx:
+                        ctx = _compute_exit_context(e["symbol"])
+                    atr14 = float(ctx.get("atr14", 0.0) or 0.0)
+                    if atr14 > 0:
+                        mult  = _effective_trail_atr_mult(regime)
+                        new_stop = max(entry_px, round(current - mult * atr14, 2))
+                        if new_stop > stop:
+                            e["stop"] = new_stop
+                            e["trail_note"] = (
+                                f"ATR trail ratchet (×{mult:.1f}) → ₹{new_stop:.2f}"
+                            )
+
+            # ── Close if any layer decided so ─────────────────────────────
             if close_reason:
                 e["status"]        = "CLOSED"
                 e["close_reason"]  = close_reason
                 e["close_price"]   = current
-                e["close_date"]    = datetime.date.today().isoformat()
+                e["close_date"]    = today_iso
                 e["final_pnl_pct"] = chg_pct
-                # If partial exit happened earlier, blend the realized PnL:
-                # blended = partial% * partial_pnl + (100-partial%) * final_pnl
+                # Blended P&L across the exit sequence
+                pieces = []
                 if partial_done:
-                    pe = float(e.get("partial_exit_pct", 50.0)) / 100.0
+                    pe = float(e.get("partial_exit_pct", 0.0)) / 100.0
                     pp = float(e.get("partial_exit_pnl_pct", 0.0))
-                    blended = pe * pp + (1.0 - pe) * chg_pct
+                    pieces.append((pe, pp))
+                if runner_active or e.get("t2_hit_date"):
+                    rp = float(e.get("runner_partial_pct", 0.0)) / 100.0
+                    # runner partial is a % of the RESIDUAL (i.e., what remained after T1 partial).
+                    residual_frac = 1.0 - float(e.get("partial_exit_pct", 0.0)) / 100.0
+                    rp_of_total   = rp * residual_frac
+                    pp_r          = float(e.get("runner_partial_pnl", 0.0))
+                    if rp_of_total > 0:
+                        pieces.append((rp_of_total, pp_r))
+                booked_frac = sum(w for w, _ in pieces)
+                remaining   = max(0.0, 1.0 - booked_frac)
+                blended = sum(w * p for w, p in pieces) + remaining * chg_pct
+                if pieces:
                     e["blended_pnl_pct"] = round(blended, 2)
                 closed_today.append(e)
         except Exception as ex:
@@ -6557,6 +7467,10 @@ def _entry_block(e: dict) -> list:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def load_tracker_v2() -> dict:
+    # Phase C7c: FRESH_START wipes tracker v2 state for one run
+    if FRESH_START:
+        _log("[FRESH_START] load_tracker_v2 → returning empty structure (old trade_tracker.json ignored)")
+        return {"buys": [], "watchlist": [], "completed": [], "performance": {}}
     try:
         if os.path.exists(TRADE_TRACKER_V2_FILE):
             with open(TRADE_TRACKER_V2_FILE, "r") as f:
@@ -6577,7 +7491,16 @@ def save_tracker_v2(tracker: dict) -> None:
 def initialize_tracker_if_new() -> dict:
     """
     Called at pipeline start. Seeds Jun 25 data if no tracker v2 file exists yet.
+    Phase C7c: FRESH_START skips both the file load AND the Jun 25 seed data —
+    returns a truly empty tracker so the next pipeline run builds from zero.
     """
+    if FRESH_START:
+        _log("[FRESH_START] initialize_tracker_if_new → returning empty tracker (no Jun 25 seed)")
+        empty = {"buys": [], "watchlist": [], "completed": [], "performance": {}}
+        # Do NOT save yet — let the pipeline's own save_tracker_v2 call at end-of-run
+        # persist whatever fresh state builds up during this run.
+        return empty
+
     if os.path.exists(TRADE_TRACKER_V2_FILE):
         return load_tracker_v2()
 
@@ -6617,6 +7540,151 @@ def initialize_tracker_if_new() -> dict:
     return tracker
 
 
+# ─── Phase C7 (2026-07-02): Loss-reason classifier ──────────────────────────
+# Post-mortem tag applied when a position closes. Reads pos.pnl_history to
+# figure out HOW the loss developed (slow bleed vs gap-down vs quick reversal)
+# so weekly summary can surface patterns and expose gaps in the gate system.
+# Additive only — never affects trade decisions, only the audit trail.
+def classify_loss_reason(pos: dict) -> str:
+    """Return a category tag explaining WHY a closed position ended where it did.
+
+    Categories:
+      T2_TARGET_HIT       — clean win (legacy hard T2)
+      T1_TARGET_HIT       — partial win
+      RUNNER_TRAIL_HIT    — post-T2 chandelier trail closed the runner
+      RUNNER_TREND_BREAK  — runner closed on EMA-break trend failure
+      RUNNER_VOLUME_FADE  — runner closed on 3+ low-volume days
+      RUNNER_MAX_DAYS     — runner hit the RUNNER_MAX_DAYS ceiling
+      STOP_GAP_DOWN       — closed below stop on a single-bar gap (>3% drop)
+      STOP_SLOW_BLEED     — drifted to stop over 5+ days
+      STOP_QUICK_REVERSAL — hit stop within 3 days (thesis broken fast)
+      TIME_EXPIRED_FLAT   — 15-day timeout with tiny P&L (setup died sideways)
+      TIME_EXPIRED_LOSING — 15-day timeout in the red (never worked)
+      TIME_EXPIRED_WINNING — 15-day timeout in green but never hit T1
+      TIME_EXPIRED_STALLED / TIME_EXPIRED_STAGNATION / TIME_EXPIRED_HARDCAP
+                          — Phase E1c conditional-mode categories
+      UNKNOWN             — insufficient data
+    """
+    try:
+        status   = pos.get("status", "")
+        final    = float(pos.get("final_pnl", 0) or 0)
+        history  = pos.get("pnl_history", []) or []
+
+        # If a close_reason was already recorded by a runner exit path,
+        # trust it — the granular category is more informative than a generic tag.
+        pre = pos.get("close_reason")
+        if pre and pre.startswith(("RUNNER_", "TIME_EXPIRED_", "PARABOLIC_")):
+            return pre
+
+        if status == "T2_HIT":
+            return "T2_TARGET_HIT"
+        if status == "T1_HIT":
+            return "T1_TARGET_HIT"
+        if status == "RUNNER_CLOSED":
+            return pre or "RUNNER_TRAIL_HIT"
+
+        if status == "STOPPED_OUT":
+            # Look at pnl_history to distinguish gap-down vs bleed vs reversal
+            if not history or len(history) < 2:
+                return "STOP_QUICK_REVERSAL"
+            days_held = len(history)
+            last_pnl  = float(history[-1].get("pnl", final) or final)
+            prev_pnl  = float(history[-2].get("pnl", last_pnl) or last_pnl)
+            # Single-bar drop of >3% = gap down
+            if prev_pnl - last_pnl >= 3.0:
+                return "STOP_GAP_DOWN"
+            if days_held <= 3:
+                return "STOP_QUICK_REVERSAL"
+            return "STOP_SLOW_BLEED"
+
+        if status == "EXPIRED":
+            if final < -1.5:
+                return "TIME_EXPIRED_LOSING"
+            if final > 1.5:
+                return "TIME_EXPIRED_WINNING"
+            return "TIME_EXPIRED_FLAT"
+
+        return "UNKNOWN"
+    except Exception:
+        return "UNKNOWN"
+
+
+def summarize_loss_reasons(tracker: dict) -> dict:
+    """Return {category: count} across all completed positions."""
+    from collections import Counter
+    completed = tracker.get("completed", []) if isinstance(tracker, dict) else []
+    tags = [
+        pos.get("close_reason") or classify_loss_reason(pos)
+        for pos in completed
+    ]
+    return dict(Counter(tags))
+
+
+def add_to_tracker_v2(tracker: dict, stock: dict, regime: str = "") -> dict:
+    """Append a fresh BUY into tracker_v2['buys'] using the v2 shape.
+
+    Idempotent per (symbol, rec_date) — if this symbol already has an ACTIVE
+    entry from earlier today it's not duplicated. The v2 shape is what the
+    rest of the codebase (update_tracker_v2_pnl, compute_kill_switch_state,
+    weekly_summary_job, morning_check) expects: rec_date, entry, stop,
+    target1/2, confidence, tq, regime, status='ACTIVE',
+    *_hit_date=None, days_tracked=1, pnl_history=[].
+
+    Additive-only: does NOT touch scoring, gating, or state math — just
+    persists a signal that already passed the gates. Never raises.
+    """
+    try:
+        today_str = datetime.date.today().isoformat()
+        symbol    = stock.get("symbol", "")
+        if not symbol or not isinstance(tracker, dict):
+            return tracker
+        buys = tracker.setdefault("buys", [])
+        # Dedupe: same symbol + same rec_date + still ACTIVE/T1_HIT
+        for existing in buys:
+            if (existing.get("symbol") == symbol
+                    and str(existing.get("rec_date", ""))[:10] == today_str
+                    and existing.get("status") in ("ACTIVE", "T1_HIT")):
+                return tracker
+
+        buys.append({
+            "symbol":        symbol,
+            "rec_date":      today_str,
+            "entry":         float(stock.get("entry", 0) or 0),
+            "stop":          float(stock.get("stop",  0) or 0),
+            "target1":       float(stock.get("target1", 0) or 0),
+            "target2":       float(stock.get("target2", 0) or 0),
+            "confidence":    round(float(stock.get("final_confidence", 0) or 0), 1),
+            "tq":            round(float(stock.get("trade_quality_score", 0) or 0), 1),
+            "regime":        regime or stock.get("regime", ""),
+            "sector":        stock.get("sector", "OTHERS"),
+            # Position-size % of capital (used by compute_kill_switch_state)
+            "position_pct":  float(stock.get("position_pct", 5.0) or 5.0),
+            "status":        "ACTIVE",
+            "t1_hit_date":   None,
+            "t2_hit_date":   None,
+            "stop_hit_date": None,
+            "expired_date":  None,
+            "days_tracked":  1,
+            "pnl_history":   [],
+            # Phase E1 runner-mode fields — default off; populated when T1/T2 hit
+            "partial_closed":      False,
+            "partial_exit_pct":    0.0,
+            "partial_exit_price":  0.0,
+            "partial_exit_date":   None,
+            "partial_exit_pnl_pct": 0.0,
+            "runner_active":       False,
+            "runner_partial_pct":  0.0,
+            "runner_partial_price": 0.0,
+            "runner_partial_pnl":  0.0,
+            "runner_high_water":   0.0,
+            "runner_close_date":   None,
+            "trail_note":          "",
+        })
+    except Exception as e:
+        _log(f"[WARN] add_to_tracker_v2 failed: {e}")
+    return tracker
+
+
 def update_tracker_v2_pnl(tracker: dict) -> dict:
     """
     Full daily update for tracker v2 (FIX 3):
@@ -6624,8 +7692,18 @@ def update_tracker_v2_pnl(tracker: dict) -> dict:
     - Handles STOP_HIT, T1_HIT, T2_HIT, EXPIRED closings
     - Updates watchlist direction arrows and fills missing levels
     - Recalculates performance stats block
+
+    Phase E1 (2026-07-02): 5-layer professional exit stack integrated.
+    All layers are ENV-GATED — with defaults, this behaves identically to
+    the legacy 'hard-close at T2' version. See config block near IS_SCHEDULED
+    for RUNNER_MODE_ENABLED / TRAIL_MODE / TIME_EXIT_MODE / REGIME_AWARE_EXITS.
+
+    Position lifecycle (all state on `pos` dict):
+      ACTIVE  → T1_HIT  → RUNNING (post-T2, runner_active)  → STOPPED_OUT/T2_HIT/RUNNER_*
+              → STOPPED_OUT / EXPIRED / T2_HIT
     """
     today_str = datetime.date.today().isoformat()
+    regime = _current_exit_regime()
 
     def _get_price(sym: str) -> float:
         try:
@@ -6636,10 +7714,29 @@ def update_tracker_v2_pnl(tracker: dict) -> dict:
             pass
         return 0.0
 
+    def _expire_conditional(pos, days, pnl):
+        """E1c: decide whether to expire based on conditional rules.
+        Returns close_reason string or None.
+        Legacy path (TIME_EXIT_MODE='calendar') is handled by caller.
+        """
+        # Absolute cap: even a winner can't camp forever
+        if days >= TIME_EXIT_HARD_MAX_DAYS:
+            return "TIME_EXPIRED_HARDCAP"
+        if days >= TIME_EXIT_MAX_DAYS:
+            # Losing or flat after N days → expire
+            if pnl < TIME_EXIT_MIN_WIN_PCT:
+                # Also require weak momentum: 10d slope <= 0
+                ctx = _compute_exit_context(pos["symbol"])
+                if not ctx or ctx.get("slope10", 0.0) <= 0:
+                    return "TIME_EXPIRED_STALLED"
+        if days >= TIME_EXIT_STAGNATION_DAYS and pnl < TIME_EXIT_STAGNATION_PCT:
+            return "TIME_EXPIRED_STAGNATION"
+        return None
+
     # ── Update active buy positions ──
     still_active = []
     for pos in tracker.get("buys", []):
-        if pos.get("status") not in ("ACTIVE", "T1_HIT"):
+        if pos.get("status") not in ("ACTIVE", "T1_HIT", "RUNNING"):
             tracker.setdefault("completed", []).append(pos)
             continue
         try:
@@ -6660,21 +7757,191 @@ def update_tracker_v2_pnl(tracker: dict) -> dict:
             t2   = float(pos.get("target2", 0) or 0)
             days = pos.get("days_tracked", 0)
 
+            partial_done  = bool(pos.get("partial_closed", False))
+            runner_active = bool(pos.get("runner_active", False)) or pos.get("status") == "RUNNING"
+            close_reason  = None
+
+            # Only fetch full context when we might use it
+            ctx = {}
+            need_ctx = (
+                runner_active
+                or (TRAIL_MODE == "atr" and partial_done)
+                or (RUNNER_MODE_ENABLED and t2 > 0 and cur_px >= t2 and partial_done)
+                or (TIME_EXIT_MODE == "conditional" and days >= TIME_EXIT_MAX_DAYS)
+            )
+            if need_ctx:
+                ctx = _compute_exit_context(pos["symbol"])
+
+            # ── PATH A: runner-active post-T2 ─────────────────────────────
+            if runner_active:
+                hw = float(pos.get("runner_high_water", cur_px) or cur_px)
+                if cur_px > hw:
+                    hw = cur_px
+                    pos["runner_high_water"] = round(hw, 2)
+                atr14 = float(ctx.get("atr14", 0.0) or 0.0)
+                mult  = _effective_runner_atr_mult(regime)
+                trail = max(entry, round(hw - mult * atr14, 2)) if atr14 > 0 else stop
+                if trail > stop:
+                    pos["stop"] = trail
+                    stop = trail
+
+                # ── F5: Runner "moonshot" scaling (v2) ────────────────────
+                if (RUNNER_SCALE_ENABLED
+                        and t2 > 0
+                        and not pos.get("runner_scale_done", False)
+                        and cur_px >= t2 * (1.0 + RUNNER_SCALE_TRIGGER_PCT / 100.0)):
+                    vols_avg = ctx.get("avg_vol20", 0.0) or 0.0
+                    last_vol = ctx.get("last_volume", vols_avg) or vols_avg
+                    vol_ok   = (vols_avg > 0 and last_vol >= vols_avg * RUNNER_SCALE_VOL_MULT) or vols_avg == 0
+                    if vol_ok:
+                        rs_pct = max(0.0, min(100.0, RUNNER_SCALE_BOOK_PCT))
+                        rs_pnl = round((cur_px - entry) / entry * 100, 2) if entry else 0.0
+                        pos["runner_scale_done"]    = True
+                        pos["runner_scale_pct"]     = rs_pct
+                        pos["runner_scale_price"]   = round(cur_px, 2)
+                        pos["runner_scale_date"]    = today_str
+                        pos["runner_scale_pnl_pct"] = rs_pnl
+
+                # Days since t2_hit
+                days_in_runner = 0
+                try:
+                    days_in_runner = (datetime.date.today() -
+                                      datetime.date.fromisoformat(str(pos.get("t2_hit_date", today_str))[:10])).days
+                except Exception:
+                    pass
+
+                # ── F7b: Parabolic single-day blow-off (v2) ──────────────
+                parabolic_hit = False
+                if PARABOLIC_EXIT_ENABLED and not pos.get("parabolic_done", False):
+                    prev_close = ctx.get("prev_close", 0.0) or 0.0
+                    if prev_close > 0:
+                        day_pct = (cur_px - prev_close) / prev_close * 100
+                        vols_avg = ctx.get("avg_vol20", 0.0) or 0.0
+                        last_vol = ctx.get("last_volume", vols_avg) or vols_avg
+                        vol_ok   = (vols_avg > 0 and last_vol >= vols_avg * PARABOLIC_VOL_MULT)
+                        if day_pct >= PARABOLIC_DAY_PCT and vol_ok:
+                            parabolic_hit = True
+                            pos["parabolic_done"]  = True
+                            pos["parabolic_date"]  = today_str
+                            pos["parabolic_price"] = round(cur_px, 2)
+
+                if cur_px <= trail:
+                    close_reason = "RUNNER_TRAIL_HIT"
+                elif parabolic_hit:
+                    close_reason = "PARABOLIC_BLOWOFF"
+                elif ctx.get("below_ema_streak", 0) >= RUNNER_TREND_BREAK_DAYS:
+                    close_reason = "RUNNER_TREND_BREAK"
+                elif ctx.get("low_vol_streak", 0) >= RUNNER_VOL_FADE_DAYS:
+                    close_reason = "RUNNER_VOLUME_FADE"
+                elif days_in_runner >= RUNNER_MAX_DAYS:
+                    close_reason = "RUNNER_MAX_DAYS"
+                if close_reason:
+                    pos.update({
+                        "status": "RUNNER_CLOSED",
+                        "runner_close_date": today_str,
+                        "final_pnl": pnl,
+                    })
+                    pos["close_reason"] = close_reason
+                    pos["close_price"]  = cur_px
+                    tracker["completed"].append(pos)
+                    continue
+                else:
+                    still_active.append(pos)
+                    continue
+
+            # ── PATH B: legacy hard stop / T2 exit / T1 partial ───────────
             if stop > 0 and cur_px <= stop:
                 pos.update({"status": "STOPPED_OUT", "stop_hit_date": today_str, "final_pnl": pnl})
+                pos["close_reason"] = classify_loss_reason(pos)
+                pos["close_price"]  = cur_px
                 tracker["completed"].append(pos)
-            elif t2 > 0 and cur_px >= t2:
+                continue
+
+            if t2 > 0 and cur_px >= t2:
+                # E1a: convert to runner mode instead of closing (only if T1 already booked)
+                if _runner_enabled(regime) and partial_done:
+                    rp_pct = max(0.0, min(100.0, RUNNER_PARTIAL_PCT))
+                    atr14  = float(ctx.get("atr14", 0.0) or 0.0)
+                    mult   = _effective_runner_atr_mult(regime)
+                    init_trail = max(entry, round(cur_px - mult * atr14, 2)) if atr14 > 0 else entry
+                    pos.update({
+                        "status":               "RUNNING",
+                        "runner_active":        True,
+                        "t2_hit_date":          today_str,
+                        "runner_partial_pct":   rp_pct,
+                        "runner_partial_price": cur_px,
+                        "runner_partial_pnl":   pnl,
+                        "runner_high_water":    cur_px,
+                    })
+                    if init_trail > stop:
+                        pos["stop"] = init_trail
+                    pos["trail_note"] = (
+                        f"T2 hit @ ₹{cur_px:.2f} (+{pnl:.1f}%). Booked {rp_pct:.0f}% of residual · "
+                        f"runner riding chandelier (ATR×{mult:.1f}) from ₹{init_trail:.2f}"
+                    )
+                    still_active.append(pos)
+                    continue
+                # Legacy: full close at T2
                 pos.update({"status": "T2_HIT", "t2_hit_date": today_str, "final_pnl": pnl})
+                pos["close_reason"] = classify_loss_reason(pos)
+                pos["close_price"]  = cur_px
                 tracker["completed"].append(pos)
-            elif t1 > 0 and cur_px >= t1 and pos.get("status") == "ACTIVE":
+                continue
+
+            if t1 > 0 and cur_px >= t1 and pos.get("status") == "ACTIVE":
+                # First-time T1 hit → mark, then apply trail (breakeven or ATR)
                 pos["status"] = "T1_HIT"
                 pos["t1_hit_date"] = today_str
+                pos["partial_closed"] = True
+                pos["partial_exit_pct"]     = float(os.getenv("PARTIAL_EXIT_PCT", "50"))
+                pos["partial_exit_price"]   = cur_px
+                pos["partial_exit_date"]    = today_str
+                pos["partial_exit_pnl_pct"] = pnl
+                if TRAIL_MODE == "atr":
+                    atr14 = float(ctx.get("atr14", 0.0) or 0.0)
+                    mult  = _effective_trail_atr_mult(regime)
+                    new_stop = max(entry, round(cur_px - mult * atr14, 2)) if atr14 > 0 else entry
+                    if new_stop > stop:
+                        pos["stop"] = new_stop
+                        pos["trail_note"] = f"T1 hit · ATR trail (×{mult:.1f}) → ₹{new_stop:.2f}"
+                else:
+                    if entry > stop:
+                        pos["stop"] = entry
+                        pos["trail_note"] = f"T1 hit · trailed to entry ₹{entry:.2f}"
                 still_active.append(pos)
-            elif days >= 15 and t1 > 0 and cur_px < t1:
-                pos.update({"status": "EXPIRED", "final_pnl": pnl})
-                tracker["completed"].append(pos)
+                continue
+
+            # ── Daily ratchet on T1_HIT positions when TRAIL_MODE=atr ────
+            if partial_done and TRAIL_MODE == "atr":
+                if not ctx:
+                    ctx = _compute_exit_context(pos["symbol"])
+                atr14 = float(ctx.get("atr14", 0.0) or 0.0)
+                if atr14 > 0:
+                    mult = _effective_trail_atr_mult(regime)
+                    new_stop = max(entry, round(cur_px - mult * atr14, 2))
+                    if new_stop > stop:
+                        pos["stop"] = new_stop
+                        pos["trail_note"] = f"ATR ratchet (×{mult:.1f}) → ₹{new_stop:.2f}"
+
+            # ── Time exit ────────────────────────────────────────────────
+            if TIME_EXIT_MODE == "conditional":
+                reason = _expire_conditional(pos, days, pnl)
+                if reason:
+                    pos.update({"status": "EXPIRED", "expired_date": today_str, "final_pnl": pnl})
+                    pos["close_reason"] = reason
+                    pos["close_price"]  = cur_px
+                    tracker["completed"].append(pos)
+                    continue
             else:
-                still_active.append(pos)
+                # legacy calendar exit
+                if days >= TIME_EXIT_MAX_DAYS and t1 > 0 and cur_px < t1:
+                    pos.update({"status": "EXPIRED", "expired_date": today_str, "final_pnl": pnl})
+                    pos["close_reason"] = classify_loss_reason(pos)
+                    pos["close_price"]  = cur_px
+                    tracker["completed"].append(pos)
+                    continue
+
+            still_active.append(pos)
         except Exception as e:
             _log(f"[WARN] update_tracker_v2_pnl buy update failed for {pos.get('symbol')}: {e}")
             still_active.append(pos)
@@ -6724,12 +7991,17 @@ def update_tracker_v2_pnl(tracker: dict) -> dict:
     completed = tracker.get("completed", [])
     wins   = [t for t in completed if float(t.get("final_pnl", 0) or 0) > 0]
     losses = [t for t in completed if float(t.get("final_pnl", 0) or 0) <= 0]
+    # Phase C7 (2026-07-02): also surface loss-reason breakdown so weekly
+    # summary can spot patterns (e.g. "60% of losses are STOP_GAP_DOWN →
+    # tighten HIGH_GAP_RISK gate", or "50% are STOP_SLOW_BLEED → shorten
+    # time-stop from 20d to 15d").
     tracker["performance"] = {
         "completed":  len(completed),
         "active":     len(tracker["buys"]),
         "win_rate":   round(len(wins) / len(completed) * 100, 1) if completed else 0,
         "avg_win":    round(sum(float(t.get("final_pnl", 0) or 0) for t in wins) / len(wins), 2) if wins else 0,
         "avg_loss":   round(sum(float(t.get("final_pnl", 0) or 0) for t in losses) / len(losses), 2) if losses else 0,
+        "loss_reasons": summarize_loss_reasons(tracker),
         "last_updated": today_str,
     }
     return tracker
@@ -6752,7 +8024,12 @@ def format_confidence_breakdown(factor_scores: dict, final_conf: float) -> list:
     lines = [f"     Confidence {final_conf:.1f} breakdown:"]
     fs = factor_scores or {}
     for key, label, weight in FACTOR_DISPLAY:
-        score  = float(fs.get(key, 50) or 50)
+        raw    = fs.get(key)
+        # Phase C5: mark MISSING (None) factors — they are reweighted, not diluted.
+        if raw is None:
+            lines.append(f"     {label:<12} ░░░░░░░░░░ MISSING → weight redistributed")
+            continue
+        score  = float(raw or 50)
         contrib = round(score * weight / 100, 1)
         filled = int(score / 10)
         bar    = "█" * filled + "░" * (10 - filled)
@@ -7374,6 +8651,10 @@ def format_no_buy_explanation(top_rejected: list, regime: str,
 
 def load_confidence_history() -> dict:
     """Load {symbol: {dates:[], confs:[]}} rolling 3-day window."""
+    # Phase C7c: FRESH_START wipes confidence history for one run
+    if FRESH_START:
+        _log("[FRESH_START] load_confidence_history → returning {} (old confidence_history.json ignored)")
+        return {}
     try:
         if os.path.exists(CONF_HISTORY_FILE):
             with open(CONF_HISTORY_FILE, "r") as f:
@@ -7444,6 +8725,10 @@ def get_confidence_trend(symbol: str, history: dict) -> str:
 
 def load_gate_memory() -> dict:
     """Load {symbol: {history: [{date, fails, conf}]}} rolling 5-day window."""
+    # Phase C7c: FRESH_START wipes gate memory for one run
+    if FRESH_START:
+        _log("[FRESH_START] load_gate_memory → returning empty dict (old gate_memory.json ignored)")
+        return {}
     try:
         if os.path.exists(GATE_MEMORY_FILE):
             with open(GATE_MEMORY_FILE, "r") as f:
@@ -7936,6 +9221,18 @@ def save_recommendations_to_excel(buys: list, watchlist: list,
         _log("[WARN] openpyxl not installed — skipping Excel save. Run: pip install openpyxl")
         return
     try:
+        # Phase C7c: FRESH_START renames old xlsx aside so a fresh workbook is created
+        if FRESH_START and os.path.exists(TRACKER_XLSX):
+            stale_name = f"{TRACKER_XLSX}.stale_{today_str}"
+            try:
+                # Overwrite stale target if it already exists (idempotent re-runs)
+                if os.path.exists(stale_name):
+                    os.remove(stale_name)
+                os.rename(TRACKER_XLSX, stale_name)
+                _log(f"[FRESH_START] Renamed old {TRACKER_XLSX} → {stale_name} (fresh workbook will be created)")
+            except Exception as _e:
+                _log(f"[FRESH_START] Could not rename {TRACKER_XLSX}: {_e} — will overwrite instead")
+
         if os.path.exists(TRACKER_XLSX):
             wb = openpyxl.load_workbook(TRACKER_XLSX)
         else:
@@ -8161,6 +9458,11 @@ def _run_pipeline_inner():
     regime_data = detect_market_regime(nifty_df, breadth, macro)
     regime      = regime_data["regime"]
 
+    # Phase E1d: pin the current regime into the module scope so exit engines
+    # (update_tracker / update_tracker_v2_pnl) can consult it for risk-off
+    # tightening without needing to be re-plumbed with the regime arg.
+    globals()["_PIPELINE_REGIME"] = regime
+
     # Compute real Nifty 21-day and 5-day returns ONCE — passed to every stock's RS calc
     try:
         _nc = nifty_df["Close"].squeeze().values.astype(float)
@@ -8198,11 +9500,19 @@ def _run_pipeline_inner():
         scored.append({"symbol": symbol, "sector": sector, "_df": df, **scores, "base_confidence": base_conf})
 
     scored.sort(key=lambda x: (-x["base_confidence"], x["symbol"]))
-    top_40 = scored[:40]
-    _log(f"  Top 40: best base conf {top_40[0]['base_confidence']:.1f} ({top_40[0]['symbol']})")
+    # Phase C7 (2026-07-02): widened from 40 to 50 for a safety buffer.
+    # Rationale: after all filters (regime, gates, correlation, sector cap)
+    # we typically end with 0-5 BUYs. Keeping 50 candidates means a marginal
+    # score-#41 stock with an exceptional setup can still reach the gate
+    # stage. Extra 10 stocks add ~2s of news/AI fetch — negligible.
+    # Variable name stays "top_40" to avoid renaming 15 call sites; it's
+    # now a well-known misnomer for "top-50 candidate list".
+    _TOP_N = int(os.getenv("TOP_N_CANDIDATES", "50"))
+    top_40 = scored[:_TOP_N]
+    _log(f"  Top {len(top_40)}: best base conf {top_40[0]['base_confidence']:.1f} ({top_40[0]['symbol']})")
 
     # ── 8. News + AI risk for top 40 ──
-    _log("[8/17] News + AI risk for top 40...")
+    _log(f"[8/17] News + AI risk for top {len(top_40)}...")
     for stock in top_40:
         sym_clean  = stock["symbol"].replace(".NS", "")
         headlines  = fetch_news_for_symbol(sym_clean)
@@ -8270,7 +9580,11 @@ def _run_pipeline_inner():
         # Otherwise keep existing OBV-proxy value as computed in score_stock().
     for stock in top_40:
         bulk_adj  = bulk_deal_score(stock["symbol"], bulk_deals)
-        base_conf = compute_base_confidence({k: stock.get(k, 50) for k in FACTOR_WEIGHTS})
+        # Phase C5 (2026-07-02): pass raw stock.get(k) so None (MISSING) reaches
+        # compute_base_confidence and triggers weight-redistribution instead of
+        # being silently coerced to 50 (which would dilute confidence toward the
+        # middle and defeat the whole Phase C5 fix).
+        base_conf = compute_base_confidence({k: stock.get(k) for k in FACTOR_WEIGHTS})
         stock["base_confidence"]  = base_conf
         stock["final_confidence"] = compute_final_confidence(
             base_conf, regime, stock.get("news_penalty", 0), macro_adj_global, bulk_adj
@@ -8313,9 +9627,21 @@ def _run_pipeline_inner():
 
     # ── 14. Gate system ──
     _log("[14/17] Running gate system (13 gates)...")
+    # Phase C7 (2026-07-02): compute kill-switch state ONCE per run and feed it
+    # into portfolio_context. Gate 5b reads it — pauses all new BUYs if the
+    # equity curve is bleeding (3 consec losses, -2% day, -3% week, ≥10% dd).
+    _ks = compute_kill_switch_state(tracker_v2, capital=PORTFOLIO_CAPITAL)
+    if _ks.get("buys_paused"):
+        _log(f"  [KILL SWITCH] Buys PAUSED — {_ks.get('reason')} "
+             f"(consec={_ks['consecutive_losses']}, day={_ks['day_pnl_pct']}%, "
+             f"week={_ks['week_pnl_pct']}%, dd={_ks['drawdown_from_peak_pct']}%)")
+    elif _ks.get("size_multiplier", 1.0) < 1.0:
+        _log(f"  [KILL SWITCH] Sizes DAMPED to {_ks['size_multiplier']}x — "
+             f"{_ks.get('reason')} (dd={_ks['drawdown_from_peak_pct']}%)")
     portfolio_context = {
         "active_count":   len([a for a in portfolio_alerts if a["action"] == "HOLD"]),
         "existing_count": len(holdings),
+        "kill_switch":    _ks,
     }
     buys, watchlist_stocks, rejected = [], [], []
 
@@ -8347,6 +9673,10 @@ def _run_pipeline_inner():
     _dates_found = sum(1 for d in results_dates_map.values() if d)
     _log(f"  Earnings dates: {_dates_found}/{len(top_40)} stocks have upcoming earnings")
 
+    # Phase C5 (rating ≥ 9.0): pre-load confidence history so classify_watchlist
+    # can compute trajectory (RISING / FADING / FLAT) at classification time.
+    _conf_history_for_wl = load_confidence_history()
+
     for stock in top_40:
         sym_clean     = stock["symbol"].replace(".NS", "")
         promoter_data = stock.get("promoter_data", {"promoter_pledge_pct": 0})
@@ -8365,7 +9695,8 @@ def _run_pipeline_inner():
         if gate_result["decision"] == "BUY":
             buys.append(stock)
         elif gate_result["decision"] == "WATCHLIST":
-            wl = classify_watchlist(stock, regime, effective_thresholds)
+            wl = classify_watchlist(stock, regime, effective_thresholds,
+                                     conf_history=_conf_history_for_wl)
             stock.update(wl)
             watchlist_stocks.append(stock)
         else:
@@ -8537,6 +9868,11 @@ def _run_pipeline_inner():
 
     for stock in buys:
         tracker_entries = add_to_tracker(tracker_entries, stock, "BUY")
+        # Phase C7e (2026-07-02): also append to tracker V2 so kill-switch,
+        # weekly summary, and morning_check see today's new BUYs. Without this
+        # the V2 tracker only ever held the Jun-25 seed and completed pnl
+        # stats were effectively empty.
+        tracker_v2 = add_to_tracker_v2(tracker_v2, stock, regime)
 
     near_miss_stocks = [w for w in watchlist_stocks if w.get("tier") == "NEAR_MISS"]
     for stock in near_miss_stocks:
@@ -8549,6 +9885,9 @@ def _run_pipeline_inner():
 
     if IS_SCHEDULED:
         save_tracker(tracker_entries)
+        # Re-persist tracker V2 after appending today's buys (initial save at
+        # step 13b captured only PnL updates on the pre-existing set).
+        save_tracker_v2(tracker_v2)
     else:
         _log("  Trade tracker NOT saved (manual run)")
 
