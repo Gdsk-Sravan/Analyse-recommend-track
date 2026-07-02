@@ -41,6 +41,53 @@ TRACKING_DAYS = 60  # track for 60 trading days after recommendation
 IS_SCHEDULED  = os.getenv("SCHEDULED_RUN", "false").lower() == "true"
 
 
+# ── Phase 5 (2026-07-01): live delivery % probe for active positions ──
+# Import lazily so a broken nselib does NOT crash the whole tracker; delivery
+# insight is a nice-to-have overlay, not a blocker.
+def _fetch_live_delivery_pct(symbol: str) -> dict:
+    """Return {'today': float, '20d_avg': float, 'signal': str} for a symbol.
+
+    Uses main.fetch_delivery_cached (24h TTL, shared cache) if available.
+    Returns empty dict on any failure — caller must handle gracefully.
+    """
+    try:
+        from main import fetch_delivery_cached, load_delivery_cache  # type: ignore
+        cache = load_delivery_cache()
+        d = fetch_delivery_cached(symbol.replace(".NS", ""), cache)
+        if not d or d.get("source") != "nselib":
+            return {}
+        return {
+            "today":   float(d.get("delivery_pct_today", 0.0) or 0.0),
+            "20d_avg": float(d.get("delivery_pct_20d_avg", 0.0) or 0.0),
+            "ratio":   float(d.get("delivery_ratio", 1.0) or 1.0),
+            "signal":  str(d.get("delivery_signal", "NEUTRAL")),
+        }
+    except Exception:
+        return {}
+
+
+def _flag_position_health(sym: str, cur_return: float, deliv: dict) -> str:
+    """Return a short human-readable health tag for an active position.
+
+    Signals to watch:
+      - DISTRIBUTION on a winner  → book profit / trim early.
+      - WEAK          on a loser  → institutional sellers, cut loss.
+      - STRONG_ACCUM  on a winner → let it run.
+    """
+    if not deliv:
+        return ""
+    sig = deliv.get("signal", "NEUTRAL")
+    if sig == "DISTRIBUTION":
+        if cur_return > 5:
+            return "⚠ DISTRIBUTION on winner — consider trimming"
+        return "⚠ DISTRIBUTION — institutional selling"
+    if sig == "WEAK" and cur_return < -3:
+        return "⚠ WEAK delivery on loser — cut / tighten stop"
+    if sig == "STRONG_ACCUM" and cur_return > 0:
+        return "✓ STRONG ACCUM — let it run"
+    return ""
+
+
 def run_tracker():
     today_str = datetime.now().strftime("%Y-%m-%d")
     print(f"=== TRACKER JOB: {today_str} ===")
@@ -177,6 +224,21 @@ def run_tracker():
             t1_hit, t2_hit, stop_hit, remain_up, days_held, status
         ])
         rows_added += 1
+
+        # Phase 5: probe live delivery % for active positions — surface
+        # institutional-flow signal (DISTRIBUTION / STRONG_ACCUM / WEAK) as
+        # an early-exit / hold-longer overlay. Never fatal.
+        if status in ("ACTIVE", "T1_HIT_ACTIVE"):
+            _deliv = _fetch_live_delivery_pct(sym)
+            _health = _flag_position_health(sym, cur_return, _deliv)
+            if _deliv:
+                print(
+                    f"  [DELIV] {sym:<20} ret {cur_return:+.1f}% · "
+                    f"deliv {_deliv.get('today', 0):.0f}% "
+                    f"(20d {_deliv.get('20d_avg', 0):.0f}%, ratio {_deliv.get('ratio', 1):.2f}) · "
+                    f"{_deliv.get('signal', 'NEUTRAL')}"
+                    + (f" · {_health}" if _health else "")
+                )
 
         # Update recommendation status if terminal
         if status in ("T2_HIT", "STOPPED", "EXPIRED"):
