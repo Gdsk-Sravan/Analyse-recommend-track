@@ -4192,18 +4192,66 @@ def compute_nifty_state(nifty_df) -> dict:
 
 def fetch_bse_results_dates(symbol_clean: str) -> list:
     """
-    Fetch upcoming board meeting / results dates for a stock from BSE India API.
-    Returns list of date strings "YYYY-MM-DD". Empty list on any failure.
-    Free, no auth required. Silent fallback.
+    Fetch upcoming earnings / board-meeting dates for a stock.
+
+    Phase C4 (2026-07-02): BSE's public GetScripsSearch endpoint now returns
+    an HTML interstitial page instead of JSON (bot-blocking / redesign), so
+    the previous BSE-only path silently returned [] for every stock. We now
+    try in order:
+        1. yfinance Ticker.calendar → 'Earnings Date' (reliable, no auth)
+        2. Legacy BSE JSON endpoint (kept as fallback for the day it comes
+           back; also for stocks not in Yahoo's coverage)
+
+    Returns list of date strings "YYYY-MM-DD" (future only). Empty list on
+    any failure. Silent on individual stock failures — the top-level counter
+    reports coverage.
     """
+    today = datetime.date.today()
+
+    # ── 1. yfinance calendar (primary) ────────────────────────────────────
     try:
-        # BSE uses numeric scrip codes; map via a best-effort search
+        sym_yf = symbol_clean if symbol_clean.endswith(".NS") else symbol_clean + ".NS"
+        cal = yf.Ticker(sym_yf).calendar
+        if isinstance(cal, dict):
+            ed = cal.get("Earnings Date") or cal.get("earnings_date") or []
+            dates = []
+            if isinstance(ed, list):
+                for d in ed:
+                    try:
+                        if hasattr(d, "isoformat"):
+                            dobj = d if isinstance(d, datetime.date) else d.date()
+                        else:
+                            dobj = datetime.datetime.strptime(str(d)[:10], "%Y-%m-%d").date()
+                        if dobj >= today:
+                            dates.append(dobj.isoformat())
+                    except Exception:
+                        continue
+            elif ed:
+                try:
+                    dobj = ed if isinstance(ed, datetime.date) else \
+                           datetime.datetime.strptime(str(ed)[:10], "%Y-%m-%d").date()
+                    if dobj >= today:
+                        dates.append(dobj.isoformat())
+                except Exception:
+                    pass
+            if dates:
+                return dates
+    except Exception:
+        pass  # fall through to BSE
+
+    # ── 2. BSE JSON API (legacy fallback; currently returns HTML) ────────
+    try:
         search_url = f"https://api.bseindia.com/BseIndiaAPI/api/GetScripsSearch/w?strSearch={symbol_clean}"
         resp = requests.get(search_url, headers={
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
             "Referer": "https://www.bseindia.com",
         }, timeout=8)
         if resp.status_code != 200:
+            return []
+        # BSE now returns HTML on this endpoint — bail out cleanly instead
+        # of raising a JSON parse exception.
+        ctype = resp.headers.get("content-type", "").lower()
+        if "json" not in ctype and not resp.text.lstrip().startswith(("[", "{")):
             return []
         results = resp.json()
         if not results or not isinstance(results, list):
@@ -4221,9 +4269,11 @@ def fetch_bse_results_dates(symbol_clean: str) -> list:
         }, timeout=8)
         if ca_resp.status_code != 200:
             return []
+        ca_ctype = ca_resp.headers.get("content-type", "").lower()
+        if "json" not in ca_ctype and not ca_resp.text.lstrip().startswith(("[", "{")):
+            return []
         actions = ca_resp.json().get("Table", [])
         dates = []
-        today = datetime.date.today()
         for action in actions:
             raw = action.get("REC_DATE") or action.get("NEWS_DT") or ""
             try:
@@ -7572,23 +7622,18 @@ def _run_pipeline_inner():
                 50, min(99, effective_thresholds[rk]["min_confidence"] + vix_adj)
             )
 
-    # ── 1b. FII/DII flows from NSE ──
-    _log("[2/17] Fetching FII/DII flows from NSE...")
-    fii_dii = get_fii_dii_data()
+    # ── 1b. FII/DII flows (Phase C4: disabled — not used in scoring) ──
+    _log("[2/17] FII/DII fetch skipped (Phase C4 — not used in scoring or output).")
+    fii_dii = get_fii_dii_data()  # stub, returns unavailable/zero
     macro["fii_flow_cr"]      = fii_dii["fii_flow_cr"]
     macro["dii_flow_cr"]      = fii_dii["dii_flow_cr"]
     macro["fii_available"]    = fii_dii.get("available", False)
     macro["fii_provisional"]  = fii_dii.get("is_provisional", False)
-    macro["fii_source"]       = fii_dii.get("source", "NONE")
+    macro["fii_source"]       = fii_dii.get("source", "DISABLED")
     macro["fii_confidence"]   = fii_dii.get("confidence", "NONE")
-    # FIX: bubble the staleness flag + dii_found flag so downstream (footer,
-    # regime banner, tracker row) can surface it explicitly.
-    macro["fii_stale"]        = bool(fii_dii.get("stale", False)) or \
-                                str(fii_dii.get("confidence", "")).upper() == "STALE"
-    macro["dii_found"]        = bool(fii_dii.get("dii_found", fii_dii.get("dii_flow_cr", 0) != 0))
-    dii_log = f"{fii_dii['dii_flow_cr']:+.0f}Cr" if fii_dii.get("dii_found") else "N/A"
-    _log(f"  FII: {fii_dii['fii_flow_cr']:+.0f}Cr | DII: {dii_log} | "
-         f"src={macro['fii_source']} conf={macro['fii_confidence']} | Available: {fii_dii['available']}")
+    macro["fii_stale"]        = False
+    macro["dii_found"]        = False
+    # No log line for the zero flows — the [2/17] line above already conveys it.
 
     # ── 3. Bulk/block deals ──
     _log("[3/17] Fetching bulk/block deals...")
@@ -7791,8 +7836,10 @@ def _run_pipeline_inner():
     _log("  Building correlation returns cache...")
     returns_cache = build_returns_cache(tradable, lookback=60)
 
-    # Pre-fetch BSE results dates for top 40 (parallel, 5 workers)
-    _log("  Fetching BSE results dates for top 40...")
+    # Pre-fetch earnings dates for top 40 (parallel, 5 workers)
+    # Phase C4: yfinance calendar is now the primary source (BSE JSON API
+    # started returning HTML in 2026-07). BSE kept as legacy fallback.
+    _log("  Fetching earnings dates for top 40...")
     results_dates_map: dict = {}
 
     def _fetch_results(stock: dict) -> tuple:
@@ -7811,7 +7858,7 @@ def _run_pipeline_inner():
     # upcoming earnings date discovered. Silent failure was hiding the gate
     # activity.
     _dates_found = sum(1 for d in results_dates_map.values() if d)
-    _log(f"  BSE results-dates: {_dates_found}/{len(top_40)} stocks have upcoming earnings")
+    _log(f"  Earnings dates: {_dates_found}/{len(top_40)} stocks have upcoming earnings")
 
     for stock in top_40:
         sym_clean     = stock["symbol"].replace(".NS", "")
