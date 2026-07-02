@@ -1,0 +1,177 @@
+name: Quarterly Backtest Recalibration
+
+# ─────────────────────────────────────────────────────────────────────────
+# Phase G4 (2026-07-02): safe quarterly walk-forward backtest.
+# ─────────────────────────────────────────────────────────────────────────
+# WHAT: runs backtest_walkforward.py against the last 2y of OHLCV, produces
+#       a fresh threshold_recommendation.txt + win_rate_by_confidence.csv
+#       + backtest_summary.txt, then diffs the proposed threshold against
+#       the currently-live one and sends a Telegram alert.
+#
+# WHY:  scoring thresholds drift as market conditions change. A quarterly
+#       refresh keeps the confidence calibration honest. But: a bad sample
+#       (regime change, black swan) can produce misleading numbers. So
+#       this workflow NEVER overwrites the live calibration files.
+#
+# SAFEGUARDS:
+#   1. Backtest writes to backtest_staging/ (NOT the repo root).
+#   2. Live files (threshold_recommendation.txt, win_rate_by_confidence.csv,
+#      backtest_summary.txt) are read-only from this workflow's perspective.
+#   3. Telegram diff alert fires on completion — you review and manually
+#      promote if the numbers look sensible.
+#   4. Cron only runs on quarter-start weekdays, off-hours.
+#   5. Full CSV + txt artefacts uploaded for a 90-day retention window so
+#      you can audit any run months later.
+#
+# TRIGGER OPTIONS:
+#   A. Automatic — quarterly cron:
+#      "17 22 1 1,4,7,10 *"   → 22:17 UTC on the 1st of Jan/Apr/Jul/Oct
+#      (03:47 IST — market closed, off-peak)
+#      GitHub only runs cron on the DEFAULT branch. If day-1 falls on a
+#      weekend, the run still fires; the workflow itself detects and skips.
+#   B. Manual — workflow_dispatch with staging toggle.
+#   C. cron-job.org — you can also hit
+#      /repos/<owner>/<repo>/actions/workflows/backtest.yml/dispatches
+#      to force a run from anywhere.
+#
+# HOW TO PROMOTE A GOOD RUN (manual, deliberate):
+#   1. Read the Telegram alert + open the run artefacts.
+#   2. cp backtest_staging/threshold_recommendation.txt   ./
+#   3. cp backtest_staging/win_rate_by_confidence.csv     ./
+#   4. cp backtest_staging/backtest_summary.txt           ./
+#   5. Update REGIME_THRESHOLDS in main.py by hand.
+#   6. Commit.
+
+on:
+  workflow_dispatch:
+    inputs:
+      staging_only:
+        description: "Write to backtest_staging/ only (safe). Set false to also upload as an artefact."
+        required: false
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
+      top_n_symbols:
+        description: "TOP_N_SYMBOLS cap for backtest_walkforward.py (higher = slower + more accurate)."
+        required: false
+        default: "200"
+
+  schedule:
+    # 03:47 IST on the 1st of Jan / Apr / Jul / Oct — weekday check happens
+    # inside the job so we don't need cron's day-of-week filter.
+    - cron: "17 22 1 1,4,7,10 *"
+
+permissions:
+  contents: write   # to commit backtest_staging/ artefacts back to the repo
+  actions: read
+
+# Only one calibration run at a time — this is heavy and stateful.
+concurrency:
+  group: backtest-recalibration-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  backtest:
+    name: "Quarterly Backtest — staging + diff notify"
+    runs-on: ubuntu-latest
+    # 2y × 200 symbols × 8 workers ≈ 15–40 min on GitHub-hosted runners.
+    # 90 gives plenty of headroom without wedging a hung yfinance call.
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      # Skip on weekends. Cron doesn't have "weekday only on day-1 of
+      # quarter" so we do it in-job. Manual dispatches ignore this.
+      - name: Weekend guard (cron only)
+        if: ${{ github.event_name == 'schedule' }}
+        shell: bash
+        run: |
+          dow=$(date -u +%u)   # 1=Mon .. 7=Sun
+          if [ "$dow" -ge 6 ]; then
+            echo "::notice::Weekend detected (dow=$dow) — skipping quarterly backtest."
+            echo "SKIP_BACKTEST=true" >> "$GITHUB_ENV"
+          fi
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        if: env.SKIP_BACKTEST != 'true'
+        run: |
+          python3 -m pip install --upgrade pip
+          pip3 install requests yfinance pandas numpy python-dotenv
+
+      # Restore stocks.txt from the shared cache (main.py refreshes it
+      # nightly). Falls back to whatever is committed in the repo.
+      - name: Restore cache (stocks.txt from main.py)
+        if: env.SKIP_BACKTEST != 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            stocks.txt
+          key: stock-reviewer-data-${{ runner.os }}-${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            stock-reviewer-data-${{ runner.os }}-${{ github.ref_name }}-
+            stock-reviewer-data-${{ runner.os }}-
+
+      - name: Prepare staging directory
+        if: env.SKIP_BACKTEST != 'true'
+        run: |
+          rm -rf backtest_staging
+          mkdir -p backtest_staging
+          echo "Backtest staging output — never auto-promoted." > backtest_staging/README.txt
+
+      - name: Run walk-forward backtest (staged output)
+        if: env.SKIP_BACKTEST != 'true'
+        env:
+          # SAFEGUARD: OUTPUT_DIR redirected — the script CANNOT touch the
+          # live files at repo root.
+          BACKTEST_OUTPUT_DIR: backtest_staging
+          STOCKS_FILE:         stocks.txt
+          TOP_N_SYMBOLS:       ${{ github.event.inputs.top_n_symbols || '200' }}
+        run: python3 backtest_walkforward.py
+
+      - name: Diff + Telegram notify
+        if: env.SKIP_BACKTEST != 'true'
+        env:
+          BUY_BOT_TOKEN: ${{ secrets.BUY_BOT_TOKEN }}
+          BUY_CHAT_ID:   ${{ secrets.BUY_CHAT_ID }}
+        run: |
+          python3 backtest_diff_notify.py \
+            --live   threshold_recommendation.txt \
+            --staged backtest_staging/threshold_recommendation.txt
+
+      - name: Upload staging artefacts (90-day retention)
+        if: env.SKIP_BACKTEST != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: backtest-staging-${{ github.run_id }}
+          path: backtest_staging/
+          retention-days: 90
+          if-no-files-found: warn
+
+      # Commit the staging folder back so you can review from any device.
+      # This NEVER touches the live files.
+      - name: Commit staging folder back to repo
+        if: ${{ env.SKIP_BACKTEST != 'true' && github.event.inputs.staging_only != 'false' }}
+        shell: bash
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          [ -d backtest_staging ] || exit 0
+          git add backtest_staging/
+          git diff --cached --quiet || \
+            git commit -m "chore: quarterly backtest staging [skip ci]" && git push
+
+      - name: Show result
+        if: always()
+        run: echo "Backtest recalibration complete at $(date -u)"
