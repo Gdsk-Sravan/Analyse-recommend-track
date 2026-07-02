@@ -33,7 +33,148 @@ except ImportError:
 BUY_BOT_TOKEN  = os.getenv("BUY_BOT_TOKEN", "")
 BUY_CHAT_ID    = os.getenv("BUY_CHAT_ID", "")
 TRACKER_FILE   = os.getenv("TRACKER_FILE", "tracker.json")
+# Phase C7 kill-switch inputs (must mirror main.py exactly)
+TRADE_TRACKER_V2_FILE = os.getenv("TRADE_TRACKER_V2_FILE", "trade_tracker.json")
+# Capital — read CAPITAL first (matches main.py), fall back to PORTFOLIO_CAPITAL
+# for backward compatibility, then TOTAL_CAPITAL as last resort.
+PORTFOLIO_CAPITAL     = float(
+    os.getenv("CAPITAL",
+              os.getenv("PORTFOLIO_CAPITAL",
+                        os.getenv("TOTAL_CAPITAL", "500000")))
+)
+KS_MAX_CONSEC_LOSSES  = int(os.getenv("KS_MAX_CONSEC_LOSSES", "3"))
+KS_DAY_STOP_PCT       = float(os.getenv("KS_DAY_STOP_PCT", "2.0"))
+KS_WEEK_STOP_PCT      = float(os.getenv("KS_WEEK_STOP_PCT", "3.0"))
+KS_DD_HALVE_PCT       = float(os.getenv("KS_DD_HALVE_PCT", "5.0"))
+KS_DD_HALT_PCT        = float(os.getenv("KS_DD_HALT_PCT", "10.0"))
 TELEGRAM_MAX   = 4000
+
+
+# ─── Phase C7d: Kill-Switch Awareness ────────────────────────────────────────
+# Standalone kill-switch computation. Mirrors main.py's compute_kill_switch_state
+# logic exactly so morning_check produces the same buys_paused verdict.
+# CRITICAL: if kill-switch is HALTED, morning_check MUST NOT tell the user to
+# enter any BUY signal — regardless of gap/RR quality — because main.py's Gate
+# 5b would have already rejected them if the state was known at evening scan.
+def _compute_morning_kill_switch() -> dict:
+    """Return {'buys_paused': bool, 'reason': str, 'sizing_multiplier': float}.
+
+    Uses the same rules as main.py's compute_kill_switch_state:
+      - 3+ consecutive losses          → HALT
+      - Day P&L ≤ -2% of capital       → HALT (rest of day)
+      - Week P&L ≤ -3% of capital      → HALT (rest of week)
+      - Drawdown from peak ≥ 10%       → HALT
+      - Drawdown from peak 5% – 10%    → HALVE position size (still allow)
+    """
+    if os.getenv("FRESH_START", "false").lower() == "true":
+        return {"buys_paused": False, "reason": "fresh_start", "sizing_multiplier": 1.0}
+
+    if not os.path.exists(TRADE_TRACKER_V2_FILE):
+        return {"buys_paused": False, "reason": "no_tracker", "sizing_multiplier": 1.0}
+
+    try:
+        with open(TRADE_TRACKER_V2_FILE, "r") as f:
+            tracker = json.load(f)
+    except Exception:
+        return {"buys_paused": False, "reason": "tracker_unreadable", "sizing_multiplier": 1.0}
+
+    completed = tracker.get("completed", []) or []
+    if not completed:
+        return {"buys_paused": False, "reason": "no_completed_trades", "sizing_multiplier": 1.0}
+
+    # Sort by close date. V2 tracker records the date under one of
+    # stop_hit_date / t2_hit_date / t1_hit_date / expired_date. V1 (legacy)
+    # used close_date. We walk this priority so both shapes work.
+    def _close_date(p):
+        for k in ("stop_hit_date", "t2_hit_date", "t1_hit_date",
+                  "expired_date", "close_date"):
+            v = p.get(k)
+            if v:
+                try:
+                    return datetime.datetime.fromisoformat(str(v)[:10])
+                except Exception:
+                    continue
+        # Fallback: rec_date + days_tracked
+        try:
+            rd = datetime.datetime.fromisoformat(str(p.get("rec_date", ""))[:10])
+            return rd + datetime.timedelta(days=int(p.get("days_tracked", 0) or 0))
+        except Exception:
+            return datetime.datetime(1970, 1, 1)
+
+    # V2 writes 'final_pnl' (raw), V1 wrote 'final_pnl_pct' / 'blended_pnl_pct'.
+    # Walk v2-first, then v1 legacy names so both shapes work.
+    def _pnl(pos):
+        return float(
+            pos.get("final_pnl",
+                    pos.get("final_pnl_pct",
+                            pos.get("blended_pnl_pct", 0))) or 0
+        )
+
+    completed_sorted = sorted(completed, key=_close_date)
+
+    # 1. Consecutive losses (walk back from most recent)
+    consec_losses = 0
+    for pos in reversed(completed_sorted):
+        if _pnl(pos) < 0:
+            consec_losses += 1
+        else:
+            break
+    if consec_losses >= KS_MAX_CONSEC_LOSSES:
+        return {"buys_paused": True,
+                "reason": f"{consec_losses} consecutive losses",
+                "sizing_multiplier": 0.0}
+
+    # 2. Day P&L (positions closed today)
+    today = datetime.date.today()
+    day_pnl_rs = 0.0
+    for pos in completed_sorted:
+        cd = _close_date(pos).date()
+        if cd == today:
+            pnl_pct = _pnl(pos)
+            entry = float(pos.get("entry", 0) or 0)
+            # Approximate ₹ P&L using position size (assume 25% of capital max, or entry * qty)
+            # Since we don't have qty here, use % of capital as proxy
+            day_pnl_rs += pnl_pct / 100.0 * PORTFOLIO_CAPITAL * 0.10  # 10% notional per position
+    day_pnl_pct = day_pnl_rs / PORTFOLIO_CAPITAL * 100.0 if PORTFOLIO_CAPITAL > 0 else 0.0
+    if day_pnl_pct <= -KS_DAY_STOP_PCT:
+        return {"buys_paused": True,
+                "reason": f"Day P&L {day_pnl_pct:.2f}% ≤ -{KS_DAY_STOP_PCT}%",
+                "sizing_multiplier": 0.0}
+
+    # 3. Week P&L (last 7 days)
+    week_ago = today - datetime.timedelta(days=7)
+    week_pnl_rs = 0.0
+    for pos in completed_sorted:
+        cd = _close_date(pos).date()
+        if cd >= week_ago:
+            pnl_pct = _pnl(pos)
+            week_pnl_rs += pnl_pct / 100.0 * PORTFOLIO_CAPITAL * 0.10
+    week_pnl_pct = week_pnl_rs / PORTFOLIO_CAPITAL * 100.0 if PORTFOLIO_CAPITAL > 0 else 0.0
+    if week_pnl_pct <= -KS_WEEK_STOP_PCT:
+        return {"buys_paused": True,
+                "reason": f"Week P&L {week_pnl_pct:.2f}% ≤ -{KS_WEEK_STOP_PCT}%",
+                "sizing_multiplier": 0.0}
+
+    # 4. Drawdown from peak (cumulative P&L)
+    cum_pnl = 0.0
+    peak = 0.0
+    for pos in completed_sorted:
+        pnl_pct = _pnl(pos)
+        cum_pnl += pnl_pct / 100.0 * PORTFOLIO_CAPITAL * 0.10
+        if cum_pnl > peak:
+            peak = cum_pnl
+    dd_rs = peak - cum_pnl  # current drawdown in ₹
+    dd_pct = dd_rs / PORTFOLIO_CAPITAL * 100.0 if PORTFOLIO_CAPITAL > 0 else 0.0
+    if dd_pct >= KS_DD_HALT_PCT:
+        return {"buys_paused": True,
+                "reason": f"Drawdown {dd_pct:.2f}% ≥ {KS_DD_HALT_PCT}%",
+                "sizing_multiplier": 0.0}
+    if dd_pct >= KS_DD_HALVE_PCT:
+        return {"buys_paused": False,
+                "reason": f"Drawdown {dd_pct:.2f}% — sizing halved",
+                "sizing_multiplier": 0.5}
+
+    return {"buys_paused": False, "reason": "ok", "sizing_multiplier": 1.0}
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -69,6 +210,10 @@ def _send(message: str) -> None:
 
 
 def _load_tracker() -> list:
+    # Phase C7c: FRESH_START wipes tracker state for one run
+    if os.getenv("FRESH_START", "false").lower() == "true":
+        print("[FRESH_START] morning_check: ignoring old tracker.json — nothing to check yet")
+        return []
     try:
         if os.path.exists(TRACKER_FILE):
             with open(TRACKER_FILE) as f:
@@ -178,6 +323,23 @@ def run_morning_check():
 
     print(f"Morning check — {now_str}")
 
+    # Phase C7d: Kill-switch pre-flight check — if the equity curve is bleeding
+    # since evening scan, HALT all new entries regardless of gap/RR quality.
+    ks = _compute_morning_kill_switch()
+    if ks.get("buys_paused"):
+        halt_msg = (
+            f"⛔ <b>KILL SWITCH ACTIVE — {now_str}</b>\n"
+            f"<b>Reason:</b> {ks.get('reason', 'unknown')}\n\n"
+            f"🚨 <b>DO NOT ENTER ANY BUY SIGNAL TODAY</b>\n"
+            f"The portfolio kill switch has tripped. Review the recent losses\n"
+            f"before resuming new entries. Existing positions unaffected —\n"
+            f"stop-losses and targets still apply.\n\n"
+            f"<i>Kill switch will auto-reset once conditions improve.</i>"
+        )
+        _send(halt_msg)
+        print(f"[KILL_SWITCH] {ks.get('reason')} — skipping all entries")
+        return
+
     # Load tracker and find today's open BUY signals
     entries = _load_tracker()
     todays_buys = [
@@ -202,6 +364,12 @@ def run_morning_check():
     lines = []
     lines.append(f"⏰ <b>MORNING CHECK — {now_str}</b>")
     lines.append(f"Checking {len(todays_buys)} signal(s) from last evening")
+    # Phase C7d: warn if sizing halved (drawdown 5-10%)
+    if ks.get("sizing_multiplier", 1.0) < 1.0:
+        lines.append(
+            f"⚠ <b>REDUCED SIZING</b> — {ks.get('reason')}. "
+            f"Cut planned position size by {int((1.0 - ks['sizing_multiplier']) * 100)}%."
+        )
     lines.append("─" * 38)
 
     enter_count = wait_count = void_count = 0
