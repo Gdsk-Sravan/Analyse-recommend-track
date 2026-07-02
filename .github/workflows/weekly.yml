@@ -12,6 +12,15 @@ on:
           - "manual"
           - "scheduled"
 
+      fresh_start:
+        description: "Phase C7c FRESH START — ignore old trade_tracker.json + confidence_history.json + weekly_metrics.json this run. Set back to false after."
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
 permissions:
   contents: write
   actions: read
@@ -55,6 +64,11 @@ jobs:
           CONF_HISTORY_FILE: confidence_history.json
           TRACKER_XLSX: recommendation_tracker.xlsx
           SCHEDULED_RUN: ${{ github.event.inputs.run_mode == 'scheduled' && 'true' || 'false' }}
+          # Phase C7c: FRESH_START skips loading old state (still runs, but
+          # produces a clean report without WoW deltas).
+          FRESH_START: ${{ github.event.inputs.fresh_start || 'false' }}
+          # Phase C7e: persistent week-over-week metrics store.
+          WEEKLY_METRICS_FILE: weekly_metrics.json
 
       - name: Commit weekly factor summary back to repo (scheduled runs only)
         if: ${{ github.event.inputs.run_mode == 'scheduled' }}
@@ -66,7 +80,16 @@ jobs:
           fi
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add recommendation_tracker.xlsx
+          # Phase C7e: weekly_metrics.json is the week-over-week deltas store
+          # — must be committed so next week's run can compute deltas.
+          files=(recommendation_tracker.xlsx weekly_metrics.json)
+          existing=()
+          for f in "${files[@]}"; do [ -e "$f" ] && existing+=("$f"); done
+          if [ ${#existing[@]} -eq 0 ]; then
+            echo "[INFO] Nothing to commit"
+            exit 0
+          fi
+          git add "${existing[@]}"
           if git diff --cached --quiet; then
             echo "[INFO] No changes to commit"
           else
