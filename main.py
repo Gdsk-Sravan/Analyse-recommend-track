@@ -690,12 +690,12 @@ def enrich_sectors_from_nselib() -> int:
     ind_col = (cols.get("industry") or cols.get("sector") or cols.get("macro economic sector")
                or cols.get("macro_economic_sector"))
     if sym_col is None or ind_col is None:
-        # Phase B6.1 (2026-07-02): nselib "equity_list" schema no longer carries
-        # INDUSTRY. The richer "nse_get_index_list" / "nse_get_top_gainers" and
-        # per-symbol "nse_eq_symbols" endpoints may. Try them; then fall back
-        # to the local sector_master.csv if present (mapped in repo).
-        _log(f"  [Sector nselib] equity_list has no industry/sector column "
-             f"(got {list(df.columns)[:6]}) — falling through to local sector_master.csv")
+        # Phase C4 (2026-07-02): nselib "equity_list" no longer ships industry
+        # data — this is now a permanent condition, not an error. Log once at
+        # info level, then fall back to local sector_master.csv (shipped in
+        # repo). If you see this line every run, that's expected.
+        _log("  [Sector nselib] equity_list has no industry column (expected) "
+             "— using local sector_master.csv")
         # Local sector_master.csv fallback — shipped in repo
         try:
             master_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sector_master.csv")
@@ -2296,21 +2296,24 @@ def bulk_deal_score(symbol: str, bulk_deals_dict: dict) -> int:
 
 
 def ownership_quality_score(promoter_data: dict) -> int:
+    # Phase B7 (2026-07-02): FII% / DII% shareholding contributions removed from
+    # scoring. Reasons:
+    #   1. Screener FII/DII shareholding numbers are quarterly (T-90 stale) —
+    #      not fresh enough to influence a swing-trade score.
+    #   2. Same signal is already captured via price/volume and delivery %.
+    #   3. Macro daily FII/DII flow (₹Cr) never was in the score — only
+    #      informational for AI narrative and Telegram display.
+    # The fields `fii_pct` / `dii_pct` are still populated so downstream
+    # narrative / display code keeps working, but they no longer move the score.
     score    = 50
     pledge   = promoter_data.get("promoter_pledge_pct", 0)
     promoter = promoter_data.get("promoter_holding_pct", 50)
-    fii      = promoter_data.get("fii_pct", 0)
-    dii      = promoter_data.get("dii_pct", 0)
     if pledge > 40:   score -= 30
     elif pledge > 20: score -= 15
     elif pledge > 10: score -= 5
     if promoter > 60:   score += 15
     elif promoter > 50: score += 8
     elif promoter < 30: score -= 10
-    if fii > 15:   score += 10
-    elif fii > 5:  score += 5
-    if dii > 10:   score += 8
-    elif dii > 3:  score += 4
     return max(0, min(100, score))
 
 
@@ -2639,12 +2642,27 @@ def fetch_delivery_data(symbol_clean: str, lookback_days: int = 30) -> dict:
         # Use a wider window than 20d because market holidays + weekends can
         # thin out the row count; we'll trim later.
         from_d  = today - datetime.timedelta(days=max(45, lookback_days + 15))
-        df = _nsecm.security_wise_archives(
+        # Phase C4 (2026-07-02): nselib does NOT expose `security_wise_archives`
+        # — the correct function is `price_volume_and_deliverable_position_data`
+        # (also aliased as `deliverable_position_data`). Confirmed columns:
+        # 'Symbol','Series','Date','PrevClose','OpenPrice','HighPrice',
+        # 'LowPrice','LastPrice','ClosePrice','AveragePrice',
+        # 'TotalTradedQuantity','TurnoverInRs','No.ofTrades','DeliverableQty',
+        # '%DlyQttoTradedQty'. Function has no `series` kwarg — filter EQ later.
+        df = _nsecm.price_volume_and_deliverable_position_data(
             symbol=symbol_clean,
             from_date=from_d.strftime("%d-%m-%Y"),
             to_date=today.strftime("%d-%m-%Y"),
-            series="EQ",
         )
+        if df is None or len(df) == 0:
+            return default
+        # Filter to EQ series if a Series column is present (older nselib
+        # versions may already do this; be defensive).
+        try:
+            if "Series" in df.columns:
+                df = df[df["Series"].astype(str).str.strip().str.upper() == "EQ"]
+        except Exception:
+            pass
         if df is None or len(df) == 0:
             return default
         # Column name in nselib is usually "%DlyQttoTradedQty" (str with '%')
@@ -3544,11 +3562,33 @@ def _fetch_fii_dii_bse() -> "dict | None":
 
 def fetch_fii_dii_flows(max_retries: int = 2) -> dict:
     """
-    Fetches FII/DII flows — 5 sources tried in order.
-    RSS-based sources (MC, ET, BS, Google) work reliably from GitHub Actions CI.
-    NSE API is tried first (works locally) then RSS fallbacks for CI.
-    available=True only when non-zero data is returned.
+    Phase C4 (2026-07-02): FII/DII flows are NO LONGER used anywhere in the
+    pipeline — not for scoring, sizing, gates, or regime detection. NSDL data
+    is structurally D-1/D-2 stale, the RSS fallback cascade is noisy and
+    burns ~7 seconds every run for a signal we already ignore.
+
+    We keep this function only so the (few) legacy callers that ask for the
+    macro dict don't KeyError. It now short-circuits: returns
+    available=False with zero flows and never touches the network.
+
+    If you want the old multi-source cascade back, see git history for the
+    NSDL / BSE / RSS / Google News implementations.
     """
+    _log("  [FII/DII] Fetch disabled (Phase C4) — flows no longer scored or displayed.")
+    return {
+        "fii_flow_cr":    0.0,
+        "dii_flow_cr":    0.0,
+        "is_provisional": False,
+        "available":      False,
+        "dii_found":      False,
+        "source":         "DISABLED",
+        "confidence":     "NONE",
+        "stale":          False,
+    }
+
+
+def _fii_dii_flows_disabled_legacy_impl(max_retries: int = 2) -> dict:
+    """Kept for reference; never called. Original 7-source cascade lives in git history."""
     from datetime import time as dtime
     import time as _time
 
@@ -7076,32 +7116,9 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
         f"US10Y {macro.get('us10y', 0):.2f}%"
     )
 
-    # FII/DII (FIX 2: always attempts, shows provisional)
-    _fii_data = {
-        "fii_flow_cr":    fii_flow,
-        "dii_flow_cr":    dii_flow,
-        "available":      macro.get("fii_available", not (fii_flow == 0 and dii_flow == 0)),
-        "is_provisional": macro.get("fii_provisional", False),
-        "dii_found":      macro.get("dii_found", dii_flow != 0),
-    }
-    fii_dii_line = format_fii_dii_line(_fii_data)
-    lines.append(f"  {fii_dii_line}")
-
-    # Phase C3 (2026-07-02): FII/DII flows are shown for narrative context but
-    # NOT used to gate sizing or trigger regime overrides. NSDL data is
-    # structurally D-1 (often D-2 on weekends/post-holiday) and cannot be used
-    # as a real-time actionable signal. We keep a small info note when the
-    # number looks unusually stale so the reader isn't misled, but there is
-    # no longer a bold CAVEAT that pretends to be actionable.
-    _fii_stale = (
-        bool(macro.get("fii_stale"))
-        or str(macro.get("fii_confidence", "")).upper() == "STALE"
-    )
-    if _fii_stale:
-        lines.append(
-            "  ℹ️ <i>FII/DII shown above is D-1 or older (NSDL publishes T+1). "
-            "Reference only — no impact on today's sizing.</i>"
-        )
+    # Phase C4 (2026-07-02): FII/DII display removed entirely. NSDL is
+    # structurally T-1/T-2, RSS fallbacks are unreliable, and the number
+    # never fed sizing/gates/regime. Fetch is now stubbed to a no-op.
 
     # ── Conviction + Risk (single lines) ──
     _kl2 = key_levels or {}
@@ -7329,20 +7346,11 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
             usdinr_name = "frankfurter"
         elif "yfinance" in str(usdinr_src):
             usdinr_name = "yfinance"
-        fii_src     = str(macro.get("fii_source", "?"))
-        fii_conf    = str(macro.get("fii_confidence", "?"))
-        # FIX: surface FII staleness explicitly in the footer — previously the
-        # "STALE" hint was hidden inside fii_confidence and easy to miss.
-        fii_stale = (
-            bool(macro.get("fii_stale"))
-            or "stale" in fii_src.lower()
-            or fii_conf.upper() == "STALE"
-        )
-        stale_tag = " ⚠️ FII_STALE" if fii_stale else ""
-        dq_icon     = "🟢" if (dq == "NORMAL" and not fii_stale) else "🟡"
-        lines.append(f"{dq_icon} Data quality: {dq}{stale_tag}"
+        # Phase C4: FII/DII removed from output — footer no longer reports it.
+        dq_icon     = "🟢" if dq == "NORMAL" else "🟡"
+        lines.append(f"{dq_icon} Data quality: {dq}"
                      + (f" · bad={','.join(bad_fields)}" if bad_fields else "")
-                     + f" · usdinr={usdinr_name} · fii={fii_src}({fii_conf})")
+                     + f" · usdinr={usdinr_name}")
     except Exception:
         pass
     lines.append("─" * 22)
