@@ -42,6 +42,25 @@ def _weekly_pct(ticker: str) -> float:
         return 0.0
 
 
+# Phase 5 (2026-07-01): reuse main.py's shared delivery cache so weekly can
+# surface institutional-flow signals per active position.  Best-effort — if
+# main / nselib isn't importable we simply skip the extra line.
+def _live_delivery(symbol: str) -> dict:
+    try:
+        from main import fetch_delivery_cached, load_delivery_cache  # type: ignore
+        cache = load_delivery_cache()
+        d = fetch_delivery_cached(symbol.replace(".NS", ""), cache)
+        if not d or d.get("source") != "nselib":
+            return {}
+        return {
+            "today":   float(d.get("delivery_pct_today", 0.0) or 0.0),
+            "20d_avg": float(d.get("delivery_pct_20d_avg", 0.0) or 0.0),
+            "signal":  str(d.get("delivery_signal", "NEUTRAL")),
+        }
+    except Exception:
+        return {}
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # WEEKLY FACTOR SUMMARY SHEET — appends one row per factor to the xlsx
 # so you can see at-a-glance which factors correlate with winners vs losers.
@@ -516,9 +535,32 @@ def run_weekly_summary():
                 pnl      = hist[-1]["pnl"] if hist else 0
                 day_n    = pos.get("days_tracked", 0)
                 pnl_icon = "\U0001f7e2" if pnl > 0 else ("\U0001f534" if pnl < 0 else "\u26aa")
+                sym_full = pos.get('symbol', '?')
                 lines.append(
-                    f"  {pnl_icon} {pos['symbol']} | Day {day_n}/15 | PnL {pnl:+.1f}%"
+                    f"  {pnl_icon} {sym_full} | Day {day_n}/15 | PnL {pnl:+.1f}%"
                 )
+                # Phase 5: institutional-flow overlay per position.
+                _dv = _live_delivery(str(sym_full))
+                if _dv:
+                    _s = _dv.get("signal", "NEUTRAL")
+                    _emoji = {
+                        "STRONG_ACCUM":  "\U0001f7e2",  # green
+                        "ACCUM":         "\U0001f7e2",
+                        "NEUTRAL":       "\u26aa",
+                        "WEAK":          "\U0001f7e1",  # yellow
+                        "DISTRIBUTION":  "\U0001f534",  # red
+                    }.get(_s, "\u26aa")
+                    _hint = ""
+                    if _s == "DISTRIBUTION" and pnl > 3:
+                        _hint = "  \u26a0 trim on distribution"
+                    elif _s in ("STRONG_ACCUM", "ACCUM") and pnl > 0:
+                        _hint = "  \u2713 accumulation, let run"
+                    elif _s == "WEAK" and pnl < 0:
+                        _hint = "  \u26a0 weak delivery + red"
+                    lines.append(
+                        f"        {_emoji} Deliv {_dv.get('today', 0):.0f}% "
+                        f"(20d {_dv.get('20d_avg', 0):.0f}%) · {_s}{_hint}"
+                    )
             except Exception:
                 lines.append(f"  {pos.get('symbol', '?')}")
         lines.append("")
