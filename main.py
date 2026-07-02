@@ -685,8 +685,49 @@ def enrich_sectors_from_nselib() -> int:
     ind_col = (cols.get("industry") or cols.get("sector") or cols.get("macro economic sector")
                or cols.get("macro_economic_sector"))
     if sym_col is None or ind_col is None:
+        # Phase B6.1 (2026-07-02): nselib "equity_list" schema no longer carries
+        # INDUSTRY. The richer "nse_get_index_list" / "nse_get_top_gainers" and
+        # per-symbol "nse_eq_symbols" endpoints may. Try them; then fall back
+        # to the local sector_master.csv if present (mapped in repo).
         _log(f"  [Sector nselib] equity_list has no industry/sector column "
-             f"(got {list(df.columns)[:6]}) — using yfinance fallback")
+             f"(got {list(df.columns)[:6]}) — falling through to local sector_master.csv")
+        # Local sector_master.csv fallback — shipped in repo
+        try:
+            master_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sector_master.csv")
+            if os.path.exists(master_path):
+                import csv as _csv
+                added_local = 0
+                new_from_csv: dict = {}
+                with open(master_path, "r", encoding="utf-8") as _f:
+                    reader = _csv.DictReader(_f)
+                    for row in reader:
+                        _sym = (row.get("symbol") or row.get("SYMBOL") or "").strip().upper()
+                        _ind = (row.get("industry") or row.get("INDUSTRY")
+                                or row.get("sector") or row.get("SECTOR") or "").strip().upper()
+                        if not _sym or not _ind:
+                            continue
+                        _sym_ns = _sym if _sym.endswith(".NS") else _sym + ".NS"
+                        if _sym_ns in SECTOR_MAP or _sym_ns in _SECTOR_MAP:
+                            continue
+                        norm = _NSE_INDUSTRY_NORM.get(_ind) or _NSE_INDUSTRY_NORM.get(_ind.split()[0] if _ind else "", "DIVERSIFIED")
+                        new_from_csv[_sym_ns] = norm
+                        added_local += 1
+                if new_from_csv:
+                    _SECTOR_MAP.update(new_from_csv)
+                    try:
+                        existing: dict = {}
+                        if os.path.exists(SECTOR_CACHE_FILE):
+                            with open(SECTOR_CACHE_FILE, "r") as _f:
+                                existing = json.load(_f)
+                        existing.update(new_from_csv)
+                        with open(SECTOR_CACHE_FILE, "w") as _f:
+                            json.dump(existing, _f, indent=2, sort_keys=True)
+                    except Exception:
+                        pass
+                    _log(f"  [Sector nselib] ✓ loaded {added_local} sectors from local sector_master.csv")
+                    return added_local
+        except Exception as _e:
+            _log(f"  [Sector nselib] local sector_master.csv fallback failed: {_e}")
         return 0
     added = 0
     new_sectors: dict = {}
@@ -1921,6 +1962,8 @@ def filter_and_download(symbols: list, period: str = "6mo",
     _log(f"Downloading {len(symbols)} symbols with {max_workers} workers...")
     tradable = {}
     failed = 0
+    illiquid_vol = 0
+    illiquid_val = 0
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {executor.submit(_download_one, sym, period): sym for sym in symbols}
         for future in as_completed(futures):
@@ -1933,13 +1976,22 @@ def filter_and_download(symbols: list, period: str = "6mo",
                 avg_vol = float(df["Volume"].squeeze().tail(20).mean())
                 avg_price = float(df["Close"].squeeze().tail(20).mean())
                 avg_val_lakhs = (avg_vol * avg_price) / 100_000
-                if avg_vol < min_avg_volume or avg_val_lakhs < min_avg_value_lakhs:
+                if avg_vol < min_avg_volume:
+                    illiquid_vol += 1
+                    continue
+                if avg_val_lakhs < min_avg_value_lakhs:
+                    illiquid_val += 1
                     continue
                 tradable[symbol] = df
             except Exception as e:
                 _log(f"[WARN] download failed for {sym}: {e}")
                 failed += 1
-    _log(f"Download complete: {len(tradable)} tradable, {failed} failed/illiquid")
+    # Phase C1 (2026-07-02): honest breakdown so the 46% dropout is not silent.
+    _log(
+        f"Download complete: {len(tradable)} tradable | {failed} failed | "
+        f"{illiquid_vol} illiquid by volume (<{min_avg_volume:,}) | "
+        f"{illiquid_val} illiquid by value (<₹{min_avg_value_lakhs:.0f}L/day)"
+    )
     return tradable
 
 
@@ -2437,6 +2489,11 @@ def fetch_promoter_data(symbol_clean: str, delay_seconds: float = 2.5) -> dict:
     3-source fallback chain: screener.in → Trendlyne → yfinance.
     Sequential with delay to avoid rate limiting.
     Call this SEQUENTIALLY — never in parallel threads.
+
+    HONESTY: when screener returns 0/0/0 AND yfinance is rate-limited,
+    the fetch is marked source="SCREENER+YF_RL" so downstream renderers
+    (BUY card) can show "N/A" instead of "0.0%" — hiding fake real-looking
+    zeros in trading decisions.
     """
     time.sleep(delay_seconds)
 
@@ -2444,21 +2501,29 @@ def fetch_promoter_data(symbol_clean: str, delay_seconds: float = 2.5) -> dict:
     if data:
         # FIX: screener HTML structure may have changed — ROE/D-E arrive as 0
         # Supplement with yfinance when key financial ratios are all zero
+        yf_rl = False
         if data.get("roe", 0) == 0 and data.get("de_ratio", 0) == 0:
             try:
                 yf_data = fetch_yfinance_fundamentals(symbol_clean + ".NS")
-                if yf_data.get("roe", 0) != 0:
-                    data["roe"] = yf_data["roe"]
-                if yf_data.get("de_ratio", 0) != 0:
-                    data["de_ratio"] = yf_data["de_ratio"]
-                if yf_data.get("roce", 0) != 0:
-                    data["roce"] = yf_data["roce"]
+                # Detect rate-limit: yfinance returns NEUTRAL_FUNDAMENTALS on
+                # 429; every key ratio is 0. Track that so BUY card can render "N/A".
+                if yf_data.get("roe", 0) == 0 and yf_data.get("de_ratio", 0) == 0 and yf_data.get("roce", 0) == 0:
+                    yf_rl = True
+                else:
+                    if yf_data.get("roe", 0) != 0:
+                        data["roe"] = yf_data["roe"]
+                    if yf_data.get("de_ratio", 0) != 0:
+                        data["de_ratio"] = yf_data["de_ratio"]
+                    if yf_data.get("roce", 0) != 0:
+                        data["roce"] = yf_data["roce"]
             except Exception:
-                pass
-        data["source"] = "SCREENER+YF"
+                yf_rl = True
+        data["source"] = "SCREENER+YF_RL" if yf_rl else "SCREENER+YF"
+        data["fundamentals_source"] = data["source"]
         _log(f"[INFO] Fundamentals (screener): {symbol_clean} "
              f"ROE={data.get('roe',0):.1f}% D/E={data.get('de_ratio',0):.2f} "
-             f"Pledge={data.get('promoter_pledge_pct',0):.1f}%")
+             f"Pledge={data.get('promoter_pledge_pct',0):.1f}%"
+             + (" ⚠️ yf rate-limited" if yf_rl else ""))
         return data
 
     _log(f"[WARN] screener.in failed for {symbol_clean} — trying Trendlyne")
@@ -2653,15 +2718,21 @@ def fetch_global_macro() -> dict:
     # Provenance map — which source each macro field came from
     macro["sources"] = {}
 
-    # Phase B2: Frankfurter takes precedence over Yahoo for USD/INR
+    # Phase B2: Frankfurter takes precedence over Yahoo for USD/INR.
+    # Phase C1 (2026-07-02): widen accept-band to 70–100 so a legit weak-rupee
+    # print (~95) is not rejected. Log the value even when rejected so
+    # operators know WHY the fallback path fired.
     usdinr_fr = _fetch_usdinr_frankfurter()
-    if usdinr_fr is not None and 75.0 <= usdinr_fr.value <= 95.0:
+    if usdinr_fr is not None and 70.0 <= usdinr_fr.value <= 100.0:
         macro["usdinr"]            = round(usdinr_fr.value, 4)
         macro["sources"]["usdinr"] = usdinr_fr.to_log()
         _log(f"  USD/INR ✓ Frankfurter — {macro['usdinr']:.4f} ({usdinr_fr.to_log()})")
         skip_usdinr_yf = True
     else:
-        _log("  USD/INR ✗ Frankfurter failed — falling back to yfinance INR=X")
+        if usdinr_fr is not None:
+            _log(f"  USD/INR ✗ Frankfurter returned {usdinr_fr.value:.4f} — outside [70,100] band, falling back to yfinance INR=X")
+        else:
+            _log("  USD/INR ✗ Frankfurter failed (all attempts) — falling back to yfinance INR=X")
         skip_usdinr_yf = False
 
     for name, ticker in GLOBAL_TICKERS.items():
@@ -2676,8 +2747,30 @@ def fetch_global_macro() -> dict:
                 prev = float(df["Close"].squeeze().iloc[-2])
                 pct  = round((last - prev) / prev * 100, 2) if prev != 0 else 0.0
                 if name == "USDINR":
-                    macro["usdinr"]            = last
-                    macro["sources"]["usdinr"] = f"source=yfinance({ticker}) as_of={ist_today().isoformat()}"
+                    # Phase C1 (2026-07-02): yfinance INR=X feed has drifted historically.
+                    # Sanity-check the value against LKG; a >3% jump vs last known good
+                    # is treated as broken feed and swapped out for LKG.
+                    lkg_usdinr = load_last_known_good().get("usdinr")
+                    _yf_val = last
+                    _accept = 70.0 <= _yf_val <= 100.0
+                    if _accept and lkg_usdinr:
+                        try:
+                            _drift = abs(_yf_val - float(lkg_usdinr)) / float(lkg_usdinr)
+                            if _drift > 0.03:  # >3% single-day move — unlikely for USDINR
+                                _log(f"  USD/INR ⚠ yfinance {_yf_val:.4f} drifts {_drift*100:.1f}% vs LKG {float(lkg_usdinr):.4f} — using LKG")
+                                _yf_val = float(lkg_usdinr)
+                                macro["sources"]["usdinr"] = f"source=LKG (yfinance drift-rejected) as_of=<lkg>"
+                            else:
+                                macro["sources"]["usdinr"] = f"source=yfinance({ticker}) as_of={ist_today().isoformat()}"
+                        except Exception:
+                            macro["sources"]["usdinr"] = f"source=yfinance({ticker}) as_of={ist_today().isoformat()}"
+                    elif not _accept and lkg_usdinr:
+                        _log(f"  USD/INR ✗ yfinance {_yf_val:.4f} outside [70,100] — using LKG {float(lkg_usdinr):.4f}")
+                        _yf_val = float(lkg_usdinr)
+                        macro["sources"]["usdinr"] = f"source=LKG (yfinance OOR) as_of=<lkg>"
+                    else:
+                        macro["sources"]["usdinr"] = f"source=yfinance({ticker}) as_of={ist_today().isoformat()}"
+                    macro["usdinr"] = _yf_val
                 elif name == "CRUDE":  macro["crude_usd"]    = last
                 elif name == "VIX_US": macro["vix_us"]       = last
                 elif name == "VIX_IN":
@@ -2928,8 +3021,11 @@ def _fetch_fii_dii_google_news() -> "dict | None":
             "in the month", "for the month", "during the month",
             "total outflow", "total inflow", "total 2024", "total 2025", "total 2026",
             "since january", "since april", "outflows reach", "inflows reach",
-            # Phase B1 (2026-06-30): kill historical-record headlines that misled the parser
-            "single-day", "single day", "largest", "biggest", "record",
+            # Phase B1 (2026-06-30): kill historical-record headlines that misled the parser.
+            # Phase B2 (2026-07-02): removed "single-day" / "single day" — legitimate daily
+            # prints often use that phrasing (e.g. "largest single-day outflow" IS today's
+            # data). Keep only unambiguously historical markers.
+            "largest", "biggest", "record",
             "all-time", "all time", "outflow in 2024", "outflow in 2025", "outflow in 2026",
             "inflow in 2024",  "inflow in 2025",  "inflow in 2026",
             "outflow of 2024", "outflow of 2025", "outflow of 2026",
@@ -3091,11 +3187,18 @@ def _fetch_fii_dii_nselib_nsdl() -> "dict | None":
 
     today = ist_today()
 
-    # Compute the *expected* T-1 business date (skip weekends).
-    # If the NSE archive hasn't published this date yet, everything we get is stale.
-    exp_t1 = today - datetime.timedelta(days=1)
-    while exp_t1.weekday() >= 5:  # Sat/Sun → walk back to Fri
-        exp_t1 -= datetime.timedelta(days=1)
+    # Compute the *expected* freshest business date.
+    #  * After 7 PM IST on a business day  → expect today (NSDL publishes ~7 PM IST)
+    #  * Before 7 PM IST on a business day → expect T-1 (previous business day)
+    #  * On a weekend / holiday            → expect the most recent business day
+    now_ist_dt = datetime.datetime.now(IST)
+    from datetime import time as _dtime
+    if today.weekday() < 5 and now_ist_dt.time() >= _dtime(19, 0):
+        exp_t1 = today
+    else:
+        exp_t1 = today - datetime.timedelta(days=1)
+        while exp_t1.weekday() >= 5:  # Sat/Sun → walk back to Fri
+            exp_t1 -= datetime.timedelta(days=1)
 
     for delta in range(1, 10):     # T-1 .. T-9 — covers weekends + holidays
         d = today - datetime.timedelta(days=delta)
@@ -3181,6 +3284,7 @@ def _fetch_fii_dii_bse() -> "dict | None":
             return None
         rows = data if isinstance(data, list) else data.get("Table", data.get("data", []))
         if not rows:
+            _log(f"    [BSE FII] HTTP 200 but empty rows for TDate={tdate} — not yet published")
             return None
         fii_net = 0.0
         dii_net = 0.0
@@ -3686,7 +3790,10 @@ def compute_nifty_state(nifty_df) -> dict:
             structure = "🟢 Above all EMAs — bull structure intact"
             ema_bear  = False
         elif above_ema20 and above_ema50:  # above short-term EMAs, below EMA200
-            structure = "🟠 Below EMA200 only — medium-term correction"
+            # Phase C1 (2026-07-02): clarified label. Short-term uptrend can
+            # coexist with a long-term (200 EMA) drawdown — don't call it a
+            # "correction" when the immediate trend is up.
+            structure = "🟠 Above EMA20/50, below EMA200 — short-term uptrend, long-term recovery pending"
             ema_bear  = True
         elif above_ema50 and above_ema200:
             structure = "🟡 Below EMA20 — minor pullback in uptrend"
@@ -5965,7 +6072,16 @@ def format_buy_card(stock: dict, sizing: dict, regime: str,
         except Exception:
             pass
 
-        sym     = html.escape(str(stock.get("symbol", "")))
+        # Telegram HTML mode only requires <, >, & escaped — quote=False keeps
+        # apostrophes readable (fixes the &#x27; artefacts in AI thesis strings).
+        # `buy_thesis` was already unescaped upstream by _clean_ai_output(); we
+        # now unescape defensively in case it came from a cached fallback path.
+        try:
+            if isinstance(buy_thesis, str) and "&" in buy_thesis and ";" in buy_thesis:
+                buy_thesis = html.unescape(buy_thesis)
+        except Exception:
+            pass
+        sym     = html.escape(str(stock.get("symbol", "")), quote=False)
         entry   = stock.get("entry", 0)
         stop_p  = stock.get("stop", 0)
         t1      = stock.get("target1", 0)
@@ -5999,16 +6115,30 @@ def format_buy_card(stock: dict, sizing: dict, regime: str,
             f"MaxLoss ₹{max_loss:.0f}" if 0 < max_loss < 1000
             else f"MaxLoss ₹{max_loss_k:.1f}K"
         )
+        # Fundamentals honesty: when source is SCREENER+YF and BOTH ROE + D/E
+        # are literally 0, that means yfinance was rate-limited AND screener
+        # parsed no financial rows — do NOT display as "real" 0%. Show "N/A".
+        _roe  = stock.get('roe', 0) or 0
+        _de   = stock.get('de_ratio', 0) or 0
+        _pldg = stock.get('promoter_pledge_pct', 0) or 0
+        _src  = str(stock.get('fundamentals_source', stock.get('source', ''))).upper()
+        _has_real_fund = (_roe != 0) or (_de != 0) or (_pldg != 0)
+        if _has_real_fund:
+            fund_line = (
+                f"  ROE {_roe:.1f}% · D/E {_de:.2f} · Pledge {_pldg:.0f}%"
+            )
+        else:
+            fund_line = "  ROE N/A · D/E N/A · Pledge N/A (fetch failed)"
         lines = [
-            f"  {icon} <b>{sym}</b> · {html.escape(str(sector))}",
+            f"  {icon} <b>{sym}</b> · {html.escape(str(sector), quote=False)}",
             f"  Opp {opp:.0f} · Conf {conf:.1f} · TQ {tq:.1f} · R/R {rr:.2f}x",
             f"  Entry ₹{entry:.1f} · Stop ₹{stop_p:.1f} ({risk_p:.1f}%) · T1 ₹{t1:.1f} · T2 ₹{t2:.1f}",
             f"  Size ₹{pos_val_k:.0f}K ({pos_pct:.1f}%) · {shares} shares · {max_loss_str}",
-            f"  ROE {stock.get('roe', 0):.1f}% · D/E {stock.get('de_ratio', 0):.2f} · Pledge {stock.get('promoter_pledge_pct', 0):.0f}%",
-            f"  📝 {html.escape(str(buy_thesis))}",
+            fund_line,
+            f"  📝 {html.escape(str(buy_thesis), quote=False)}",
         ]
         if cats:
-            lines.append(f"  🏷 {html.escape(' · '.join(str(c) for c in cats))}")
+            lines.append(f"  🏷 {html.escape(' · '.join(str(c) for c in cats), quote=False)}")
         # FIX label/score mismatch: distinguish NO_NEWS (score correctly = 50)
         # from "we have news but couldn't summarise". Never claim "No significant
         # news" unless the category actually was NO_NEWS.
@@ -6018,7 +6148,7 @@ def format_buy_card(stock: dict, sizing: dict, regime: str,
                 news = html.unescape(str(news))
             except Exception:
                 pass
-            lines.append(f"  📰 {html.escape(str(news))}")
+            lines.append(f"  📰 {html.escape(str(news), quote=False)}")
         elif news_cat == "NO_NEWS":
             lines.append("  📰 No headlines in last 3 days")
         else:
@@ -6995,7 +7125,12 @@ def _run_pipeline_inner():
     _log("[3/17] Fetching bulk/block deals...")
     bulk_deals = fetch_bulk_deals()
     if bulk_deals:
-        _log(f"  Bulk deals: {len(bulk_deals)} found — {', '.join(bulk_deals.keys())}")
+        # Phase C1 (2026-07-02): only show first 25 symbols in the log line so
+        # it doesn't hog 100+ chars of every daily run.
+        _keys = list(bulk_deals.keys())
+        _shown = ', '.join(_keys[:25])
+        _tail  = f" … +{len(_keys) - 25} more" if len(_keys) > 25 else ""
+        _log(f"  Bulk deals: {len(bulk_deals)} found — {_shown}{_tail}")
     # else: fetch_bulk_deals() already logged the reason (quiet day / blocked / error)
 
     # ── 4. Load symbols ──
@@ -7189,6 +7324,11 @@ def _run_pipeline_inner():
                 results_dates_map[sym_clean] = dates
             except Exception:
                 pass
+    # Phase C1 (2026-07-02): honest counter — how many top-40 stocks had an
+    # upcoming earnings date discovered. Silent failure was hiding the gate
+    # activity.
+    _dates_found = sum(1 for d in results_dates_map.values() if d)
+    _log(f"  BSE results-dates: {_dates_found}/{len(top_40)} stocks have upcoming earnings")
 
     for stock in top_40:
         sym_clean     = stock["symbol"].replace(".NS", "")
@@ -7225,6 +7365,13 @@ def _run_pipeline_inner():
 
     # Enforce max_buys cap
     max_buys = effective_thresholds[regime]["max_buys"]
+    # Phase C1 (2026-07-02): reduce aggression when FII data is stale. On stale
+    # days we shouldn't deploy full firepower — halve the cap (rounded up so at
+    # least 1 BUY still fires if we were going to buy).
+    if bool((macro or {}).get("fii_stale", False)) and max_buys > 1:
+        _reduced = max(1, (max_buys + 1) // 2)
+        _log(f"  ⚠ FII data STALE — reducing max_buys {max_buys} → {_reduced}")
+        max_buys = _reduced
     buys = buys[:max_buys]
 
     # ── 14a. Decision audit JSONL — Phase C ─────────────────────────────────
