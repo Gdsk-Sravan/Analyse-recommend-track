@@ -310,18 +310,81 @@ REGIME_THRESHOLDS = {
 }
 
 # Factor weights — 10 factors, sum = 1.00
+# Phase C4 (2026-07-02): options_sentiment weight dropped from 0.04 → 0.00.
+# Only 20/2360 stocks got real PCR — the rest defaulted to a neutral 60,
+# which was silently adding a constant 2.4-point bias to every confidence.
+# Redistributed: trend +0.02, momentum +0.02. If we later get PCR coverage
+# for the full F&O universe (~200 stocks), we can restore this to 0.02–0.04
+# but drive it from a real dynamic-score-per-stock, not a placeholder.
 FACTOR_WEIGHTS = {
-    "trend_quality":      0.18,
-    "momentum_quality":   0.14,
+    "trend_quality":      0.20,
+    "momentum_quality":   0.16,
     "volume_delivery":    0.10,
     "sector_strength":    0.15,
     "rs_vs_nifty":        0.15,
     "news_risk":          0.08,
     "risk_reward":        0.07,
     "ownership_quality":  0.06,
-    "options_sentiment":  0.04,
+    "options_sentiment":  0.00,
     "macro_alignment":    0.03,
 }
+# Sanity: sum must remain 1.00 to avoid systematic score inflation/deflation.
+assert abs(sum(FACTOR_WEIGHTS.values()) - 1.0) < 1e-9, \
+    f"FACTOR_WEIGHTS must sum to 1.0, got {sum(FACTOR_WEIGHTS.values())}"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Phase C4 Gap #4: Auto-calibrated regime thresholds from tracker history.
+# The nightly_calibration.py script writes regime_calibration.json based on
+# actual win-rate per regime; the pipeline reads it here.
+# Falls back silently if file absent, malformed, or too few trades per bucket.
+# ─────────────────────────────────────────────────────────────────────────────
+REGIME_CALIBRATION_FILE = os.getenv("REGIME_CALIBRATION_FILE", "regime_calibration.json")
+
+
+def load_regime_calibration() -> dict:
+    """Reads regime_calibration.json → {regime: {min_confidence_delta: int,
+    min_tq_delta: int, min_rr_delta: float, closed_trades: int, win_rate: float}}.
+    Returns {} if missing/bad. Deltas are applied ADDITIVELY on top of
+    REGIME_THRESHOLDS (positive = tighter, negative = looser)."""
+    try:
+        if not os.path.exists(REGIME_CALIBRATION_FILE):
+            return {}
+        with open(REGIME_CALIBRATION_FILE, "r") as _f:
+            data = json.load(_f)
+        if not isinstance(data, dict):
+            return {}
+        # File format has meta at "_meta" — strip it for return
+        cal = {k: v for k, v in data.items() if not k.startswith("_") and isinstance(v, dict)}
+        return cal
+    except Exception:
+        return {}
+
+
+def apply_regime_calibration(thresholds: dict, calibration: dict) -> dict:
+    """Applies additive deltas from calibration file onto a deep-copied
+    thresholds dict.  Never allows min_confidence to fall below 50 or rise
+    above 99; min_tq stays 40-99; min_rr stays 1.0-4.0."""
+    if not calibration:
+        return thresholds
+    import copy as _copy
+    out = _copy.deepcopy(thresholds)
+    for regime, delta in calibration.items():
+        if regime not in out:
+            continue
+        try:
+            dc = int(delta.get("min_confidence_delta", 0))
+            dt = int(delta.get("min_tq_delta", 0))
+            dr = float(delta.get("min_rr_delta", 0.0))
+            out[regime]["min_confidence"] = int(max(50, min(99,
+                out[regime].get("min_confidence", 80) + dc)))
+            out[regime]["min_tq"] = int(max(40, min(99,
+                out[regime].get("min_tq", 75) + dt)))
+            out[regime]["min_rr"] = round(max(1.0, min(4.0,
+                out[regime].get("min_rr", 1.8) + dr)), 2)
+        except Exception:
+            continue
+    return out
 
 # Opportunity score weights — primary ranking metric (ENHANCEMENT 1)
 OPPORTUNITY_WEIGHTS = {
@@ -5227,7 +5290,146 @@ def _default_stock_result(symbol: str, sector: str) -> dict:
         # compute_base_confidence() and inserted after **scores in scored.append()
         # so it is never overwritten by a stale 0.0 placeholder.
         "weekly_trend_ok": False, "price_pattern": "NONE", "rs_diff21": 0.0,
+        # Phase C4: execution-realism fields (Gap #5 + #8)
+        "net_rr_t1": 0.0, "net_rr_t2": 0.0,
+        "slippage_pct_one_way": 0.0, "round_trip_cost_pct": 0.0,
+        "avg_gap_pct": 0.0, "max_gap_pct": 0.0, "p90_gap_pct": 0.0,
+        "effective_stop_pct": 0.0, "high_gap_risk": False,
     }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Phase C4 (2026-07-02) — Execution realism helpers
+# Gap #5: slippage-adjusted R/R.  Gap #8: overnight-gap risk warning.
+# ─────────────────────────────────────────────────────────────────────────────
+def estimate_slippage_pct(avg_val_lakhs: float) -> float:
+    """
+    Per-leg slippage estimate for NSE cash market as a % of price.
+
+    Liquidity bucket (avg 20-day traded value in ₹ lakh):
+      >= 5,000 lakh (₹50Cr) — mega liquid  (RELIANCE, HDFCBANK)  → 0.05%
+      >= 1,000 lakh (₹10Cr) — high liquid  (mid-cap NIFTY500)    → 0.10%
+      >=   500 lakh (₹5Cr)  — decent                              → 0.20%
+      >=   200 lakh (₹2Cr)  — thin                                → 0.35%
+      >=    50 lakh (₹50L)  — very thin (min gate threshold)      → 0.55%
+      <     50 lakh         — below gate, wouldn't be tradable    → 0.80%
+    """
+    try:
+        v = float(avg_val_lakhs or 0)
+    except Exception:
+        return 0.35
+    if v >= 5000: return 0.05
+    if v >= 1000: return 0.10
+    if v >= 500:  return 0.20
+    if v >= 200:  return 0.35
+    if v >= 50:   return 0.55
+    return 0.80
+
+
+def estimate_round_trip_cost_pct(avg_val_lakhs: float,
+                                  brokerage_bps: float = None) -> dict:
+    """
+    Round-trip cost = 2x slippage + STT (0.1% sell) + brokerage + GST + exchange +
+    SEBI + stamp. For a typical discount broker (Zerodha/Groww/Upstox):
+      brokerage = flat ₹20/order (≈ 0.03% at ₹65k ticket, less at bigger)
+      STT       = 0.10% on sell leg (equity delivery)
+      GST       = 18% on brokerage
+      Exch txn  = 0.00297% both sides (NSE)
+      SEBI      = 0.0001% both sides
+      Stamp     = 0.015% buy leg (Maharashtra)
+
+    Returns dict with slippage_pct, tax_pct, total_pct (all round-trip).
+    """
+    slip_one = estimate_slippage_pct(avg_val_lakhs)
+    slip_rt  = slip_one * 2.0
+
+    # Fixed regulatory + broker: STT 0.10% + Stamp 0.015% + Exch 2*0.003% +
+    # SEBI 2*0.0001% + Brokerage ~0.06% RT + GST on brokerage
+    tax_rt = 0.10 + 0.015 + 0.006 + 0.0002 + 0.06 + 0.011  # ≈ 0.19%
+    if brokerage_bps is not None:
+        # Override broker cost if user provides bps
+        tax_rt = 0.10 + 0.015 + 0.006 + 0.0002 + (brokerage_bps / 100.0) * 2 + \
+                 (brokerage_bps / 100.0) * 2 * 0.18
+    total_rt = slip_rt + tax_rt
+    return {
+        "slippage_pct_one_way": round(slip_one, 3),
+        "slippage_pct_rt":      round(slip_rt, 3),
+        "tax_pct_rt":           round(tax_rt, 3),
+        "total_pct_rt":         round(total_rt, 3),
+    }
+
+
+def apply_slippage_to_rr(entry: float, stop: float, target1: float, target2: float,
+                          avg_val_lakhs: float) -> dict:
+    """
+    Compute net (post-slippage-and-tax) R/R.  Buys fill above quote, sells fill below.
+      buy_fill  ≈ entry * (1 + slip)
+      sell_fill ≈ target * (1 - slip)
+      stop_fill ≈ stop   * (1 - slip)   (stop-loss slippage is worse in practice; we use symmetric here)
+
+    Returns net rr on T2 plus a net rr on T1, plus the round-trip cost dict.
+    """
+    cost = estimate_round_trip_cost_pct(avg_val_lakhs)
+    slip = cost["slippage_pct_one_way"] / 100.0  # convert % to fraction
+    tax_rt = cost["tax_pct_rt"] / 100.0
+
+    try:
+        if entry <= 0 or stop <= 0 or stop >= entry:
+            return {"net_rr_t1": 0.0, "net_rr_t2": 0.0, "cost": cost}
+        buy_fill  = entry * (1.0 + slip)
+        stop_fill = stop  * (1.0 - slip)
+        t1_fill   = target1 * (1.0 - slip) if target1 > 0 else 0.0
+        t2_fill   = target2 * (1.0 - slip) if target2 > 0 else 0.0
+        # Net PnL per share (loser) — includes tax on both sides
+        loser_per_share = (stop_fill - buy_fill) - (buy_fill * tax_rt)
+        if loser_per_share >= 0:
+            # numerically stop is above fill after slippage — nonsensical; guard
+            return {"net_rr_t1": 0.0, "net_rr_t2": 0.0, "cost": cost}
+        risk_per_share = abs(loser_per_share)
+        # Net winner per share at each target
+        w1 = (t1_fill - buy_fill) - (buy_fill * tax_rt) if t1_fill > 0 else 0.0
+        w2 = (t2_fill - buy_fill) - (buy_fill * tax_rt) if t2_fill > 0 else 0.0
+        rr1 = max(0.0, round(w1 / risk_per_share, 2)) if risk_per_share > 0 else 0.0
+        rr2 = max(0.0, round(w2 / risk_per_share, 2)) if risk_per_share > 0 else 0.0
+        return {"net_rr_t1": rr1, "net_rr_t2": rr2, "cost": cost}
+    except Exception:
+        return {"net_rr_t1": 0.0, "net_rr_t2": 0.0, "cost": cost}
+
+
+def estimate_gap_risk_pct(closes, highs, lows) -> dict:
+    """
+    Overnight-gap risk = 20-day rolling mean of |open[i] - close[i-1]| / close[i-1].
+    Since we don't have opens explicitly, we approximate the gap size using
+    the wick beyond the previous day's close:
+        approx_gap[i] = max(highs[i] - closes[i-1], closes[i-1] - lows[i], 0)
+
+    Returns:
+      avg_gap_pct  — typical daily gap size (%)
+      max_gap_pct  — largest gap over lookback
+      p90_gap_pct  — 90th percentile (used for stop-risk headline)
+    """
+    try:
+        import numpy as _np
+        c = _np.asarray(closes, dtype=float)
+        h = _np.asarray(highs,  dtype=float)
+        l = _np.asarray(lows,   dtype=float)
+        n = min(len(c), len(h), len(l))
+        if n < 22:
+            return {"avg_gap_pct": 0.0, "max_gap_pct": 0.0, "p90_gap_pct": 0.0}
+        c_prev = c[-21:-1]
+        h_curr = h[-20:]
+        l_curr = l[-20:]
+        gaps_up   = _np.maximum(h_curr - c_prev, 0.0)
+        gaps_down = _np.maximum(c_prev - l_curr, 0.0)
+        gaps_abs  = _np.maximum(gaps_up, gaps_down)
+        gap_pct   = gaps_abs / _np.where(c_prev > 0, c_prev, 1.0) * 100.0
+        return {
+            "avg_gap_pct": round(float(_np.mean(gap_pct)),           2),
+            "max_gap_pct": round(float(_np.max(gap_pct)),            2),
+            "p90_gap_pct": round(float(_np.percentile(gap_pct, 90)), 2),
+        }
+    except Exception:
+        return {"avg_gap_pct": 0.0, "max_gap_pct": 0.0, "p90_gap_pct": 0.0}
 
 
 def compute_all_factors(symbol: str, df,
@@ -5416,6 +5618,44 @@ def compute_all_factors(symbol: str, df,
         result["rr_ratio"]    = rr_ratio
         result["risk_reward"] = min(100, max(0, rr_ratio * 30))
 
+        # ── Phase C4: slippage-adjusted (net) R/R + overnight gap risk ──
+        try:
+            net = apply_slippage_to_rr(entry, stop, target1, target2, avg_val_lakhs)
+            result["net_rr_t1"]           = net["net_rr_t1"]
+            result["net_rr_t2"]           = net["net_rr_t2"]
+            result["slippage_pct_one_way"] = net["cost"]["slippage_pct_one_way"]
+            result["round_trip_cost_pct"] = net["cost"]["total_pct_rt"]
+            # Gate uses the more conservative rr — protects illiquid stocks whose
+            # gross R/R looks great but shrinks after cost.
+            if net["net_rr_t2"] > 0 and net["net_rr_t2"] < rr_ratio:
+                result["rr_ratio"]    = net["net_rr_t2"]
+                result["risk_reward"] = min(100, max(0, net["net_rr_t2"] * 30))
+        except Exception:
+            result["net_rr_t1"]           = 0.0
+            result["net_rr_t2"]           = 0.0
+            result["slippage_pct_one_way"] = 0.0
+            result["round_trip_cost_pct"] = 0.0
+
+        try:
+            gap = estimate_gap_risk_pct(closes, highs, lows)
+            result["avg_gap_pct"] = gap["avg_gap_pct"]
+            result["max_gap_pct"] = gap["max_gap_pct"]
+            result["p90_gap_pct"] = gap["p90_gap_pct"]
+            # Effective (worst-realistic) stop distance = raw stop % + p90 gap
+            _stop_dist_pct = ((entry - stop) / entry * 100.0) if entry > 0 else 0.0
+            result["effective_stop_pct"] = round(_stop_dist_pct + gap["p90_gap_pct"], 2)
+            # Flag if p90 gap is a significant fraction of the stop budget
+            if _stop_dist_pct > 0 and gap["p90_gap_pct"] > 0.6 * _stop_dist_pct:
+                result["high_gap_risk"] = True
+            else:
+                result["high_gap_risk"] = False
+        except Exception:
+            result["avg_gap_pct"] = 0.0
+            result["max_gap_pct"] = 0.0
+            result["p90_gap_pct"] = 0.0
+            result["effective_stop_pct"] = 0.0
+            result["high_gap_risk"] = False
+
         # ── Factor 8: Ownership Quality — driven by promoter pledge + 52W proximity ──
         # Actual ROE/pledge injected later by fetch_all_fundamentals_cached();
         # here we seed with a neutral value that improves once fundamentals arrive.
@@ -5574,14 +5814,30 @@ def monitor_portfolio(holdings: list, price_data: dict, regime: str) -> list:
             "invested": invested, "cur_val": cur_val, "pnl_abs": pnl_abs,
             "target1": target1, "target2": target2, "stop": stop,
         }
+        # Phase C4 (Gap #6): partial-exit-at-T1 recognition from holdings CSV.
+        # If holdings has a "partial_closed" flag from an earlier day, don't
+        # re-suggest T1_PARTIAL_EXIT — instead show TRAIL_STOP for the residual.
+        partial_done = bool(holding.get("partial_closed", False))
         if stop > 0 and current <= stop:
             alerts.append({**base, "action": "EXIT",       "reason": "HARD_STOP_HIT"})
         elif regime in ("BEAR", "STRONG_BEAR"):
             alerts.append({**base, "action": "EXIT",       "reason": "REGIME_BEAR"})
         elif target2 > 0 and current >= target2:
             alerts.append({**base, "action": "EXIT_FULL",  "reason": "TARGET2_HIT"})
-        elif target1 > 0 and current >= target1:
-            alerts.append({**base, "action": "TRAIL_STOP", "reason": "TARGET1_TRAIL"})
+        elif not partial_done and target1 > 0 and current >= target1:
+            # First time T1 is hit — book 50%, trail rest to entry (break-even)
+            pe_pct = float(os.getenv("PARTIAL_EXIT_PCT", "50"))
+            alerts.append({
+                **base,
+                "action": "T1_PARTIAL_EXIT",
+                "reason": f"TARGET1_HIT · sell {pe_pct:.0f}% @ ~₹{current:.2f} · trail residual stop to entry ₹{entry:.2f}",
+                "partial_exit_pct":   pe_pct,
+                "trail_stop_to":      entry,
+                "residual_target":    target2,
+            })
+        elif partial_done and target1 > 0 and current >= target1:
+            # Residual position — normal trail
+            alerts.append({**base, "action": "TRAIL_STOP", "reason": "RESIDUAL_TRAIL_TO_T2"})
         elif days_held >= 20 and (target1 == 0 or current < target1):
             alerts.append({**base, "action": "REVIEW",     "reason": "TIME_STOP_20D", "days_held": days_held})
         else:
@@ -5725,6 +5981,16 @@ def run_gates(stock: dict, regime: str, thresholds: dict,
     # Gate 11: 52-Week High Proximity (SOFT)
     if stock.get("near_52w_high", False):
         warnings.append("NEAR_52W_HIGH_RESISTANCE")
+
+    # Gate 11b (Phase C4): Overnight-gap risk (SOFT).  Flags stocks where the
+    # 90th-percentile intraday gap size over the last 20 sessions consumes
+    # >60% of the stop budget — i.e. a gap-down can eat the stop before
+    # intraday triggers fire. Never blocks a BUY; downstream sizing and the
+    # BUY card render the effective stop.
+    if stock.get("high_gap_risk", False):
+        _p90 = float(stock.get("p90_gap_pct", 0) or 0)
+        _eff = float(stock.get("effective_stop_pct", 0) or 0)
+        warnings.append(f"HIGH_GAP_RISK: p90 gap {_p90:.1f}% · effective stop {_eff:.1f}%")
 
     # Gate 12: Portfolio Capacity (SOFT)
     active_count = portfolio.get("active_count", 0)
@@ -6198,19 +6464,46 @@ def update_tracker(entries: list) -> tuple:
                 e["max_gain_pct"] = chg_pct
             if chg_pct < e["max_loss_pct"]:
                 e["max_loss_pct"] = chg_pct
+            # Phase C4 (Gap #6): partial-exit-at-T1 pattern.  At T1 → close 50%,
+            # trail stop of the residual 50% up to entry (break-even), and let
+            # it run to T2 or a trailing stop.
+            # State: e["partial_closed"] is True after T1 has fired once.
+            partial_done = bool(e.get("partial_closed", False))
             close_reason = None
             if stop > 0 and current <= stop:
-                close_reason = "STOP_HIT"
+                # Hard stop hit — close whatever's left
+                close_reason = "STOP_HIT" if not partial_done else "STOP_HIT_RESIDUAL"
             elif t2 > 0 and current >= t2:
+                # Full target hit — close residual
                 close_reason = "TARGET2_HIT"
-            elif t1 > 0 and current >= t1:
-                close_reason = "TARGET1_HIT"
+            elif not partial_done and t1 > 0 and current >= t1:
+                # First time crossing T1 — record the partial exit and continue running
+                e["partial_closed"]   = True
+                e["partial_exit_pct"] = float(os.getenv("PARTIAL_EXIT_PCT", "50"))
+                e["partial_exit_price"] = current
+                e["partial_exit_date"]  = datetime.date.today().isoformat()
+                e["partial_exit_pnl_pct"] = chg_pct
+                # Trail stop of the residual up to entry price (break-even)
+                if entry_px > stop:
+                    e["stop"] = entry_px
+                    e["trail_note"] = (
+                        f"T1 hit @ ₹{current:.2f} (+{chg_pct:.1f}%). "
+                        f"Sold {e['partial_exit_pct']:.0f}% · trailed rest to entry ₹{entry_px:.2f}"
+                    )
+                # Not closed — position remains OPEN with residual 50%
             if close_reason:
                 e["status"]        = "CLOSED"
                 e["close_reason"]  = close_reason
                 e["close_price"]   = current
                 e["close_date"]    = datetime.date.today().isoformat()
                 e["final_pnl_pct"] = chg_pct
+                # If partial exit happened earlier, blend the realized PnL:
+                # blended = partial% * partial_pnl + (100-partial%) * final_pnl
+                if partial_done:
+                    pe = float(e.get("partial_exit_pct", 50.0)) / 100.0
+                    pp = float(e.get("partial_exit_pnl_pct", 0.0))
+                    blended = pe * pp + (1.0 - pe) * chg_pct
+                    e["blended_pnl_pct"] = round(blended, 2)
                 closed_today.append(e)
         except Exception as ex:
             _log(f"[WARN] tracker update failed for {e.get('symbol')}: {ex}")
@@ -6674,6 +6967,36 @@ def format_buy_card(stock: dict, sizing: dict, regime: str,
             f"  Size ₹{pos_val_k:.0f}K ({pos_pct:.1f}%) · {shares} shares · {max_loss_str}",
             fund_line,
         ]
+        # Phase C4 Gap #6: partial-exit plan (drives portfolio T1_PARTIAL_EXIT action)
+        try:
+            _pe_pct = float(os.getenv("PARTIAL_EXIT_PCT", "50"))
+            lines.append(
+                f"  📋 Plan: Sell {_pe_pct:.0f}% @ T1 ₹{t1:.1f} → trail rest to entry → let residual run to T2 ₹{t2:.1f}"
+            )
+        except Exception:
+            pass
+        # Phase C4 Gap #5+#8: cost + gap risk (only when meaningful)
+        try:
+            _slip     = float(stock.get("slippage_pct_one_way", 0) or 0)
+            _cost_rt  = float(stock.get("round_trip_cost_pct", 0) or 0)
+            _net_rr2  = float(stock.get("net_rr_t2", 0) or 0)
+            _p90_gap  = float(stock.get("p90_gap_pct", 0) or 0)
+            _eff_stop = float(stock.get("effective_stop_pct", 0) or 0)
+            _high_gap = bool(stock.get("high_gap_risk", False))
+            cost_bits = []
+            if _slip > 0 or _cost_rt > 0:
+                cost_bits.append(
+                    f"Slip {_slip:.2f}% · RT cost {_cost_rt:.2f}% · Net R/R T2 {_net_rr2:.2f}x"
+                )
+            if _p90_gap > 0 and _eff_stop > 0:
+                gap_icon = "⚠️" if _high_gap else "•"
+                cost_bits.append(
+                    f"{gap_icon} p90 gap {_p90_gap:.1f}% · effective stop {_eff_stop:.1f}%"
+                )
+            if cost_bits:
+                lines.append("  💸 " + " · ".join(cost_bits))
+        except Exception:
+            pass
         if deliv_line:
             lines.append(deliv_line)
         lines.append(f"  📝 {html.escape(str(buy_thesis), quote=False)}")
@@ -6727,7 +7050,8 @@ def format_portfolio_card_compact(alert: dict, current_price: float,
 
         pnl_icon    = "🟢" if pnl_p > 0 else ("🔴" if pnl_p < -2 else "⚪")
         action_icon = {"HOLD": "✅", "EXIT": "🔴", "EXIT_FULL": "🔴",
-                       "TRAIL_STOP": "🟡", "REVIEW": "🟠"}.get(action, "✅")
+                       "TRAIL_STOP": "🟡", "REVIEW": "🟠",
+                       "T1_PARTIAL_EXIT": "💰"}.get(action, "✅")
 
         lines = [
             f"  {action_icon} <b>{html.escape(symbol)}</b> · {action} · T{days} · {pnl_icon}{pnl_p:+.1f}% · {r_mult:+.2f}R",
@@ -7468,10 +7792,11 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
         lines += stop_alerts
 
     # ── Portfolio ──
-    exits   = [a for a in portfolio_alerts if a["action"] in ("EXIT", "EXIT_FULL")]
-    trails  = [a for a in portfolio_alerts if a["action"] == "TRAIL_STOP"]
-    reviews = [a for a in portfolio_alerts if a["action"] == "REVIEW"]
-    holds   = [a for a in portfolio_alerts if a["action"] == "HOLD"]
+    exits    = [a for a in portfolio_alerts if a["action"] in ("EXIT", "EXIT_FULL")]
+    partials = [a for a in portfolio_alerts if a["action"] == "T1_PARTIAL_EXIT"]
+    trails   = [a for a in portfolio_alerts if a["action"] == "TRAIL_STOP"]
+    reviews  = [a for a in portfolio_alerts if a["action"] == "REVIEW"]
+    holds    = [a for a in portfolio_alerts if a["action"] == "HOLD"]
     lines.append("📁 <b>PORTFOLIO</b>")
     if portfolio_alerts:
         # Compact 2-line portfolio summary (FIX 3F)
@@ -7490,6 +7815,10 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
             lines.append("  🚨 <b>EXIT</b>")
             for e in exits:
                 lines.extend(_fmt_alert_card(e))
+        if partials:
+            lines.append("  💰 <b>T1 PARTIAL EXIT</b> (book 50% · trail rest to break-even)")
+            for p in partials:
+                lines.extend(_fmt_alert_card(p))
         if trails:
             lines.append("  ⚡ <b>TRAIL STOP</b>")
             for t in trails:
@@ -7720,6 +8049,25 @@ def _run_pipeline_inner():
             effective_thresholds[rk]["min_confidence"] += earn_adj
     else:
         effective_thresholds = REGIME_THRESHOLDS
+
+    # ── 0b2. Auto-calibration layer (Phase C4 Gap #4) ──
+    # Read regime_calibration.json produced by nightly_calibration.py.
+    # Deltas are ADDITIVE on top of earn_adj and REGIME_THRESHOLDS.
+    _cal = load_regime_calibration()
+    if _cal:
+        if effective_thresholds is REGIME_THRESHOLDS:
+            effective_thresholds = copy.deepcopy(REGIME_THRESHOLDS)
+        _before = {rk: effective_thresholds[rk].get("min_confidence", 0) for rk in effective_thresholds}
+        effective_thresholds = apply_regime_calibration(effective_thresholds, _cal)
+        _deltas = []
+        for rk, before in _before.items():
+            after = effective_thresholds[rk].get("min_confidence", 0)
+            if after != before:
+                _deltas.append(f"{rk}:{before}->{after}")
+        if _deltas:
+            _log("[INFO] Auto-calibration applied: " + ", ".join(_deltas))
+        else:
+            _log(f"[INFO] Auto-calibration file loaded ({len(_cal)} regimes) but no threshold changes.")
 
     # ── 1. Global macro ──
     _log("[1/17] Fetching global macro...")
