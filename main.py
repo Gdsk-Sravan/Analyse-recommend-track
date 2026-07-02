@@ -5246,7 +5246,13 @@ def run_gates(stock: dict, regime: str, thresholds: dict,
     except Exception:
         pass
 
-    # Gate 9: Sector Health (SOFT / HARD if LAGGING)
+    # Gate 9: Sector Health (SOFT — LAGGING counts toward the 2-fail budget but
+    # does NOT hard-block watchlist entry). Phase C2 (2026-07-02): previously
+    # LAGGING was force-rejected, which combined with the sector_master.csv
+    # fallback (fix #4) caused mass carnage — every Banking/Insurance stock
+    # that used to be sector=OTHERS suddenly became a hard-reject. Now LAGGING
+    # is a scoreable fail: rotation candidates can still reach WATCHLIST/
+    # NEAR_MISS, and only get pushed to REJECTED if combined with other fails.
     sector_status = stock.get("sector_status", "NEUTRAL")
     if sector_status == "LAGGING":
         fail_reasons.append("SECTOR_LAGGING")
@@ -5295,11 +5301,16 @@ def run_gates(stock: dict, regime: str, thresholds: dict,
         # PORTFOLIO_FULL never blocks watchlist — stock is valid, just capacity is full today
         # Strip it before deciding WATCHLIST vs REJECTED so it doesn't poison the check
         scoreable_fails = [f for f in hard_fails if "PORTFOLIO_FULL" not in f]
-        soft_only = all("EVENT_BLOCK" in f or "HIGH_CORR" in f for f in scoreable_fails)
+        # Phase C2 (2026-07-02): SECTOR_LAGGING is now a soft-scoreable fail —
+        # it counts toward the 2-fail budget but no longer excludes watchlist.
+        soft_only = all(
+            "EVENT_BLOCK" in f or "HIGH_CORR" in f or "SECTOR_LAGGING" in f
+            for f in scoreable_fails
+        )
         if not scoreable_fails:
             # Only PORTFOLIO_FULL failed — valid setup, just no room
             decision = "WATCHLIST"
-        elif len(scoreable_fails) <= 2 and (soft_only or all("FAIL" in f and "LAGGING" not in f for f in scoreable_fails)):
+        elif len(scoreable_fails) <= 2 and (soft_only or all("FAIL" in f for f in scoreable_fails)):
             decision = "WATCHLIST"
         else:
             decision = "REJECTED"
