@@ -70,6 +70,8 @@ def run_research():
         "Weekday Analysis", "Holding Period Analysis", "Category Comparison",
         "Conf x TQ Matrix", "Catalyst Analysis", "Fail Reason Analysis",
         "Regime x Sector", "Confidence Trajectory",
+        # Phase 5 (2026-07-01): institutional-flow analytics
+        "Delivery Flow", "Sector Rotation",
     ])
 
     # Confidence analysis
@@ -105,6 +107,10 @@ def run_research():
     _analyze_fail_reasons(wb, df_rec, df_track)
     _analyze_regime_x_sector(wb, df_rec, df_track)
     _analyze_confidence_trajectory(wb, df_rec, df_track)
+
+    # ── Phase 5 (2026-07-01): institutional-flow analytics ──
+    _analyze_delivery_flow(wb, df_rec, df_track)
+    _analyze_sector_rotation(wb, df_rec, df_track)
 
     wb.save(TRACKER_XLSX)
     print(f"[INFO] Research job complete — {TRACKER_XLSX} updated")
@@ -980,6 +986,166 @@ def _analyze_confidence_trajectory(wb, df_rec, df_track):
                       "'momentum-in-confidence' bonus (+2 pts) to the scorer.")
     except Exception as e:
         print(f"[WARN] Confidence trajectory failed: {e}")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Phase 5 (2026-07-01): Delivery-flow + sector-rotation research sheets.
+# These probe main.py's live delivery cache and sector rank history to answer
+# "which delivery signals correlate with winners?" and "which sectors are
+# rotating in vs out this week?".  Best-effort — silently skip if main / nselib
+# / files aren't importable in this environment.
+# ─────────────────────────────────────────────────────────────────────────────
+def _analyze_delivery_flow(wb, df_rec, df_track):
+    """Summary of live delivery % signals for stocks that appear in the
+    Recommendations sheet, cross-cut by realised return.
+    """
+    try:
+        ws = wb["Delivery Flow"]
+        ws.delete_rows(1, ws.max_row)
+        ws.append([
+            "Symbol", "Rec Date", "Status", "Return%",
+            "Deliv %Today", "Deliv 20d Avg", "Ratio", "Signal", "Note",
+        ])
+
+        # Import delivery accessor best-effort
+        try:
+            from main import fetch_delivery_cached, load_delivery_cache  # type: ignore
+            deliv_cache = load_delivery_cache()
+        except Exception as e:
+            ws.cell(row=2, column=1, value=f"[WARN] delivery accessor unavailable: {e}")
+            return
+
+        if df_rec is None or df_rec.empty:
+            ws.cell(row=2, column=1, value="No recommendation data yet")
+            return
+
+        # Merge return% from tracker's Daily Tracking (last row per symbol+date)
+        last_ret = {}
+        if df_track is not None and not df_track.empty:
+            try:
+                grp = df_track.sort_values("Day#").groupby(["Ticker", "Rec Date"]).tail(1)
+                for _, r in grp.iterrows():
+                    last_ret[(str(r.get("Ticker")), str(r.get("Rec Date")))] = float(r.get("Return%") or 0)
+            except Exception:
+                pass
+
+        # Cap at 200 rows to keep xlsx snappy
+        rows_out = 0
+        for _, r in df_rec.tail(200).iterrows():
+            try:
+                sym    = str(r.get("Ticker") or "")
+                rdate  = str(r.get("Date") or "")
+                status = str(r.get("Status") or "")
+                if not sym:
+                    continue
+                d = fetch_delivery_cached(sym.replace(".NS", ""), deliv_cache)
+                if not d or d.get("source") != "nselib":
+                    continue
+                today   = float(d.get("delivery_pct_today", 0.0) or 0.0)
+                avg20   = float(d.get("delivery_pct_20d_avg", 0.0) or 0.0)
+                ratio   = float(d.get("delivery_ratio", 1.0) or 1.0)
+                signal  = str(d.get("delivery_signal", "NEUTRAL"))
+                ret_pct = last_ret.get((sym, rdate), 0.0)
+
+                note = ""
+                if signal == "DISTRIBUTION" and ret_pct > 3:
+                    note = "trim on distribution"
+                elif signal in ("STRONG_ACCUM", "ACCUM") and ret_pct > 0:
+                    note = "accumulation, let run"
+                elif signal == "WEAK" and ret_pct < 0:
+                    note = "weak delivery on loser"
+                ws.append([sym, rdate, status, ret_pct, today, avg20, ratio, signal, note])
+                rows_out += 1
+            except Exception:
+                continue
+
+        if rows_out == 0:
+            ws.cell(row=2, column=1,
+                    value="No nselib delivery data available (cache empty or nselib unavailable)")
+    except Exception as e:
+        print(f"[WARN] Delivery-flow analysis failed: {e}")
+
+
+def _analyze_sector_rotation(wb, df_rec, df_track):
+    """Read sector_rank_history.json (produced by main.compute_sector_rotation)
+    and surface 5-day rank deltas so we can see rotating-in vs rotating-out
+    sectors alongside portfolio exposure.
+    """
+    import json as _json
+    from datetime import date as _date
+
+    try:
+        ws = wb["Sector Rotation"]
+        ws.delete_rows(1, ws.max_row)
+        ws.append(["Sector", "Rank Today", "Rank 5d Ago", "Delta", "Velocity", "Portfolio Exposure"])
+
+        history_path = os.getenv("SECTOR_RANK_HISTORY_FILE", "sector_rank_history.json")
+        if not os.path.exists(history_path):
+            ws.cell(row=2, column=1, value=f"No history file at {history_path}")
+            return
+
+        with open(history_path, "r", encoding="utf-8") as f:
+            history = _json.load(f)
+        if not isinstance(history, dict) or not history:
+            ws.cell(row=2, column=1, value="History file empty")
+            return
+
+        # Latest date + closest date ≥5d back
+        dates_sorted = sorted(history.keys(), reverse=True)
+        today_key = dates_sorted[0]
+        today_ranks = history.get(today_key, {})
+        prior_ranks, prior_key = {}, None
+        try:
+            d_today = _date.fromisoformat(today_key)
+            for k in dates_sorted[1:]:
+                try:
+                    d_prior = _date.fromisoformat(k)
+                    if (d_today - d_prior).days >= 5:
+                        prior_ranks = history[k]
+                        prior_key = k
+                        break
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
+        # Portfolio exposure per sector (count of active recs)
+        exposure = {}
+        if df_rec is not None and not df_rec.empty:
+            try:
+                for _, r in df_rec.iterrows():
+                    if str(r.get("Status") or "").upper() == "ACTIVE":
+                        sec = str(r.get("Sector") or "OTHERS")
+                        exposure[sec] = exposure.get(sec, 0) + 1
+            except Exception:
+                pass
+
+        # Build rows sorted by delta desc (rotating in first)
+        rows = []
+        for sec, rank in today_ranks.items():
+            prior = prior_ranks.get(sec)
+            if prior is None:
+                delta = None
+                velocity = "NEW"
+            else:
+                delta = int(prior) - int(rank)
+                if delta >= 3:
+                    velocity = "ROTATING_IN"
+                elif delta <= -3:
+                    velocity = "ROTATING_OUT"
+                else:
+                    velocity = "STABLE"
+            rows.append((sec, int(rank), prior, delta, velocity, exposure.get(sec, 0)))
+
+        rows.sort(key=lambda r: (r[3] if r[3] is not None else -999), reverse=True)
+        for sec, rank, prior, delta, vel, exp in rows:
+            ws.append([sec, rank, prior if prior is not None else "—",
+                       delta if delta is not None else "—", vel, exp])
+
+        ws.append([])
+        ws.append([f"Comparing {today_key} vs {prior_key or 'n/a'} (≥5 trading days back)"])
+    except Exception as e:
+        print(f"[WARN] Sector rotation analysis failed: {e}")
 
 
 if __name__ == "__main__":
