@@ -36,10 +36,23 @@ except ImportError:
     print("[ERROR] openpyxl not installed. Run: pip install openpyxl")
 
 TRACKER_XLSX = os.getenv("TRACKER_XLSX", "recommendation_tracker.xlsx")
+# Phase C7c: FRESH_START flag — skip research on the reset run (nothing meaningful to analyze yet)
+FRESH_START  = os.getenv("FRESH_START", "false").lower() == "true"
+# Phase C7e (2026-07-02): min sample size for any bucket-level stat to be
+# considered meaningful. Below this the bucket is reported with an
+# "(insufficient)" note instead of misleading percentages built on n=1..4.
+MIN_SAMPLE_N = int(os.getenv("MIN_SAMPLE_N", "5"))
 
 
 def run_research():
     print(f"=== RESEARCH JOB: {datetime.now().strftime('%Y-%m-%d')} ===")
+
+    # Phase C7c: FRESH_START safety — skip when state was wiped this run.
+    # Historical analysis on 1 day of data is meaningless; wait for real history.
+    if FRESH_START:
+        print("[FRESH_START] research_job: state was wiped this run — skipping analysis")
+        print("[FRESH_START] research_job: will resume on the next scheduled run once history builds")
+        return
 
     if not _PD_OK or not _OPENPYXL_OK:
         print("[ERROR] Missing dependencies — aborting")
@@ -72,19 +85,19 @@ def run_research():
         "Regime x Sector", "Confidence Trajectory",
         # Phase 5 (2026-07-01): institutional-flow analytics
         "Delivery Flow", "Sector Rotation",
+        # Phase C7e (2026-07-02): portfolio-level metrics + backtest divergence
+        "Portfolio Metrics", "Backtest vs Live",
     ])
 
     # Confidence analysis
     _analyze_by_column(wb, df_rec, df_track, "Confidence", "Confidence Analysis",
                         [70, 75, 80, 83, 85, 88, 90, 95])
 
-    # TQ analysis
-    _analyze_by_column(wb, df_rec, df_track, "TQ", "TQ Analysis",
-                        [70, 75, 80, 85, 90, 95])
-
-    # Opportunity Score analysis
-    _analyze_by_column(wb, df_rec, df_track, "Opp Score", "Opp Score Analysis",
-                        [50, 60, 70, 75, 80, 85, 90])
+    # Phase C7e (2026-07-02): "TQ Analysis" and "Opp Score Analysis" removed —
+    # they were single-factor duplicates of what "Conf × TQ Matrix" and the
+    # Weekly Factor Summary tercile analysis already cover more precisely.
+    # If those sheets exist in an older workbook, they'll be cleared but kept
+    # (openpyxl leaves them empty rather than deleting — user can hide/delete).
 
     # Sector analysis
     _analyze_by_sector(wb, df_rec, df_track)
@@ -112,12 +125,30 @@ def run_research():
     _analyze_delivery_flow(wb, df_rec, df_track)
     _analyze_sector_rotation(wb, df_rec, df_track)
 
+    # ── Phase C7e (2026-07-02): portfolio-level metrics + backtest divergence ──
+    _analyze_portfolio_metrics(wb, df_rec, df_track)
+    _analyze_backtest_vs_live(wb, df_rec, df_track)
+
     wb.save(TRACKER_XLSX)
     print(f"[INFO] Research job complete — {TRACKER_XLSX} updated")
 
 
 def _ensure_sheets(wb, names):
-    """Create any sheets in the list that don't already exist."""
+    """Create any sheets in the list that don't already exist.
+    Also drops orphan sheets from earlier versions that no longer exist in code.
+    """
+    # Phase C7e (2026-07-02): drop obsolete single-factor sheets from older
+    # workbook layouts. "Conf × TQ Matrix" and the Weekly Factor Summary
+    # tercile analysis cover their content more precisely. If those old
+    # sheets exist, delete them so users don't stare at stale/empty tabs.
+    OBSOLETE_SHEETS = ("TQ Analysis", "Opp Score Analysis")
+    for _obsolete in OBSOLETE_SHEETS:
+        if _obsolete in wb.sheetnames and len(wb.sheetnames) > 1:
+            try:
+                del wb[_obsolete]
+            except Exception:
+                pass
+
     existing = set(wb.sheetnames)
     for name in names:
         if name not in existing:
@@ -163,6 +194,19 @@ def _analyze_by_column(wb, df_rec, df_track, col, sheet_name, thresholds):
             col_series = pd.to_numeric(merged.get(col, pd.Series()), errors="coerce")
             subset = merged[(col_series >= lo) & (col_series < hi)]
             if subset.empty:
+                continue
+
+            # Phase C7e: min-N gate. Below MIN_SAMPLE_N the metrics are
+            # statistically noise (a single loser can flip win-rate 0→50→100%).
+            # Report the bucket but flag it clearly instead of computing stats.
+            if len(subset) < MIN_SAMPLE_N:
+                ws.append([
+                    f"{lo}-{hi}",
+                    len(subset),
+                    f"(n<{MIN_SAMPLE_N})", "(insufficient)",
+                    "(insufficient)", "(insufficient)",
+                    "(insufficient)", "(insufficient)",
+                ])
                 continue
 
             returns = pd.to_numeric(subset.get("Return%", pd.Series()), errors="coerce").dropna()
@@ -212,6 +256,11 @@ def _analyze_by_sector(wb, df_rec, df_track):
 
         for sector in df_rec["Sector"].dropna().unique():
             subset  = merged[merged["Sector"] == sector]
+            # Phase C7e: min-N gate
+            if len(subset) < MIN_SAMPLE_N:
+                ws.append([sector, len(subset), f"(n<{MIN_SAMPLE_N})",
+                           "(insufficient)", "(insufficient)"])
+                continue
             returns = pd.to_numeric(subset.get("Return%", pd.Series()), errors="coerce").dropna()
             max_gain = pd.to_numeric(subset.get("Max Gain%", pd.Series()), errors="coerce").dropna()
             wins    = (returns > 0).sum()
@@ -248,6 +297,11 @@ def _analyze_by_regime(wb, df_rec, df_track):
 
         for regime in df_rec["Regime"].dropna().unique():
             subset  = merged[merged["Regime"] == regime]
+            # Phase C7e: min-N gate
+            if len(subset) < MIN_SAMPLE_N:
+                ws.append([regime, len(subset), f"(n<{MIN_SAMPLE_N})",
+                           "(insufficient)", "—"])
+                continue
             returns = pd.to_numeric(subset.get("Return%", pd.Series()), errors="coerce").dropna()
             wins    = (returns > 0).sum()
 
@@ -331,7 +385,7 @@ def _generate_monthly_report(wb, df_rec, df_track):
 
         # Table headers at row 4
         headers = ["Month", "Picks", "Closed", "Win Rate%", "Avg Return%",
-                   "Best Trade%", "Worst Trade%", "Best Sector"]
+                   "Annualized%", "Best Trade%", "Worst Trade%", "Best Sector"]
         for i, h in enumerate(headers, start=1):
             ws.cell(row=4, column=i, value=h)
 
@@ -370,7 +424,15 @@ def _generate_monthly_report(wb, df_rec, df_track):
                         best_sector = f"{sec_means.idxmax()} ({sec_means.max():+.1f}%)"
 
             row_data = [month, len(subset), closed_count, hit_rate, avg_ret,
+                        None,  # annualized filled below
                         best_tr, worst_tr, best_sector]
+            # Phase C7e: annualized % — assumes month's avg return compounded 12x.
+            # Formula: ((1 + avg_ret/100) ^ 12 - 1) × 100
+            try:
+                annualized = ((1 + avg_ret / 100.0) ** 12 - 1) * 100
+                row_data[5] = round(annualized, 2)
+            except Exception:
+                row_data[5] = 0
             for i, v in enumerate(row_data, start=1):
                 ws.cell(row=row_idx, column=i, value=v)
             month_stats.append({"month": month, "hit_rate": hit_rate, "avg_ret": avg_ret})
@@ -421,7 +483,7 @@ def _generate_monthly_report(wb, df_rec, df_track):
                 c = ws.cell(row=4, column=i)
                 c.font = Font(bold=True)
                 c.fill = header_fill
-            for i, w in enumerate([10, 8, 8, 10, 12, 12, 12, 22], start=1):
+            for i, w in enumerate([10, 8, 8, 10, 12, 12, 12, 12, 22], start=1):
                 ws.column_dimensions[chr(64 + i)].width = w
         except Exception:
             pass
@@ -433,6 +495,24 @@ def _generate_monthly_report(wb, df_rec, df_track):
 # ═══════════════════════════════════════════════════════════════════════════
 # v2 RESEARCH SHEETS
 # ═══════════════════════════════════════════════════════════════════════════
+
+def _cache_freshness_note(cache_path: str, stale_days: int = 2) -> str:
+    """Phase C7e: return a warning banner if the cache file's mtime is older
+    than stale_days. Empty string if fresh or file missing (handled elsewhere).
+    """
+    try:
+        if not os.path.exists(cache_path):
+            return ""
+        import time as _time
+        mtime = os.path.getmtime(cache_path)
+        age_days = (_time.time() - mtime) / 86400.0
+        if age_days > stale_days:
+            return (f"⚠ CACHE STALE: {cache_path} is {age_days:.1f} days old "
+                    f"(threshold {stale_days}d). Signals below may be outdated.")
+    except Exception:
+        pass
+    return ""
+
 
 def _merge_outcomes(df_rec, df_track):
     """Merge Recommendations with latest Daily Tracking row per ticker.
@@ -612,6 +692,21 @@ def _analyze_category_comparison(wb, df_rec, df_track):
             ws["A5"] = "No Category column in Recommendations."
             return
 
+        # Phase C5 (2026-07-02): main.py's classify_watchlist now emits
+        # trajectory-aware sub-tiers (NEAR_MISS_RISING, NEAR_MISS_FADING) plus
+        # DEVELOPING and MONITOR. Normalize them into their base tier for this
+        # analytical comparison so the "BUY vs NEAR_MISS vs WATCHLIST" insight
+        # (win rate should be BUY >= NEAR_MISS >= WATCHLIST) stays meaningful.
+        def _normalize_tier(v):
+            s = str(v or "").upper()
+            if s in ("NEAR_MISS_RISING", "NEAR_MISS_FADING"):
+                return "NEAR_MISS"
+            if s in ("DEVELOPING", "MONITOR"):
+                return "WATCHLIST"
+            return s
+        merged = merged.copy()
+        merged["Category"] = merged["Category"].map(_normalize_tier)
+
         row_idx = 4
         # Preserve a sensible order if categories present
         preferred = ["BUY", "NEAR_MISS", "WATCHLIST"]
@@ -768,8 +863,18 @@ def _analyze_catalysts(wb, df_rec, df_track):
             n = len(rets)
             wins = sum(1 for r in rets if r > 0)
             wr = round(wins / n * 100, 1) if n else 0
-            rows.append((tok, n, wr, round(sum(rets) / n, 2) if n else 0, round(max(rets), 2)))
-        rows.sort(key=lambda x: (-x[2], -x[1]))
+            avg = round(sum(rets) / n, 2) if n else 0
+            best = round(max(rets), 2) if rets else 0
+            # Phase C7e: min-N gate — mark under-sampled tokens so the reader
+            # doesn't act on a 100% win-rate from a single trade.
+            if n < MIN_SAMPLE_N:
+                rows.append((tok, n, f"(n<{MIN_SAMPLE_N})", f"(n<{MIN_SAMPLE_N})", best))
+            else:
+                rows.append((tok, n, wr, avg, best))
+        # sort: gated buckets to the bottom, then by win-rate desc, then count desc
+        rows.sort(key=lambda x: (isinstance(x[2], str),
+                                  -(x[2] if isinstance(x[2], (int, float)) else 0),
+                                  -x[1]))
 
         for row_idx, r in enumerate(rows, start=4):
             for j, v in enumerate(r, start=1):
@@ -834,8 +939,16 @@ def _analyze_fail_reasons(wb, df_rec, df_track):
             n = len(rets)
             wins = sum(1 for r in rets if r > 0)
             wr = round(wins / n * 100, 1) if n else 0
-            rows.append((tok, n, wr, round(sum(rets) / n, 2) if n else 0))
-        rows.sort(key=lambda x: (x[2], -x[1]))  # worst win rate first
+            avg = round(sum(rets) / n, 2) if n else 0
+            # Phase C7e: min-N gate
+            if n < MIN_SAMPLE_N:
+                rows.append((tok, n, f"(n<{MIN_SAMPLE_N})", f"(n<{MIN_SAMPLE_N})"))
+            else:
+                rows.append((tok, n, wr, avg))
+        # sort: gated buckets to bottom, then worst win-rate first
+        rows.sort(key=lambda x: (isinstance(x[2], str),
+                                  (x[2] if isinstance(x[2], (int, float)) else 999),
+                                  -x[1]))
 
         for row_idx, r in enumerate(rows, start=4):
             for j, v in enumerate(r, start=1):
@@ -1002,6 +1115,13 @@ def _analyze_delivery_flow(wb, df_rec, df_track):
     try:
         ws = wb["Delivery Flow"]
         ws.delete_rows(1, ws.max_row)
+
+        # Phase C7e: cache-freshness warning banner
+        _cache_note = _cache_freshness_note("delivery_cache.json", stale_days=2)
+        if _cache_note:
+            ws.append([_cache_note])
+            ws.append([])
+
         ws.append([
             "Symbol", "Rec Date", "Status", "Return%",
             "Deliv %Today", "Deliv 20d Avg", "Ratio", "Signal", "Note",
@@ -1077,6 +1197,13 @@ def _analyze_sector_rotation(wb, df_rec, df_track):
     try:
         ws = wb["Sector Rotation"]
         ws.delete_rows(1, ws.max_row)
+
+        # Phase C7e: cache-freshness warning banner
+        _cache_note = _cache_freshness_note("sector_rank_history.json", stale_days=2)
+        if _cache_note:
+            ws.append([_cache_note])
+            ws.append([])
+
         ws.append(["Sector", "Rank Today", "Rank 5d Ago", "Delta", "Velocity", "Portfolio Exposure"])
 
         history_path = os.getenv("SECTOR_RANK_HISTORY_FILE", "sector_rank_history.json")
@@ -1146,6 +1273,216 @@ def _analyze_sector_rotation(wb, df_rec, df_track):
         ws.append([f"Comparing {today_key} vs {prior_key or 'n/a'} (≥5 trading days back)"])
     except Exception as e:
         print(f"[WARN] Sector rotation analysis failed: {e}")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Phase C7e (2026-07-02): Portfolio Metrics + Backtest-vs-Live Divergence
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _analyze_portfolio_metrics(wb, df_rec, df_track):
+    """Compute portfolio-level metrics from Daily Tracking:
+       - Total return (cumulative)
+       - Sharpe ratio (mean/std × √252, using per-trade returns as proxy)
+       - Max drawdown from peak equity
+       - Expectancy = (Win% × AvgWin) − (Loss% × |AvgLoss|)
+       - Profit factor = gross wins / |gross losses|
+    """
+    ws = wb["Portfolio Metrics"]
+    for row in ws.iter_rows():
+        for cell in row:
+            cell.value = None
+
+    ws.append(["PORTFOLIO METRICS (from Daily Tracking)"])
+    ws.append([])
+    ws.append(["Metric", "Value", "Interpretation"])
+
+    if df_track is None or df_track.empty:
+        ws.append(["No data", "—", "Daily Tracking sheet is empty"])
+        return
+
+    # Deduplicate to final outcome per (Symbol, Rec Date) — take last row
+    outcome = _merge_outcomes(df_rec, df_track)
+    if outcome is None or outcome.empty:
+        ws.append(["No merged outcomes", "—", "No closed trades yet"])
+        return
+
+    # Only completed trades (Return% is non-null and Status contains SL/T1/T2/EXIT)
+    closed = outcome[outcome["Return%"].notna()].copy()
+    # Coerce Return% to float
+    try:
+        closed["Return%"] = closed["Return%"].astype(float)
+    except Exception:
+        pass
+
+    n = len(closed)
+    if n < 3:
+        ws.append(["Total closed trades", n, "Insufficient sample (need ≥3)"])
+        return
+
+    returns = closed["Return%"].values.tolist()
+    wins = [r for r in returns if r > 0]
+    losses = [r for r in returns if r < 0]
+
+    total_return = sum(returns)
+    avg_return = total_return / n
+    win_rate = len(wins) / n * 100.0
+    avg_win = (sum(wins) / len(wins)) if wins else 0.0
+    avg_loss = (sum(losses) / len(losses)) if losses else 0.0
+    gross_win = sum(wins)
+    gross_loss = abs(sum(losses))
+
+    # Sharpe (rough — using per-trade returns, annualized assuming ~5 trades/wk)
+    import math
+    if n >= 2:
+        mean_r = avg_return
+        var_r = sum((r - mean_r) ** 2 for r in returns) / (n - 1)
+        std_r = math.sqrt(var_r) if var_r > 0 else 0.0
+        # Assume ~200 trades/yr → annualization factor √200 ≈ 14.1
+        # But we don't know true frequency — use √52 (weekly proxy) as conservative
+        sharpe = (mean_r / std_r * math.sqrt(52)) if std_r > 0 else 0.0
+    else:
+        sharpe = 0.0
+
+    # Max drawdown from cumulative equity curve
+    cum = 0.0
+    peak = 0.0
+    max_dd = 0.0
+    for r in returns:
+        cum += r
+        if cum > peak:
+            peak = cum
+        dd = peak - cum
+        if dd > max_dd:
+            max_dd = dd
+
+    # Expectancy
+    expectancy = (win_rate / 100.0 * avg_win) + ((1 - win_rate / 100.0) * avg_loss)
+
+    # Profit factor
+    pf = (gross_win / gross_loss) if gross_loss > 0 else float("inf")
+
+    ws.append(["Total closed trades",       n,                     "Sample size"])
+    ws.append(["Total return (cumulative)", f"{total_return:.2f}%", "Sum of per-trade returns"])
+    ws.append(["Avg return per trade",      f"{avg_return:.2f}%",   ">0.5% is decent"])
+    ws.append(["Win rate",                  f"{win_rate:.1f}%",     ">55% is strong"])
+    ws.append(["Avg win",                   f"{avg_win:.2f}%",      ""])
+    ws.append(["Avg loss",                  f"{avg_loss:.2f}%",     "should be > -3% (stop discipline)"])
+    ws.append(["Expectancy per trade",      f"{expectancy:.3f}%",   ">0 = profitable edge"])
+    ws.append(["Profit factor",             f"{pf:.2f}" if pf != float('inf') else "∞",
+                                                                    ">1.5 healthy, >2.0 excellent"])
+    ws.append(["Sharpe ratio (proxy)",      f"{sharpe:.2f}",        ">1.0 good, >2.0 exceptional"])
+    ws.append(["Max drawdown",              f"-{max_dd:.2f}%",      "cumulative peak-to-trough"])
+    ws.append([])
+
+    # Health score
+    health = 0
+    if win_rate >= 55: health += 2
+    elif win_rate >= 45: health += 1
+    if expectancy > 0.5: health += 2
+    elif expectancy > 0: health += 1
+    if pf >= 1.5 and pf != float("inf"): health += 2
+    elif pf >= 1.0: health += 1
+    if sharpe >= 1.0: health += 2
+    elif sharpe >= 0.5: health += 1
+    if max_dd <= 10.0: health += 2
+    elif max_dd <= 20.0: health += 1
+
+    verdict = "EXCELLENT" if health >= 8 else "HEALTHY" if health >= 6 else "OK" if health >= 4 else "WEAK"
+    ws.append(["Overall health score", f"{health}/10", verdict])
+
+
+def _analyze_backtest_vs_live(wb, df_rec, df_track):
+    """Compare live pipeline metrics vs backtest_walkforward.py results.
+
+    Reads backtest results from backtest_results.json or backtest_results.xlsx
+    (if present). If no backtest artefact is found, notes it as a stub.
+    """
+    ws = wb["Backtest vs Live"]
+    for row in ws.iter_rows():
+        for cell in row:
+            cell.value = None
+
+    ws.append(["BACKTEST vs LIVE DIVERGENCE"])
+    ws.append([])
+    ws.append(["Metric", "Backtest", "Live", "Delta", "Note"])
+
+    # Try to load backtest results — check common paths
+    bt_data = None
+    for candidate in ("backtest_results.json", "backtest_summary.json",
+                      "walkforward_results.json"):
+        if os.path.exists(candidate):
+            try:
+                with open(candidate, "r") as f:
+                    bt_data = json.load(f)
+                break
+            except Exception:
+                continue
+
+    if bt_data is None:
+        ws.append(["(no backtest artefact found)", "—", "—", "—",
+                   "Run backtest_walkforward.py and export results.json"])
+        return
+
+    # Extract live metrics from df_track / df_rec
+    outcome = _merge_outcomes(df_rec, df_track)
+    if outcome is None or outcome.empty:
+        ws.append(["(no live data)", "—", "—", "—", "Live pipeline empty"])
+        return
+
+    closed = outcome[outcome["Return%"].notna()].copy()
+    try:
+        closed["Return%"] = closed["Return%"].astype(float)
+    except Exception:
+        pass
+
+    n_live = len(closed)
+    if n_live < 5:
+        ws.append([f"(n_live={n_live}, need ≥5)", "—", "—", "—", "Insufficient live sample"])
+        return
+
+    returns = closed["Return%"].values.tolist()
+    wins = [r for r in returns if r > 0]
+
+    live_win_rate = len(wins) / n_live * 100.0
+    live_avg = sum(returns) / n_live
+    live_sharpe_proxy = 0.0
+    import math
+    if n_live >= 2:
+        mean_r = live_avg
+        var_r = sum((r - mean_r) ** 2 for r in returns) / (n_live - 1)
+        std_r = math.sqrt(var_r) if var_r > 0 else 0.0
+        live_sharpe_proxy = (mean_r / std_r * math.sqrt(52)) if std_r > 0 else 0.0
+
+    bt_win_rate = float(bt_data.get("win_rate", bt_data.get("winrate", 0)) or 0)
+    bt_avg = float(bt_data.get("avg_return", bt_data.get("avg_return_pct", 0)) or 0)
+    bt_sharpe = float(bt_data.get("sharpe", bt_data.get("sharpe_ratio", 0)) or 0)
+    bt_n = int(bt_data.get("n_trades", bt_data.get("trades", 0)) or 0)
+
+    def _fmt_delta(live_v, bt_v):
+        d = live_v - bt_v
+        sign = "+" if d >= 0 else ""
+        return f"{sign}{d:.2f}"
+
+    def _note(live_v, bt_v, threshold=5.0):
+        d = live_v - bt_v
+        if abs(d) < threshold:
+            return "aligned"
+        return "LIVE BETTER" if d > 0 else "LIVE WORSE — investigate"
+
+    ws.append(["Trades (n)",  bt_n,                    n_live,               n_live - bt_n, ""])
+    ws.append(["Win rate %",  f"{bt_win_rate:.1f}",    f"{live_win_rate:.1f}",
+                              _fmt_delta(live_win_rate, bt_win_rate),
+                              _note(live_win_rate, bt_win_rate, 5)])
+    ws.append(["Avg return %", f"{bt_avg:.2f}",         f"{live_avg:.2f}",
+                              _fmt_delta(live_avg, bt_avg),
+                              _note(live_avg, bt_avg, 0.3)])
+    ws.append(["Sharpe",      f"{bt_sharpe:.2f}",      f"{live_sharpe_proxy:.2f}",
+                              _fmt_delta(live_sharpe_proxy, bt_sharpe),
+                              _note(live_sharpe_proxy, bt_sharpe, 0.3)])
+    ws.append([])
+    ws.append(["Interpretation:"])
+    ws.append(["• 'LIVE WORSE' on 2+ rows → gate calibration drift; re-run backtest and update thresholds."])
+    ws.append(["• 'LIVE BETTER' consistently → gates may be too permissive; sample bias possible."])
 
 
 if __name__ == "__main__":
