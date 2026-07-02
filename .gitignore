@@ -1,0 +1,54 @@
+# Local secrets — NEVER commit
+.env
+.env.local
+*.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Generated tracker artifacts (you may want these in git — remove from list if so)
+# recommendation_tracker.xlsx
+# trade_tracker.json
+# confidence_history.json
+# gate_memory.json
+
+# Runtime logs / debug
+error_log.txt
+run_log_*.txt
+*.log
+
+# Caches
+cache/
+news_cache/
+nselib_cache/
+
+# Ephemeral daily outputs (regenerated every run)
+analysis_output_*.csv
+decision_audit_*.jsonl
+
+# Phase G3: intraday dedup cache (auto-resets each day)
+intraday_state.json
+
+# Phase G4: backtest staging folder (never live)
+backtest_staging/
+
+# Regenerated caches (safe to skip)
+sector_cache.json
+fundamentals_cache.json
+delivery_cache.json
+vix_history_cache.json
+universe_cache_meta.json
+weekly_job_meta.json
+tradable_universe.csv
+qualified_stocks.csv
+low_volatility_stocks.txt
+
+# Forge/VS Code backup files
+*.bak-by-forge-*
+*.forge.code-workspace.bak-*
+
+# OS junk
+.DS_Store
+Thumbs.db
