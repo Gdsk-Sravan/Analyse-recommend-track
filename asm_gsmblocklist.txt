@@ -1,0 +1,33 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# NSE SURVEILLANCE BLOCKLIST — ASM Stage 2+ / GSM / T2T
+# ─────────────────────────────────────────────────────────────────────────────
+# Purpose: HARD REJECT stocks currently on SEBI/NSE surveillance measures.
+#
+# These stocks have restrictions like:
+#   - Higher margin requirements (up to 100%)
+#   - Reduced circuit limits (5% or 2%)
+#   - Trade-to-Trade settlement only (no intraday)
+#   - Weekly / monthly circuit reset
+#
+# Format: one ticker per line (without .NS), lines starting with # are comments.
+#
+# HOW TO POPULATE THIS FILE:
+#   1. Visit NSE surveillance page daily:
+#      https://www.nseindia.com/reports/asm  (ASM list — long-term & short-term)
+#      https://www.nseindia.com/reports/gsm  (GSM list — 6 stages of restrictions)
+#   2. Download the CSV, extract Stage 2+ tickers (Stage 1 is monitoring, not restriction)
+#   3. Add tickers here, or replace this file wholesale each morning
+#
+# Or automate: a GitHub Action can fetch and rewrite this file weekly.
+# See scripts/refresh_asm_gsm.py (create if needed).
+#
+# EMPTY FILE = no ASM/GSM filtering active. That's the current safe default —
+# the file exists so the code path is testable, but no names are blocked
+# until you populate it.
+#
+# LAST REVIEWED: 2026-07-03 (empty by design — populate as needed)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Example format (uncomment / add real tickers as needed):
+# EXAMPLE_STOCK_1        # ASM Stage 2 — as of 2026-07-01
+# EXAMPLE_STOCK_2        # GSM Stage 3 — as of 2026-07-01
