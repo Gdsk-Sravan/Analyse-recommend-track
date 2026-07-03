@@ -11,9 +11,11 @@ Env:  copy .env.template to .env and fill in secrets
 # ─────────────────────────────────────────────────────────────────────────────
 import os
 import re
+import sys
 import json
 import csv
 import html
+import subprocess
 import datetime
 import time
 import random
@@ -10637,6 +10639,63 @@ def _run_pipeline_inner():
     _log("[DONE] Pipeline complete.")
     _log(f"  BUY: {len(buys)} | WATCHLIST: {len(watchlist_stocks)} | SHORTS: {len(shorts)}")
 
+    # ── Phase W (2026-07-03): expose result counters to __main__ wrapper ──
+    # The __main__ block writes run_health.json for cross-workflow staleness
+    # detection. Attach the numbers so the health entry is informative.
+    global _LAST_RUN_STATS
+    _LAST_RUN_STATS = {
+        "buys":       len(buys),
+        "watchlist":  len(watchlist_stocks),
+        "shorts":     len(shorts),
+        "tradable":   len(top_40) if isinstance(top_40, list) else 0,
+        "regime":     regime,
+    }
+
+
+# ── Phase W (2026-07-03): module-level result stash ──
+# Filled at the end of run_pipeline(); read by __main__.
+_LAST_RUN_STATS: dict = {}
+
 
 if __name__ == "__main__":
-    run_pipeline()
+    # ── Phase W (2026-07-03): watchdog wrapper ──
+    # Guarantee run_health.json is written even on crash. The workflow's
+    # if:failure() step will fire the Telegram alert; this ensures other
+    # workflows can still see the last successful ts for evening_pipeline.
+    _run_status = "ok"
+    _run_error  = ""
+    try:
+        run_pipeline()
+    except SystemExit:
+        raise
+    except Exception as _pipe_exc:  # noqa: BLE001 — best-effort logging
+        _run_status = "fail"
+        _run_error  = str(_pipe_exc)[:200]
+        _log(f"[FATAL] Pipeline crashed: {_pipe_exc}")
+        import traceback
+        traceback.print_exc()
+    finally:
+        _mode = "scheduled" if IS_SCHEDULED else "manual"
+        _extras = [
+            f"fresh_start={str(FRESH_START).lower()}",
+        ]
+        if _LAST_RUN_STATS:
+            for _k, _v in _LAST_RUN_STATS.items():
+                _extras.append(f"{_k}={_v}")
+        if _run_error:
+            _safe = _run_error.replace(" ", "_")[:80]
+            _extras.append(f"error={_safe}")
+        try:
+            subprocess.run(
+                [sys.executable, "scripts/pipeline_health.py", "record",
+                 "--job", "evening",
+                 "--status", _run_status,
+                 "--mode", _mode,
+                 "--extras", *_extras],
+                check=False, timeout=15,
+            )
+        except Exception as _health_exc:
+            _log(f"[WARN] pipeline_health record failed: {_health_exc}")
+
+    if _run_status == "fail":
+        sys.exit(1)
