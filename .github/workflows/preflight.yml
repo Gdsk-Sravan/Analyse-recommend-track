@@ -47,6 +47,18 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: "pip"                    # cache wheels between runs (fast)
+          cache-dependency-path: requirements.txt
+
+      # ─── Step 0: Install runtime dependencies ─────────────────────────────
+      # The import-smoke check does `import main` / `import tracker_job` which
+      # transitively imports requests, numpy, pandas, yfinance etc. Without a
+      # pip install those imports would fail with ModuleNotFoundError and the
+      # check would be useless. Once cached, this step runs in ~5-10s.
+      - name: Install dependencies (needed by import-smoke)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
       # ─── Step 1: Python syntax compile ────────────────────────────────────
       # py_compile catches SyntaxError / IndentationError instantly. If main.py
