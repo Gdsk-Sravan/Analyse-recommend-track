@@ -1,0 +1,71 @@
+# ═══════════════════════════════════════════════════════════════════════
+# HIGH-PLEDGE STOCKS BLOCKLIST
+# ═══════════════════════════════════════════════════════════════════════
+#
+# Curated list of NSE tickers with historically high promoter pledge (>50%),
+# distressed balance sheets, or promoter-group governance concerns.
+#
+# main.py loads this via load_high_pledge_blocklist() and hard-rejects any
+# stock present here BEFORE technical scoring runs. Bypass this file only
+# by removing the ticker (or commenting the line with `#`).
+#
+# LAST REVIEWED: 2026-07-03
+# NEXT REVIEW DUE: 2026-10-03 (quarterly)
+#
+# Format:  TICKER   # reason | approx_pledge% | as_of_date
+# Ticker  = NSE symbol WITHOUT the .NS suffix (case-insensitive).
+# Anything after `#` is a comment and ignored.
+#
+# ─── HOW TO REMOVE A TICKER ─────────────────────────────────────────────
+# If Adani group (or any listed name) resolves its pledge / governance
+# issue, either delete the line OR prefix it with `#` to comment it out.
+# Then push to git → next scheduled main.yml run will honor the change.
+# ═══════════════════════════════════════════════════════════════════════
+
+# ─── Anil Ambani / Reliance ADAG group ─────────────────────────────────
+RCOM              # Reliance Communications — 100% pledge, insolvency | 100% | 2019
+RPOWER            # Reliance Power — high pledge, promoter distress    | ~95% | 2024
+RELINFRA          # Reliance Infrastructure — high pledge              | ~90% | 2024
+RNAVAL            # Reliance Naval & Engineering — insolvency          | 100% | 2020
+RCAP              # Reliance Capital — insolvency, delisted            | 100% | 2022
+
+# ─── Jaiprakash / JP group ──────────────────────────────────────────────
+JPPOWER           # Jaiprakash Power Ventures — high pledge            | ~85% | 2024
+JPASSOCIAT        # Jaiprakash Associates — high pledge, insolvency    | ~90% | 2024
+
+# ─── Vedanta group ──────────────────────────────────────────────────────
+VEDL              # Vedanta Ltd — ~99% promoter pledge                 | ~99% | 2025
+HZL               # Hindustan Zinc — parent (Vedanta) pledge exposure  | inherited | 2025
+CAIRN             # Cairn India — merged into Vedanta                  | inherited | 2017
+
+# ─── Adani group (comment out any line if you re-approve the name) ─────
+ADANIENT          # Adani Enterprises — governance concerns, high leverage
+ADANIPORTS        # Adani Ports & SEZ — governance concerns
+ADANIPOWER        # Adani Power — governance concerns, high debt
+ADANIGREEN        # Adani Green Energy — governance concerns, high debt
+ADANIENSOL        # Adani Energy Solutions — governance concerns
+ADANITOTAL        # Adani Total Gas — governance concerns
+AGEL              # (Adani Green legacy ticker if present in universe)
+
+# ─── Zee / Essel group ──────────────────────────────────────────────────
+ZEEL              # Zee Entertainment — high pledge, merger uncertainty | ~80% | 2024
+ZEEMEDIA          # Zee Media — parent group distress                   | inherited | 2024
+DISHTV            # Dish TV India — parent group distress               | inherited | 2024
+SITINET           # Siti Networks — parent group distress, delisted     | inherited | 2023
+
+# ─── Distressed / delisted / under-scrutiny ────────────────────────────
+STLTECH           # Sterlite Technologies — high pledge                 | ~65% | 2024
+SINTEX            # Sintex Industries — insolvency, delisted            | 100% | 2020
+SPLIL             # SPL Industries / distressed                         | ~70% | 2023
+DHFL              # DHFL — insolvency, delisted                         | 100% | 2019
+DEWANHOUS         # DHFL alternate ticker                               | 100% | 2019
+YESBANK           # Yes Bank — post-moratorium, governance concerns
+IBULHSGFIN        # Indiabulls Housing Finance — high leverage          | ~60% | 2024
+IBREALEST         # Indiabulls Real Estate — high leverage              | ~60% | 2024
+GOENKA            # Goenka Diamonds — high pledge                       | ~80% | 2023
+HOTELRUGBY        # Hotel Rugby — micro-cap distress
+KESORAMIND        # Kesoram Industries — high pledge, restructuring     | ~70% | 2024
+TATASTEELBSL      # Tata Steel BSL — merged/legacy distress
+PCJEWELLER        # PC Jeweller — high pledge, promoter issues          | ~99% | 2024
+
+# ─── End of blocklist ──────────────────────────────────────────────────
