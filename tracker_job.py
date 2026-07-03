@@ -161,13 +161,58 @@ def run_tracker():
     print(f"[INFO] Run mode: {'SCHEDULED — will write tracking rows' if IS_SCHEDULED else 'MANUAL — read-only, no rows written'}")
 
     if not IS_SCHEDULED:
-        print("[INFO] Manual run detected. Tracker rows are NOT written to preserve accurate day counts.")
-        print("[INFO] Use the scheduled run (4:30 PM IST weekdays) for proper daily tracking.")
+        # Phase W-3 (2026-07-03): LOUD warning when manual-inside-CI.
+        # cron-job.org sometimes forgets to send run_mode=scheduled — this
+        # produces "green" GitHub Actions runs that silently wrote no rows.
+        # We now emit a distinctive banner + set a sentinel file the workflow
+        # can check.
+        _in_ci = os.getenv("GITHUB_ACTIONS", "").lower() == "true"
+        banner_char = "!" if _in_ci else "-"
+        print(banner_char * 70)
+        print(f"[MANUAL] Tracker running in MANUAL mode ({'INSIDE CI' if _in_ci else 'local'}) — NO rows will be written.")
+        print("[MANUAL] If this is a scheduled CI run, the workflow inputs are WRONG.")
+        print("[MANUAL] Set inputs.run_mode=scheduled OR env SCHEDULED_RUN=true.")
+        print("[MANUAL] Use the scheduled run (4:30 PM IST weekdays) for proper daily tracking.")
+        print(banner_char * 70)
+        if _in_ci:
+            try:
+                with open("manual_in_ci.flag", "w", encoding="utf-8") as _f:
+                    _f.write("tracker manual-inside-CI at "
+                             + datetime.now().isoformat() + "\n")
+            except OSError:
+                pass
         return
 
     if not _YF_OK or not _OPENPYXL_OK:
         print("[ERROR] Missing dependencies — aborting")
         return
+
+    # ── Phase W-5 (2026-07-03): yfinance dry-check ──
+    # Before touching the xlsx, verify yfinance can actually fetch a known-good
+    # symbol. If the API is down, we DO NOT want to write rows with 0-priced
+    # positions (that would corrupt Performance Summary + trigger phantom stop
+    # hits). Fail loudly and let the workflow's if:failure() notifier fire.
+    try:
+        _probe = yf.download(
+            "RELIANCE.NS", period="5d", progress=False,
+            auto_adjust=False, threads=False,
+        )
+        _probe_ok = _probe is not None and not _probe.empty and "Close" in _probe.columns
+    except Exception as e:
+        print(f"[YF_PROBE] exception: {e}")
+        _probe_ok = False
+    if not _probe_ok:
+        print("[ERROR] yfinance dry-check FAILED — RELIANCE.NS returned empty/None")
+        print("[ERROR] Aborting tracker to protect data integrity (no rows written)")
+        print("[ERROR] The recommendation_tracker.xlsx is UNCHANGED — retry when yf is up")
+        # Emit a sentinel file the workflow can detect for its Telegram alert
+        try:
+            with open("yfinance_down.flag", "w", encoding="utf-8") as _f:
+                _f.write(f"yfinance dry-check failed at {datetime.now().isoformat()}\n")
+        except OSError:
+            pass
+        return
+    print("[INFO] yfinance dry-check OK — RELIANCE.NS reachable")
 
     if not os.path.exists(TRACKER_XLSX):
         print(f"[WARN] No tracker file found at {TRACKER_XLSX} — run daily scanner first")
@@ -792,4 +837,38 @@ def _update_equity_curve_sheet(wb):
 
 
 if __name__ == "__main__":
-    run_tracker()
+    # ── Phase W (2026-07-03): watchdog wrapper ──
+    # Record run status to run_health.json so other jobs can detect staleness.
+    import subprocess
+    _status = "ok"
+    _err_msg = ""
+    try:
+        run_tracker()
+    except SystemExit:
+        raise  # honor explicit exits
+    except Exception as _e:
+        _status = "fail"
+        _err_msg = str(_e)[:200]
+        print(f"[FATAL] tracker_job crashed: {_e}")
+        # Re-raise AFTER writing the heartbeat so the workflow marks the run
+        # as failed and the Telegram alert fires.
+    finally:
+        _mode = "scheduled" if IS_SCHEDULED else "manual"
+        _extras = [f"fresh_start={str(FRESH_START).lower()}"]
+        if _err_msg:
+            _extras.append(f"error={_err_msg.replace(' ', '_')[:80]}")
+        try:
+            subprocess.run(
+                [sys.executable, "scripts/pipeline_health.py", "record",
+                 "--job", "tracker",
+                 "--status", _status,
+                 "--mode", _mode,
+                 "--extras", *_extras],
+                check=False, timeout=15,
+            )
+        except Exception as _pe:
+            print(f"[WARN] pipeline_health record failed: {_pe}")
+
+    if _status == "fail":
+        # Ensure non-zero exit so the workflow's if:failure() step fires
+        sys.exit(1)
