@@ -66,6 +66,23 @@ jobs:
           TRADE_TRACKER_V2_FILE: trade_tracker.json
         run: python tracker_job.py
 
+      # ─── Phase N-2 (2026-07-03): reject-outcome follow-up ───────────────────
+      # Reads reject_watch.json (main.py's append log for REJECTED stocks),
+      # measures T+5/T+10/T+20 returns via yfinance for entries whose horizon
+      # has elapsed, and writes reject_outcome_log.csv. Enables false-negative
+      # detection: if pattern X has mean +5% return at T+10, gate X is too
+      # tight. Non-fatal — never fails the workflow.
+      - name: Run reject-outcome follow-up (Phase N-2)
+        continue-on-error: true
+        run: |
+          if [ -f "reject_watch.json" ]; then
+            python scripts/reject_followup.py \
+              --watch reject_watch.json \
+              --out reject_outcome_log.csv
+          else
+            echo "[INFO] reject_watch.json not yet populated (first run?) — skipping"
+          fi
+
       - uses: actions/upload-artifact@v4
         with:
           name: recommendation-tracker
@@ -83,7 +100,9 @@ jobs:
           # in the xlsx. Persist so the accumulator survives beyond artifact retention.
           # Phase C7e: also persist delivery_cache.json (fetch_delivery_cached
           # updates it on every ACTIVE position probe).
-          files=(recommendation_tracker.xlsx trade_tracker.json delivery_cache.json)
+          # Phase N-2 (2026-07-03): persist reject_watch.json + reject_outcome_log.csv
+          # so the false-negative dataset accumulates across daily runs.
+          files=(recommendation_tracker.xlsx trade_tracker.json delivery_cache.json reject_watch.json reject_outcome_log.csv)
           existing=()
           for f in "${files[@]}"; do [ -e "$f" ] && existing+=("$f"); done
           [ ${#existing[@]} -eq 0 ] && exit 0
