@@ -905,6 +905,21 @@ def _init_sector_map() -> None:
     _SECTOR_MAP = _load_sector_map()
 
 
+# 2026-07-03: hard exclusions for pattern inference — real NSE tickers that
+# trigger a substring rule but belong to a *different* sector. Extend as needed.
+_SECTOR_INFERENCE_EXCLUSIONS = {
+    # ticker.NS  → correct sector
+    "INFOEDGE.NS":  "CONSUMER",   # naukri.com / 99acres / Zomato parent — internet-media, NOT IT services
+    "FINEORG.NS":   "CHEMICALS",  # Fine Organic Industries — specialty chem, NOT finance
+    "FINPIPE.NS":   "CHEMICALS",  # Finolex Pipes — plastic pipes, NOT finance
+    "MEDPLUS.NS":   "RETAIL",     # MedPlus Health — pharmacy retail, NOT drug maker
+    "MEDANTA.NS":   "HEALTHCARE", # hospital chain, NOT pharma
+    "BIOFILCHEM.NS":"CHEMICALS",  # not a biopharma
+    "CREDITACC.NS": "FINANCE",    # this one IS finance — harmless, but pins it to the right label
+    "POWERGRID.NS": "ENERGY",     # transmission utility, not equipment
+}
+
+
 def get_sector(symbol: str) -> str:
     """Normalizes symbol format before lookup. Never returns OTHERS — falls back to pattern inference."""
     sym = symbol.strip()
@@ -918,19 +933,39 @@ def get_sector(symbol: str) -> str:
     sector = _SECTOR_MAP.get(sym)
     if sector and sector != "OTHERS":
         return sector
-    # 3. Name-pattern inference — never display OTHERS
+    # 2b. Hard-coded exception list — trumps pattern inference below.
+    #     Handles the well-known false positives (INFOEDGE→IT, FINEORG→FINANCE…).
+    if sym in _SECTOR_INFERENCE_EXCLUSIONS:
+        return _SECTOR_INFERENCE_EXCLUSIONS[sym]
+    # 3. Name-pattern inference — never display OTHERS.
+    #    Uses .startswith / .endswith for the most-abused short substrings
+    #    (FIN, MED, BIO) to reduce false positives on unrelated tickers.
+    #    Strip the .NS suffix first so word-boundary checks are meaningful.
     s = sym.upper()
-    if any(x in s for x in ["PHARMA", "DRUG", "LAB", "MED", "BIO"]):
+    root = s[:-3] if s.endswith(".NS") else s  # "INFOEDGE.NS" → "INFOEDGE"
+    # PHARMA / HEALTHCARE — MED/BIO only if they lead or trail the ticker,
+    # LAB/DRUG anywhere, PHARMA anywhere (unambiguous).
+    if "PHARMA" in root or "DRUG" in root or "LAB" in root:
         return "PHARMA"
-    if any(x in s for x in ["BANK", "FIN", "CRED", "LOAN"]):
+    if root.startswith(("MED", "BIO")) or root.endswith(("MED", "BIO", "PHARMA")):
+        return "PHARMA"
+    # FINANCE — full words only. Requires FIN at start/end (FINCORP, JMFIN),
+    # or explicit BANK/CRED/LOAN anywhere.
+    if "BANK" in root or "CRED" in root or "LOAN" in root:
         return "FINANCE"
-    if any(x in s for x in ["TECH", "SOFT", "INFO", "DIGIT", "SYST"]):
+    if root.startswith("FIN") or root.endswith("FIN"):
+        return "FINANCE"
+    # IT — TECH/SOFT/DIGIT strong signals; INFO/SYST only at start
+    # (avoids INFOEDGE, SYSTEMATIX-type tickers slipping into IT).
+    if "TECH" in root or "SOFT" in root or "DIGIT" in root:
         return "IT"
-    if any(x in s for x in ["STEEL", "METAL", "ALUM", "COPP"]):
+    if root.startswith(("INFO", "SYST")):
+        return "IT"
+    if any(x in root for x in ("STEEL", "METAL", "ALUM", "COPP")):
         return "METALS"
-    if any(x in s for x in ["POWER", "SOLAR", "WIND", "ENERG"]):
+    if any(x in root for x in ("POWER", "SOLAR", "WIND", "ENERG")):
         return "POWER_EQ"
-    if any(x in s for x in ["INFRA", "CONST", "BUILD", "CEMENT"]):
+    if any(x in root for x in ("INFRA", "CONST", "BUILD", "CEMENT")):
         return "INFRA"
     return "DIVERSIFIED"  # never show OTHERS
 
@@ -4421,11 +4456,24 @@ def compute_sector_rotation(tradable: dict) -> dict:
     avg_20d = sum(all_20d) / len(all_20d) if all_20d else 0
     result = {}
     # First pass: compute per-sector 5d/20d means and static status.
+    # 2026-07-03: bucket-size guard \u2014 sectors with fewer than MIN_BUCKET
+    # members are statistically meaningless (a single stock's move dominates
+    # the average). Also treat synthetic non-sector labels (DIVERSIFIED /
+    # UNKNOWN / OTHERS) as NEUTRAL regardless of returns, because those
+    # buckets lump unrelated names together and their aggregate return has
+    # no economic meaning. These sectors still get a numeric ret5d/ret20d
+    # for logging, but their `status` cannot be LAGGING/WEAKENING/LEADING.
+    MIN_BUCKET = 5
+    _SYNTHETIC_BUCKETS = {"DIVERSIFIED", "UNKNOWN", "OTHERS"}
     sector_5d = {}
     for sector, rets in sector_returns.items():
         s5d  = sum(r[0] for r in rets) / len(rets)
         s20d = sum(r[1] for r in rets) / len(rets)
-        if s5d > avg_5d + 1.0 and s20d > avg_20d:
+        _n_members = len(rets)
+        _is_synthetic = sector in _SYNTHETIC_BUCKETS
+        if _is_synthetic or _n_members < MIN_BUCKET:
+            status = "NEUTRAL"
+        elif s5d > avg_5d + 1.0 and s20d > avg_20d:
             status = "LEADING"
         elif s5d < avg_5d - 1.0 and s20d < avg_20d:
             status = "LAGGING"
@@ -4433,7 +4481,12 @@ def compute_sector_rotation(tradable: dict) -> dict:
             status = "WEAKENING"
         else:
             status = "NEUTRAL"
-        result[sector] = {"ret5d": round(s5d, 2), "ret20d": round(s20d, 2), "status": status}
+        result[sector] = {
+            "ret5d":   round(s5d, 2),
+            "ret20d":  round(s20d, 2),
+            "status":  status,
+            "members": _n_members,
+        }
         sector_5d[sector] = s5d
 
     # Phase 4 (2026-07-01): rank sectors by 5-day return (1 = best).
@@ -6181,13 +6234,24 @@ def compute_all_factors(symbol: str, df,
         swing_low      = float(np.min(recent_lows))
         stop_candidate = round(swing_low * 0.995, 2)   # 0.5% buffer below swing low
         risk_raw_pct   = (entry - stop_candidate) / entry * 100 if entry > 0 else 8.0
+        # 2026-07-03: stop clamp is no longer silent — record which branch
+        # fired on _soft_warnings so downstream logs / BUY card / audit can see
+        # "this stop isn't at a real support level, it's synthetic".
+        _stop_clamped = None
         if risk_raw_pct < 2.0:
+            _stop_clamped = f"STOP_FLOOR_CLAMPED(raw {risk_raw_pct:.1f}% → 3% floor)"
             stop_candidate = round(entry * 0.97, 2)    # 3% floor — stop too tight
         elif risk_raw_pct > 15.0:
+            _stop_clamped = f"STOP_CAP_CLAMPED(raw {risk_raw_pct:.1f}% → 12% cap)"
             stop_candidate = round(entry * 0.88, 2)    # 12% cap  — stop too wide
         stop = stop_candidate
         if stop >= entry:
+            # Swing low is above today's close — stock just broke a 10d low.
+            # This is *not* a valid swing-entry setup; surface it explicitly.
+            _stop_clamped = "STOP_ABOVE_ENTRY_FALLBACK(swing_low>entry — 10d low broken today)"
             stop = round(entry * 0.94, 2)
+        if _stop_clamped:
+            result.setdefault("_soft_warnings", []).append(_stop_clamped)
 
         risk_amt = entry - stop
 
@@ -6596,8 +6660,27 @@ def run_gates(stock: dict, regime: str, thresholds: dict,
     if rr < thresh["min_rr"]:
         fail_reasons.append(f"RR_FAIL(got {rr:.2f}, need {thresh['min_rr']})")
 
-    # Gate 8b: Wide-stop guardrail (HARD) — reject if stop distance > regime cap.
-    # Prevents a 12% stop from being deployed in a regime where 6% is the ceiling.
+    # Gate 8b: Wide-stop guardrail — 2026-07-03 recalibration
+    # ─────────────────────────────────────────────────────────────────────
+    # ORIGINAL DESIGN (broken in SIDEWAYS): reject any stock whose stop is
+    # wider than regime `max_stop_pct`. The stop-loss calc uses the 10-day
+    # swing low (line 6180), which for typical NSE mid-caps naturally lands
+    # 10-12% below entry — so this gate rejected 100% of candidates in
+    # SIDEWAYS regime with `max_stop_pct=6%` (then 8% after first fix),
+    # producing zero signals for days on end.
+    #
+    # WHY THIS GATE IS NOW BEAR/HIGH_VOL ONLY:
+    #   1. The R/R gate (min_rr) already protects against wide stops — a 12%
+    #      stop requires a 24%+ target to pass min_rr=2.0. Only truly
+    #      explosive setups survive both.
+    #   2. Position sizing auto-adjusts: `risk_per_trade_pct=1.5%` divides
+    #      by (entry-stop), so wider stop = smaller position, same ₹ risk.
+    #   3. In BEAR / STRONG_BEAR / HIGH_VOLATILITY, capital preservation
+    #      matters more than R/R math — a wide stop can wipe out multiple
+    #      trades before targets are hit. THERE the gate still fires.
+    #
+    # In BULL/STRONG_BULL/SIDEWAYS/TRANSITION we now warn only.
+    _STOP_GATE_REGIMES = ("BEAR", "STRONG_BEAR", "HIGH_VOLATILITY")
     try:
         _entry_v = float(stock.get("entry", 0) or 0)
         _stop_v  = float(stock.get("stop",  0) or 0)
@@ -6605,9 +6688,15 @@ def run_gates(stock: dict, regime: str, thresholds: dict,
         if _entry_v > 0 and 0 < _stop_v < _entry_v:
             _stop_dist_pct = (_entry_v - _stop_v) / _entry_v * 100.0
             if _stop_dist_pct > _max_stop_pct:
-                fail_reasons.append(
-                    f"WIDE_STOP(got {_stop_dist_pct:.1f}%, cap {_max_stop_pct:.1f}%)"
-                )
+                if regime in _STOP_GATE_REGIMES:
+                    fail_reasons.append(
+                        f"WIDE_STOP(got {_stop_dist_pct:.1f}%, cap {_max_stop_pct:.1f}%)"
+                    )
+                else:
+                    warnings.append(
+                        f"WIDE_STOP_WARN(got {_stop_dist_pct:.1f}%, "
+                        f"soft cap {_max_stop_pct:.1f}% \u2014 R/R gate handles this)"
+                    )
     except Exception:
         pass
 
@@ -6621,8 +6710,17 @@ def run_gates(stock: dict, regime: str, thresholds: dict,
     # Phase 4 (2026-07-01): rotation velocity overrides static status —
     # a LAGGING sector that is ROTATING_IN (5-day rank moved up ≥3 spots) is
     # a valid contrarian entry, so downgrade to a warning only.
+    #
+    # 2026-07-03 fix — field name mismatch bug: score_stock() writes the field
+    # as `sector_velocity` (line 6143) but this gate was reading
+    # `sector_rotation_velocity`, which never exists → always "UNKNOWN" →
+    # the entire Phase 4 rotation-velocity overlay was silently dead. Reading
+    # both keys is a belt-and-braces guard for any partially-migrated caches.
     sector_status   = stock.get("sector_status", "NEUTRAL")
-    sector_velocity = stock.get("sector_rotation_velocity", "UNKNOWN")
+    sector_velocity = stock.get(
+        "sector_velocity",
+        stock.get("sector_rotation_velocity", "UNKNOWN"),
+    )
     if sector_status == "LAGGING":
         if sector_velocity == "ROTATING_IN":
             warnings.append("SECTOR_LAGGING_BUT_ROTATING_IN")
@@ -6782,7 +6880,10 @@ def run_gates(stock: dict, regime: str, thresholds: dict,
             for f in scoreable_fails
         )
         if not scoreable_fails:
-            # Only PORTFOLIO_FULL failed — valid setup, just no room
+            # 2026-07-03: this branch was originally the "only PORTFOLIO_FULL
+            # failed" path. That reason is now a warning (not a fail_reason),
+            # so this branch only fires if a future gate produces a fail that
+            # is stripped by the filter above. Kept as a safe fallback.
             decision = "WATCHLIST"
         elif len(scoreable_fails) <= 2 and (soft_only or score_based):
             decision = "WATCHLIST"
