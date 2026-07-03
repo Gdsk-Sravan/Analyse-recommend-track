@@ -6,7 +6,12 @@ on:
       run_mode:
         description: "Run mode"
         required: false
-        default: "manual"
+        # Phase W-3 (2026-07-03): default changed from 'manual' → 'scheduled'.
+        # cron-job.org triggers this workflow via the REST API without inputs,
+        # so the DEFAULT is what actually runs. Previously that meant silent
+        # no-op days. Now the default writes rows; use 'manual' explicitly if
+        # you're re-running to inspect logs.
+        default: "scheduled"
         type: choice
         options:
           - "manual"
@@ -39,7 +44,27 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install yfinance openpyxl pandas numpy python-dotenv
+        run: pip install yfinance openpyxl pandas numpy python-dotenv requests
+
+      # ── Phase W-4 (2026-07-03): FRESH_START safety valve ────────────────
+      # Refuse a FRESH_START if we already wiped state in the last 2 days.
+      # Exit code 2 = refused (only exit-2 blocks); other codes are ignored so
+      # a first-time run (no history file) still proceeds.
+      - name: Guard FRESH_START (Phase W-4)
+        if: ${{ github.event.inputs.fresh_start == 'true' }}
+        env:
+          FRESH_START: "true"
+        run: |
+          python scripts/pipeline_health.py guard-fresh-start \
+            --workflow tracker --window-days 2 \
+            --write-alert-file .fresh_start_alert.txt
+          rc=$?
+          if [ $rc -eq 2 ]; then
+            echo "::error::FRESH_START refused — recent wipe already recorded"
+            # Fire Telegram alert BEFORE we fail so the operator sees it
+            python scripts/notify_telegram.py --stdin --prefix "🛑" < .fresh_start_alert.txt || true
+            exit 1
+          fi
 
       # Fallback: if the xlsx is not yet committed to the repo, pull the last
       # artifact from main.yml. Once PERSIST_STATE_TO_REPO=true kicks in on the
@@ -55,6 +80,27 @@ jobs:
           if_no_artifact_found: ignore
           workflow_conclusion: success
 
+      # ── Phase W (2026-07-03): staleness check ──────────────────────────
+      # If the evening pipeline (main.py) hasn't succeeded in >36h and the
+      # tracker is trying to run against stale prices, warn to Telegram.
+      # Non-blocking — writes a message and keeps going.
+      - name: Check evening pipeline freshness (Phase W)
+        continue-on-error: true
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          if [ -f "run_health.json" ]; then
+            python scripts/pipeline_health.py check-stale \
+              --job evening --max-hours 36 \
+              --write-alert-file .stale_alert.txt
+            if [ -s .stale_alert.txt ]; then
+              python scripts/notify_telegram.py --stdin < .stale_alert.txt || true
+            fi
+          else
+            echo "[INFO] run_health.json not yet present — first run, skipping"
+          fi
+
       - name: Run tracker job
         env:
           TRACKER_XLSX: recommendation_tracker.xlsx
@@ -65,6 +111,33 @@ jobs:
           # up main.py's trailed stops after T1 hits.
           TRADE_TRACKER_V2_FILE: trade_tracker.json
         run: python tracker_job.py
+
+      # ── Phase W-5 detection (2026-07-03): yfinance-down side effect ──
+      # tracker_job.py drops yfinance_down.flag if the API probe failed.
+      - name: Detect yfinance outage (Phase W-5)
+        if: always()
+        continue-on-error: true
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          if [ -f "yfinance_down.flag" ]; then
+            python scripts/notify_telegram.py --text \
+              "⚠️ tracker: yfinance API unreachable — tracker aborted (no data written). Retry later. Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" || true
+          fi
+
+      # ── Phase W-3 detection (2026-07-03): manual-inside-CI banner ──
+      - name: Detect silent no-op (Phase W-3)
+        if: always()
+        continue-on-error: true
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          if [ -f "manual_in_ci.flag" ]; then
+            python scripts/notify_telegram.py --text \
+              "⚠️ tracker: ran in MANUAL mode inside CI — NO rows written. Check workflow inputs (run_mode should be 'scheduled'). Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" || true
+          fi
 
       # ─── Phase N-2 (2026-07-03): reject-outcome follow-up ───────────────────
       # Reads reject_watch.json (main.py's append log for REJECTED stocks),
@@ -102,9 +175,48 @@ jobs:
           # updates it on every ACTIVE position probe).
           # Phase N-2 (2026-07-03): persist reject_watch.json + reject_outcome_log.csv
           # so the false-negative dataset accumulates across daily runs.
-          files=(recommendation_tracker.xlsx trade_tracker.json delivery_cache.json reject_watch.json reject_outcome_log.csv)
+          # Phase W (2026-07-03): persist run_health.json for cross-workflow
+          # staleness detection.
+          files=(recommendation_tracker.xlsx trade_tracker.json delivery_cache.json reject_watch.json reject_outcome_log.csv run_health.json)
           existing=()
           for f in "${files[@]}"; do [ -e "$f" ] && existing+=("$f"); done
           [ ${#existing[@]} -eq 0 ] && exit 0
           git add "${existing[@]}"
           git diff --cached --quiet || git commit -m "chore: tracker daily update [skip ci]" && git push
+
+      # ── Phase W-6 (2026-07-03): success Telegram summary ──
+      # Sends a one-line "tracker OK" so silence == real failure.
+      # Runs only on green scheduled runs to avoid noise on manual re-runs.
+      - name: Notify Telegram on success (Phase W-6)
+        if: ${{ success() && github.event.inputs.run_mode == 'scheduled' }}
+        continue-on-error: true
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          # Pull the tracker line from run_health.json for a compact summary
+          summary=$(python -c "
+          import json
+          try:
+              d = json.load(open('run_health.json'))
+              t = d.get('jobs', {}).get('tracker', {})
+              parts = []
+              for k in ('mode','exit_status','last_success_utc'):
+                  if k in t: parts.append(f'{k}={t[k]}')
+              print(' | '.join(parts))
+          except Exception as e:
+              print(f'(no health data: {e})')
+          ")
+          python scripts/notify_telegram.py --text \
+            "✅ tracker OK — $summary"
+
+      # ── Phase W-2 (2026-07-03): failure Telegram alert ──
+      - name: Notify Telegram on failure (Phase W-2)
+        if: failure()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          python scripts/notify_telegram.py --text \
+            "🚨 Recommendation Tracker FAILED on ${{ github.ref_name }}. Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
