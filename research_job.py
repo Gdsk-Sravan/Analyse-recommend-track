@@ -12,6 +12,8 @@ Usage:
 """
 
 import os
+import sys
+import subprocess
 import numpy as np
 from datetime import datetime
 
@@ -1486,4 +1488,33 @@ def _analyze_backtest_vs_live(wb, df_rec, df_track):
 
 
 if __name__ == "__main__":
-    run_research()
+    # ── Phase W (2026-07-03): watchdog wrapper ──
+    _status = "ok"
+    _err = ""
+    try:
+        run_research()
+    except SystemExit:
+        raise
+    except Exception as _re_exc:  # noqa: BLE001
+        _status = "fail"
+        _err = str(_re_exc)[:200]
+        print(f"[FATAL] research_job crashed: {_re_exc}")
+    finally:
+        _is_scheduled = os.getenv("SCHEDULED_RUN", "false").lower() == "true"
+        _mode = "scheduled" if _is_scheduled else "manual"
+        _extras = [f"fresh_start={str(FRESH_START).lower()}"]
+        if _err:
+            _extras.append(f"error={_err.replace(' ', '_')[:80]}")
+        try:
+            subprocess.run(
+                [sys.executable, "scripts/pipeline_health.py", "record",
+                 "--job", "research",
+                 "--status", _status,
+                 "--mode", _mode,
+                 "--extras", *_extras],
+                check=False, timeout=15,
+            )
+        except Exception as _pe:
+            print(f"[WARN] pipeline_health record failed: {_pe}")
+    if _status == "fail":
+        sys.exit(1)
