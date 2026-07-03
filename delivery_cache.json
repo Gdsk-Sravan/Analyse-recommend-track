@@ -1,0 +1,783 @@
+{
+  "SIKA": {
+    "data": {
+      "delivery_pct_today": 10.92,
+      "delivery_pct_20d_avg": 45.28,
+      "delivery_ratio": 0.241,
+      "delivery_signal": "DISTRIBUTION",
+      "series_days": 31,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T02:52:51.954175"
+  },
+  "FEDDERSHOL": {
+    "data": {
+      "delivery_pct_today": 11.35,
+      "delivery_pct_20d_avg": 50.67,
+      "delivery_ratio": 0.224,
+      "delivery_signal": "DISTRIBUTION",
+      "series_days": 31,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T02:52:53.232269"
+  },
+  "BLACKROSE": {
+    "data": {
+      "delivery_pct_today": 30.0,
+      "delivery_pct_20d_avg": 57.01,
+      "delivery_ratio": 0.526,
+      "delivery_signal": "DISTRIBUTION",
+      "series_days": 27,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T02:52:54.244887"
+  },
+  "EMPOWER": {
+    "data": {
+      "delivery_pct_today": 0.0,
+      "delivery_pct_20d_avg": 0.0,
+      "delivery_ratio": 1.0,
+      "delivery_signal": "NEUTRAL",
+      "series_days": 0,
+      "source": "unavailable"
+    },
+    "cached_at": "2026-07-03T02:52:54.839563"
+  },
+  "ACSTECH": {
+    "data": {
+      "delivery_pct_today": 59.78,
+      "delivery_pct_20d_avg": 73.04,
+      "delivery_ratio": 0.818,
+      "delivery_signal": "WEAK",
+      "series_days": 31,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T02:52:55.727813"
+  },
+  "MENNPIS": {
+    "data": {
+      "delivery_pct_today": 62.16,
+      "delivery_pct_20d_avg": 64.13,
+      "delivery_ratio": 0.969,
+      "delivery_signal": "NEUTRAL",
+      "series_days": 31,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T02:52:56.314448"
+  },
+  "SEIL": {
+    "data": {
+      "delivery_pct_today": 35.57,
+      "delivery_pct_20d_avg": 48.61,
+      "delivery_ratio": 0.732,
+      "delivery_signal": "WEAK",
+      "series_days": 31,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T02:52:57.231534"
+  },
+  "GNRL": {
+    "data": {
+      "delivery_pct_today": 43.54,
+      "delivery_pct_20d_avg": 58.48,
+      "delivery_ratio": 0.744,
+      "delivery_signal": "WEAK",
+      "series_days": 31,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T02:52:58.270449"
+  },
+  "GRANDOAK": {
+    "data": {
+      "delivery_pct_today": 53.0,
+      "delivery_pct_20d_avg": 67.67,
+      "delivery_ratio": 0.783,
+      "delivery_signal": "WEAK",
+      "series_days": 31,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T02:52:58.930384"
+  },
+  "WELSPLSOL": {
+    "data": {
+      "delivery_pct_today": 55.71,
+      "delivery_pct_20d_avg": 43.62,
+      "delivery_ratio": 1.277,
+      "delivery_signal": "ACCUM",
+      "series_days": 31,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T02:53:00.017087"
+  },
+  "ASHIKA": {
+    "data": {
+      "delivery_pct_today": 37.12,
+      "delivery_pct_20d_avg": 24.88,
+      "delivery_ratio": 1.492,
+      "delivery_signal": "STRONG_ACCUM",
+      "series_days": 31,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T02:53:00.612739"
+  },
+  "HALDYNGL": {
+    "data": {
+      "delivery_pct_today": 50.14,
+      "delivery_pct_20d_avg": 50.94,
+      "delivery_ratio": 0.984,
+      "delivery_signal": "NEUTRAL",
+      "series_days": 25,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T02:53:01.256237"
+  },
+  "ARTEMISMED": {
+    "data": {
+      "delivery_pct_today": 57.91,
+      "delivery_pct_20d_avg": 57.08,
+      "delivery_ratio": 1.015,
+      "delivery_signal": "NEUTRAL",
+      "series_days": 31,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T02:53:02.292348"
+  },
+  "KISSHT": {
+    "data": {
+      "delivery_pct_today": 16.48,
+      "delivery_pct_20d_avg": 31.61,
+      "delivery_ratio": 0.521,
+      "delivery_signal": "DISTRIBUTION",
+      "series_days": 31,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T02:53:02.847937"
+  },
+  "MAFATIND": {
+    "data": {
+      "delivery_pct_today": 61.01,
+      "delivery_pct_20d_avg": 58.41,
+      "delivery_ratio": 1.045,
+      "delivery_signal": "NEUTRAL",
+      "series_days": 31,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T02:53:03.841200"
+  },
+  "OMFREIGHT": {
+    "data": {
+      "delivery_pct_today": 43.63,
+      "delivery_pct_20d_avg": 57.8,
+      "delivery_ratio": 0.755,
+      "delivery_signal": "WEAK",
+      "series_days": 31,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T02:53:04.629297"
+  },
+  "MARKOLINES": {
+    "data": {
+      "delivery_pct_today": 24.31,
+      "delivery_pct_20d_avg": 26.51,
+      "delivery_ratio": 0.917,
+      "delivery_signal": "NEUTRAL",
+      "series_days": 31,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T02:53:05.241347"
+  },
+  "CCAVENUE": {
+    "data": {
+      "delivery_pct_today": 23.54,
+      "delivery_pct_20d_avg": 43.07,
+      "delivery_ratio": 0.547,
+      "delivery_signal": "DISTRIBUTION",
+      "series_days": 31,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T02:53:05.815128"
+  },
+  "DELHIVERY": {
+    "data": {
+      "delivery_pct_today": 47.87,
+      "delivery_pct_20d_avg": 52.01,
+      "delivery_ratio": 0.92,
+      "delivery_signal": "NEUTRAL",
+      "series_days": 31,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T02:53:06.412623"
+  },
+  "DMART": {
+    "data": {
+      "delivery_pct_today": 52.21,
+      "delivery_pct_20d_avg": 53.36,
+      "delivery_ratio": 0.978,
+      "delivery_signal": "NEUTRAL",
+      "series_days": 31,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T02:53:07.454718"
+  },
+  "EMIL": {
+    "data": {
+      "delivery_pct_today": 37.27,
+      "delivery_pct_20d_avg": 49.86,
+      "delivery_ratio": 0.747,
+      "delivery_signal": "WEAK",
+      "series_days": 32,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T18:42:06.344280+05:30"
+  },
+  "EXIDEIND": {
+    "data": {
+      "delivery_pct_today": 24.02,
+      "delivery_pct_20d_avg": 40.78,
+      "delivery_ratio": 0.589,
+      "delivery_signal": "DISTRIBUTION",
+      "series_days": 31,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T02:53:09.320243"
+  },
+  "GREAVESCOT": {
+    "data": {
+      "delivery_pct_today": 34.21,
+      "delivery_pct_20d_avg": 38.67,
+      "delivery_ratio": 0.885,
+      "delivery_signal": "NEUTRAL",
+      "series_days": 31,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T02:53:10.222582"
+  },
+  "ONMOBILE": {
+    "data": {
+      "delivery_pct_today": 33.84,
+      "delivery_pct_20d_avg": 47.9,
+      "delivery_ratio": 0.707,
+      "delivery_signal": "WEAK",
+      "series_days": 31,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T02:53:11.229859"
+  },
+  "SONACOMS": {
+    "data": {
+      "delivery_pct_today": 31.23,
+      "delivery_pct_20d_avg": 50.21,
+      "delivery_ratio": 0.622,
+      "delivery_signal": "DISTRIBUTION",
+      "series_days": 31,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T02:53:12.226371"
+  },
+  "SURYODAY": {
+    "data": {
+      "delivery_pct_today": 43.25,
+      "delivery_pct_20d_avg": 50.37,
+      "delivery_ratio": 0.859,
+      "delivery_signal": "NEUTRAL",
+      "series_days": 31,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T02:53:13.205241"
+  },
+  "TIRUPATIFL": {
+    "data": {
+      "delivery_pct_today": 0.0,
+      "delivery_pct_20d_avg": 0.0,
+      "delivery_ratio": 1.0,
+      "delivery_signal": "NEUTRAL",
+      "series_days": 0,
+      "source": "unavailable"
+    },
+    "cached_at": "2026-07-03T02:53:14.239395"
+  },
+  "LODHA": {
+    "data": {
+      "delivery_pct_today": 51.21,
+      "delivery_pct_20d_avg": 39.13,
+      "delivery_ratio": 1.309,
+      "delivery_signal": "STRONG_ACCUM",
+      "series_days": 32,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T18:41:55.260774+05:30"
+  },
+  "OBEROIRLTY": {
+    "data": {
+      "delivery_pct_today": 45.01,
+      "delivery_pct_20d_avg": 46.53,
+      "delivery_ratio": 0.967,
+      "delivery_signal": "NEUTRAL",
+      "series_days": 32,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T18:41:58.053742+05:30"
+  },
+  "ADVANCE": {
+    "data": {
+      "delivery_pct_today": 41.33,
+      "delivery_pct_20d_avg": 63.06,
+      "delivery_ratio": 0.655,
+      "delivery_signal": "DISTRIBUTION",
+      "series_days": 31,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T02:53:17.291427"
+  },
+  "VIPULLTD": {
+    "data": {
+      "delivery_pct_today": 52.58,
+      "delivery_pct_20d_avg": 62.27,
+      "delivery_ratio": 0.844,
+      "delivery_signal": "WEAK",
+      "series_days": 32,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T18:41:53.117112+05:30"
+  },
+  "SPAL": {
+    "data": {
+      "delivery_pct_today": 35.45,
+      "delivery_pct_20d_avg": 33.12,
+      "delivery_ratio": 1.07,
+      "delivery_signal": "NEUTRAL",
+      "series_days": 31,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T10:05:28.985801"
+  },
+  "ABSLAMC": {
+    "data": {
+      "delivery_pct_today": 53.9,
+      "delivery_pct_20d_avg": 56.67,
+      "delivery_ratio": 0.951,
+      "delivery_signal": "NEUTRAL",
+      "series_days": 31,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T10:05:30.001925"
+  },
+  "SUVEN": {
+    "data": {
+      "delivery_pct_today": 15.01,
+      "delivery_pct_20d_avg": 31.71,
+      "delivery_ratio": 0.473,
+      "delivery_signal": "DISTRIBUTION",
+      "series_days": 32,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T18:41:54.184443+05:30"
+  },
+  "MANCREDIT": {
+    "data": {
+      "delivery_pct_today": 10.95,
+      "delivery_pct_20d_avg": 16.2,
+      "delivery_ratio": 0.676,
+      "delivery_signal": "DISTRIBUTION",
+      "series_days": 32,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T18:42:09.362829+05:30"
+  },
+  "PHOENIXLTD": {
+    "data": {
+      "delivery_pct_today": 63.51,
+      "delivery_pct_20d_avg": 52.11,
+      "delivery_ratio": 1.219,
+      "delivery_signal": "ACCUM",
+      "series_days": 32,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T18:42:00.044208+05:30"
+  },
+  "SETL": {
+    "data": {
+      "delivery_pct_today": 51.77,
+      "delivery_pct_20d_avg": 43.93,
+      "delivery_ratio": 1.178,
+      "delivery_signal": "ACCUM",
+      "series_days": 32,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T18:42:14.235710+05:30"
+  },
+  "IBULLSLTD": {
+    "data": {
+      "delivery_pct_today": 0.0,
+      "delivery_pct_20d_avg": 0.0,
+      "delivery_ratio": 1.0,
+      "delivery_signal": "NEUTRAL",
+      "series_days": 0,
+      "source": "unavailable"
+    },
+    "cached_at": "2026-07-03T18:41:56.172110+05:30"
+  },
+  "NACLIND": {
+    "data": {
+      "delivery_pct_today": 25.5,
+      "delivery_pct_20d_avg": 36.06,
+      "delivery_ratio": 0.707,
+      "delivery_signal": "WEAK",
+      "series_days": 32,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T18:42:20.040752+05:30"
+  },
+  "GODREJPROP": {
+    "data": {
+      "delivery_pct_today": 52.37,
+      "delivery_pct_20d_avg": 38.49,
+      "delivery_ratio": 1.361,
+      "delivery_signal": "STRONG_ACCUM",
+      "series_days": 32,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T18:41:57.126895+05:30"
+  },
+  "PICCADIL": {
+    "data": {
+      "delivery_pct_today": 40.6,
+      "delivery_pct_20d_avg": 54.69,
+      "delivery_ratio": 0.742,
+      "delivery_signal": "WEAK",
+      "series_days": 31,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T10:05:38.334548"
+  },
+  "COMSYN": {
+    "data": {
+      "delivery_pct_today": 14.66,
+      "delivery_pct_20d_avg": 51.15,
+      "delivery_ratio": 0.287,
+      "delivery_signal": "DISTRIBUTION",
+      "series_days": 32,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T18:42:07.313645+05:30"
+  },
+  "SKMEGGPROD": {
+    "data": {
+      "delivery_pct_today": 32.45,
+      "delivery_pct_20d_avg": 35.36,
+      "delivery_ratio": 0.918,
+      "delivery_signal": "NEUTRAL",
+      "series_days": 31,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T10:05:40.490221"
+  },
+  "UTKARSHBNK": {
+    "data": {
+      "delivery_pct_today": 36.06,
+      "delivery_pct_20d_avg": 44.07,
+      "delivery_ratio": 0.818,
+      "delivery_signal": "WEAK",
+      "series_days": 31,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T10:05:41.569180"
+  },
+  "JAGSNPHARM": {
+    "data": {
+      "delivery_pct_today": 29.26,
+      "delivery_pct_20d_avg": 41.2,
+      "delivery_ratio": 0.71,
+      "delivery_signal": "WEAK",
+      "series_days": 31,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T10:05:42.530502"
+  },
+  "PRESTIGE": {
+    "data": {
+      "delivery_pct_today": 53.1,
+      "delivery_pct_20d_avg": 48.46,
+      "delivery_ratio": 1.096,
+      "delivery_signal": "NEUTRAL",
+      "series_days": 32,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T18:42:05.165725+05:30"
+  },
+  "BHARATSE": {
+    "data": {
+      "delivery_pct_today": 10.15,
+      "delivery_pct_20d_avg": 37.82,
+      "delivery_ratio": 0.268,
+      "delivery_signal": "DISTRIBUTION",
+      "series_days": 32,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T18:42:12.265422+05:30"
+  },
+  "MUTHOOTMF": {
+    "data": {
+      "delivery_pct_today": 45.31,
+      "delivery_pct_20d_avg": 49.7,
+      "delivery_ratio": 0.912,
+      "delivery_signal": "NEUTRAL",
+      "series_days": 32,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T18:42:10.363990+05:30"
+  },
+  "BANSALWIRE": {
+    "data": {
+      "delivery_pct_today": 46.57,
+      "delivery_pct_20d_avg": 48.76,
+      "delivery_ratio": 0.955,
+      "delivery_signal": "NEUTRAL",
+      "series_days": 31,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T10:05:46.188045"
+  },
+  "KOTHARIPET": {
+    "data": {
+      "delivery_pct_today": 71.03,
+      "delivery_pct_20d_avg": 53.11,
+      "delivery_ratio": 1.338,
+      "delivery_signal": "STRONG_ACCUM",
+      "series_days": 31,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T10:05:47.319054"
+  },
+  "IFGLEXPOR": {
+    "data": {
+      "delivery_pct_today": 9.31,
+      "delivery_pct_20d_avg": 53.4,
+      "delivery_ratio": 0.174,
+      "delivery_signal": "DISTRIBUTION",
+      "series_days": 31,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T10:05:48.317481"
+  },
+  "INDOCO": {
+    "data": {
+      "delivery_pct_today": 47.07,
+      "delivery_pct_20d_avg": 34.95,
+      "delivery_ratio": 1.347,
+      "delivery_signal": "STRONG_ACCUM",
+      "series_days": 32,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T18:42:19.052298+05:30"
+  },
+  "AVG": {
+    "data": {
+      "delivery_pct_today": 44.48,
+      "delivery_pct_20d_avg": 49.16,
+      "delivery_ratio": 0.905,
+      "delivery_signal": "NEUTRAL",
+      "series_days": 32,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T18:42:16.205317+05:30"
+  },
+  "WABAG": {
+    "data": {
+      "delivery_pct_today": 39.23,
+      "delivery_pct_20d_avg": 39.78,
+      "delivery_ratio": 0.986,
+      "delivery_signal": "NEUTRAL",
+      "series_days": 31,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T10:05:51.591314"
+  },
+  "TTKPRESTIG": {
+    "data": {
+      "delivery_pct_today": 49.05,
+      "delivery_pct_20d_avg": 46.24,
+      "delivery_ratio": 1.061,
+      "delivery_signal": "NEUTRAL",
+      "series_days": 32,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T18:42:17.115756+05:30"
+  },
+  "GHCLTEXTIL": {
+    "data": {
+      "delivery_pct_today": 54.31,
+      "delivery_pct_20d_avg": 56.06,
+      "delivery_ratio": 0.969,
+      "delivery_signal": "NEUTRAL",
+      "series_days": 32,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T18:42:22.162297+05:30"
+  },
+  "COSMOFIRST": {
+    "data": {
+      "delivery_pct_today": 38.34,
+      "delivery_pct_20d_avg": 49.21,
+      "delivery_ratio": 0.779,
+      "delivery_signal": "WEAK",
+      "series_days": 31,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T15:46:32.811523"
+  },
+  "GINNIFILA": {
+    "data": {
+      "delivery_pct_today": 60.28,
+      "delivery_pct_20d_avg": 56.06,
+      "delivery_ratio": 1.075,
+      "delivery_signal": "NEUTRAL",
+      "series_days": 32,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T18:41:59.022642+05:30"
+  },
+  "THANGAMAYL": {
+    "data": {
+      "delivery_pct_today": 22.22,
+      "delivery_pct_20d_avg": 26.82,
+      "delivery_ratio": 0.829,
+      "delivery_signal": "WEAK",
+      "series_days": 31,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T15:46:34.223336"
+  },
+  "MCLOUD": {
+    "data": {
+      "delivery_pct_today": 17.15,
+      "delivery_pct_20d_avg": 27.42,
+      "delivery_ratio": 0.626,
+      "delivery_signal": "DISTRIBUTION",
+      "series_days": 32,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T18:42:01.057972+05:30"
+  },
+  "FUSION": {
+    "data": {
+      "delivery_pct_today": 52.22,
+      "delivery_pct_20d_avg": 53.56,
+      "delivery_ratio": 0.975,
+      "delivery_signal": "NEUTRAL",
+      "series_days": 32,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T18:42:02.027150+05:30"
+  },
+  "ETERNAL": {
+    "data": {
+      "delivery_pct_today": 52.87,
+      "delivery_pct_20d_avg": 51.8,
+      "delivery_ratio": 1.021,
+      "delivery_signal": "NEUTRAL",
+      "series_days": 31,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T15:46:37.294033"
+  },
+  "SHILPAMED": {
+    "data": {
+      "delivery_pct_today": 45.91,
+      "delivery_pct_20d_avg": 41.23,
+      "delivery_ratio": 1.113,
+      "delivery_signal": "NEUTRAL",
+      "series_days": 32,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T18:42:03.087909+05:30"
+  },
+  "DLF": {
+    "data": {
+      "delivery_pct_today": 53.64,
+      "delivery_pct_20d_avg": 44.95,
+      "delivery_ratio": 1.193,
+      "delivery_signal": "ACCUM",
+      "series_days": 32,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T18:42:04.055423+05:30"
+  },
+  "AEQUS": {
+    "data": {
+      "delivery_pct_today": 21.9,
+      "delivery_pct_20d_avg": 29.71,
+      "delivery_ratio": 0.737,
+      "delivery_signal": "WEAK",
+      "series_days": 32,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T18:42:08.383845+05:30"
+  },
+  "AMAGI": {
+    "data": {
+      "delivery_pct_today": 43.31,
+      "delivery_pct_20d_avg": 38.56,
+      "delivery_ratio": 1.123,
+      "delivery_signal": "NEUTRAL",
+      "series_days": 32,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T18:42:11.334574+05:30"
+  },
+  "HUHTAMAKI": {
+    "data": {
+      "delivery_pct_today": 52.41,
+      "delivery_pct_20d_avg": 58.99,
+      "delivery_ratio": 0.888,
+      "delivery_signal": "NEUTRAL",
+      "series_days": 31,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T15:46:41.237429"
+  },
+  "SUDEEPPHRM": {
+    "data": {
+      "delivery_pct_today": 41.81,
+      "delivery_pct_20d_avg": 48.87,
+      "delivery_ratio": 0.855,
+      "delivery_signal": "NEUTRAL",
+      "series_days": 32,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T18:42:13.313320+05:30"
+  },
+  "RAYMONDREL": {
+    "data": {
+      "delivery_pct_today": 20.31,
+      "delivery_pct_20d_avg": 35.17,
+      "delivery_ratio": 0.577,
+      "delivery_signal": "DISTRIBUTION",
+      "series_days": 32,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T18:42:15.233514+05:30"
+  },
+  "RAMCOSYS": {
+    "data": {
+      "delivery_pct_today": 7.62,
+      "delivery_pct_20d_avg": 18.41,
+      "delivery_ratio": 0.414,
+      "delivery_signal": "DISTRIBUTION",
+      "series_days": 32,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T18:42:18.041861+05:30"
+  },
+  "IPCALAB": {
+    "data": {
+      "delivery_pct_today": 50.04,
+      "delivery_pct_20d_avg": 50.71,
+      "delivery_ratio": 0.987,
+      "delivery_signal": "NEUTRAL",
+      "series_days": 32,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-03T18:42:21.094000+05:30"
+  }
+}
