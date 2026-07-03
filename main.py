@@ -533,9 +533,14 @@ REGIME_THRESHOLDS = {
     # gets rejected). Bullish regimes tolerate wider volatility stops; bearish
     # regimes force tight stops to keep loss small.
     "STRONG_BULL":     {"min_confidence": 78, "min_tq": 72, "min_rr": 1.7, "max_buys": 5,  "max_exposure": 0.85, "max_stop_pct": 8.0},
-    "BULL":            {"min_confidence": 82, "min_tq": 76, "min_rr": 1.8, "max_buys": 3,  "max_exposure": 0.75, "max_stop_pct": 7.0},
-    "SIDEWAYS":        {"min_confidence": 80, "min_tq": 78, "min_rr": 2.0, "max_buys": 1,  "max_exposure": 0.50, "max_stop_pct": 6.0},
-    "TRANSITION":      {"min_confidence": 83, "min_tq": 78, "min_rr": 2.0, "max_buys": 2,  "max_exposure": 0.55, "max_stop_pct": 6.0},
+    "BULL":            {"min_confidence": 82, "min_tq": 76, "min_rr": 1.8, "max_buys": 3,  "max_exposure": 0.75, "max_stop_pct": 7.5},
+    # 2026-07-03 calibration: SIDEWAYS max_stop_pct raised 6.0 -> 8.0 because
+    # empirically 10-day swing lows on tradable NSE stocks sit 8-12% below
+    # entry in range-bound tapes. The old 6% cap made WIDE_STOP a
+    # 100%-hit gate (mathematically impossible to satisfy), producing 0
+    # signals every day. Quality gates (Conf/TQ/RR) remain strict.
+    "SIDEWAYS":        {"min_confidence": 80, "min_tq": 78, "min_rr": 2.0, "max_buys": 1,  "max_exposure": 0.50, "max_stop_pct": 8.0},
+    "TRANSITION":      {"min_confidence": 83, "min_tq": 78, "min_rr": 2.0, "max_buys": 2,  "max_exposure": 0.55, "max_stop_pct": 7.0},
     "HIGH_VOLATILITY": {"min_confidence": 85, "min_tq": 80, "min_rr": 2.2, "max_buys": 1,  "max_exposure": 0.40, "max_stop_pct": 5.0},
     "BEAR":            {"min_confidence": 92, "min_tq": 88, "min_rr": 2.5, "max_buys": 0,  "max_exposure": 0.20, "max_stop_pct": 5.0},
     "STRONG_BEAR":     {"min_confidence": 99, "min_tq": 99, "min_rr": 3.0, "max_buys": 0,  "max_exposure": 0.00, "max_stop_pct": 4.0},
@@ -6648,10 +6653,23 @@ def run_gates(stock: dict, regime: str, thresholds: dict,
         _eff = float(stock.get("effective_stop_pct", 0) or 0)
         warnings.append(f"HIGH_GAP_RISK: p90 gap {_p90:.1f}% · effective stop {_eff:.1f}%")
 
-    # Gate 12: Portfolio Capacity (SOFT)
+    # Gate 12: Portfolio Capacity (INFORMATIONAL — 2026-07-03 change)
+    # OLD behaviour: appended PORTFOLIO_FULL as a fail_reason and later stripped
+    # it in the WATCHLIST vs REJECTED sorter. That kept the tag in the audit,
+    # which made no-buy days show "PORTFOLIO_FULL: 100%" as a top reject reason
+    # — pure noise, since it just meant "you already own 2 stocks in a regime
+    # allowing 1", NOT that the candidate was bad.
+    #
+    # NEW behaviour: recommendations must be portfolio-independent. Your
+    # portfolio JSON might be stale (positions closed manually and not synced),
+    # so a candidate's quality should NEVER depend on what you happen to hold.
+    # We now only emit a WARNING; the user decides based on actual free capital.
     active_count = portfolio.get("active_count", 0)
     if active_count >= thresh["max_buys"]:
-        fail_reasons.append("PORTFOLIO_FULL")
+        warnings.append(
+            f"PORTFOLIO_OVER_CAP({active_count}/{thresh['max_buys']} "
+            f"positions in {regime} regime — informational only)"
+        )
 
     # Gate 13: Event Calendar (HARD) — no new BUY within 5 trading days of results/monthly expiry
     near_event, event_reason = is_near_event(
@@ -6732,8 +6750,9 @@ def run_gates(stock: dict, regime: str, thresholds: dict,
 
     hard_fails = [f for f in fail_reasons if "WARNING" not in f]
     if hard_fails:
-        # PORTFOLIO_FULL never blocks watchlist — stock is valid, just capacity is full today
-        # Strip it before deciding WATCHLIST vs REJECTED so it doesn't poison the check
+        # 2026-07-03: PORTFOLIO_FULL is no longer a fail_reason (now a warning).
+        # The filter below is kept as a defensive no-op so any old audit rows
+        # replayed through this function still behave correctly.
         scoreable_fails = [f for f in hard_fails if "PORTFOLIO_FULL" not in f]
         # Phase C2 (2026-07-02): SECTOR_LAGGING is now a soft-scoreable fail —
         # it counts toward the 2-fail budget but no longer excludes watchlist.
@@ -8698,8 +8717,9 @@ def format_no_buy_explanation(top_rejected: list, regime: str,
             "CONF_FAIL":               "Confidence too low",
             "TQ_FAIL":                 "Trade Quality too low",
             "RR_FAIL":                 "Risk/Reward too low",
+            "WIDE_STOP":               "Stop distance > regime cap",
             "SECTOR_LAGGING":          "Sector lagging",
-            "PORTFOLIO_FULL":          "Portfolio slots full",
+            "SECTOR_CAP":              "Sector concentration cap",
             "KILL_SWITCH":             "Kill-switch active",
             "EVENT_BLOCK":             "Earnings/event blackout",
             "HIGH_CORR":               "Too correlated w/ existing pos",
@@ -8710,6 +8730,9 @@ def format_no_buy_explanation(top_rejected: list, regime: str,
             "DATA_INCOMPLETE":         "Data incomplete",
             "SUSPECT_PUMP_LOW_DELIVERY": "Suspect pump (low delivery)",
             "INSTITUTIONAL_EXIT":      "Institutional exit signal",
+            # Note: PORTFOLIO_FULL is no longer emitted as of 2026-07-03 \u2014
+            # portfolio state no longer affects recommendations. It's a WARNING
+            # only now, which never lands in fail_reasons.
         }
         top3 = reason_counter.most_common(3)
         lines.append(f"  \U0001f4ca <b>Top reject reasons</b> (of {total_rej} rejects):")
