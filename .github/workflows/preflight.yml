@@ -1,0 +1,114 @@
+name: Preflight
+
+# ────────────────────────────────────────────────────────────────────────────
+# Preflight CI — runs on every push + PR.
+#
+# Purpose: catch classes of bugs that used to burn a full scheduled-run cycle
+# before you noticed them. Runs in ~30-60 seconds on ubuntu-latest.
+#
+# Specifically catches:
+#   1. Python syntax errors in main.py / tracker_job.py / any *.py
+#   2. Invalid JSON state files (corrupted tracker.json, gate_memory.json etc.)
+#   3. Workflow YAML that tries to `git add` files listed in .gitignore
+#      (exact bug that broke the 2026-07-03 tracker run)
+#   4. Forbidden hype phrases in Telegram templates ("guaranteed", "sure shot")
+#   5. Missing critical Python imports at module top-level
+#   6. `.env.example` env vars that no *.py file ever reads (drift detection)
+#
+# What this does NOT do:
+#   - Run the actual recommendation pipeline (that needs API keys)
+#   - Talk to yfinance, Groq, Telegram (deterministic-only checks)
+#   - Verify runtime behaviour — only static structure
+#
+# Fast-fail philosophy: any single check failure = red CI badge = don't merge.
+# ────────────────────────────────────────────────────────────────────────────
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    name: "Static checks (syntax / json / gitignore / compliance)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # ─── Step 1: Python syntax compile ────────────────────────────────────
+      # py_compile catches SyntaxError / IndentationError instantly. If main.py
+      # doesn't parse, no scheduled job would ever succeed — better to fail
+      # here at push time than at 15:30 IST when the evening run fires.
+      - name: Compile all Python files
+        run: |
+          python -m compileall -q -f . \
+            -x '\.git|\.forge_venv|__pycache__|backtest_staging'
+        # -q = quiet unless error, -f = force recompile, -x = exclude regex
+
+      # ─── Step 2: JSON state file validation ───────────────────────────────
+      # A half-written tracker.json (interrupted mid-write on a runner) will
+      # poison the next scheduled run. Catch corruption at push time.
+      - name: Validate all committed JSON files
+        run: |
+          python scripts/preflight_checks.py --json
+
+      # ─── Step 3: gitignore vs workflow commit-back consistency ────────────
+      # THIS IS THE ONE that would have caught the 2026-07-03 tracker failure.
+      # Any file listed inside a `git add ...` block of any *.yml workflow
+      # must NOT appear in .gitignore.
+      - name: Check gitignore vs workflow commit paths
+        run: |
+          python scripts/preflight_checks.py --gitignore-workflow
+
+      # ─── Step 4: Compliance phrase scan (Telegram templates) ──────────────
+      # Belt-and-suspenders for any future paid channel. Even for friends/
+      # family, hype language ("guaranteed", "sure shot", "insider") is a
+      # trust-killer. Scan any file that touches Telegram send.
+      - name: Compliance phrase scan
+        run: |
+          python scripts/preflight_checks.py --compliance
+
+      # ─── Step 5: env var drift detection ──────────────────────────────────
+      # .env.example lists env vars the operator is supposed to set. If any
+      # var is declared but NO *.py file ever reads it, it's dead config
+      # that creates false confidence.
+      - name: env var drift (soft-fail, warning only)
+        continue-on-error: true
+        run: |
+          python scripts/preflight_checks.py --env-drift
+
+      # ─── Step 6: import smoke test ────────────────────────────────────────
+      # `import main` will surface missing dependencies not caught by
+      # py_compile (e.g. `from foo import bar` where foo exists but bar
+      # doesn't). Uses `IMPORT_SMOKE_TEST=1` sentinel so main.py can skip
+      # network/API side-effects during the import.
+      - name: Import smoke test
+        env:
+          IMPORT_SMOKE_TEST: "1"
+          DRY_RUN: "true"
+        run: |
+          python scripts/preflight_checks.py --import-smoke
+
+      - name: Preflight summary
+        if: always()
+        run: |
+          echo "════════════════════════════════════════════════════════════"
+          echo "PREFLIGHT COMPLETE"
+          echo "════════════════════════════════════════════════════════════"
+          echo "Status: ${{ job.status }}"
+          echo "If this run failed, DO NOT merge / DO NOT dispatch scheduled"
+          echo "workflows against this SHA — a real recommendation cycle will"
+          echo "burn CI time and produce garbage output."
