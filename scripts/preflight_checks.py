@@ -102,6 +102,89 @@ def check_json_files() -> int:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# CHECK 1b (Phase W, 2026-07-03) — watchdog state file schema
+# ═══════════════════════════════════════════════════════════════════════════
+# run_health.json and reject_watch.json are BOTH cross-workflow shared state.
+# Corruption is catastrophic:
+#   - run_health.json corrupt → staleness detection dies → we no longer alert
+#     when the pipeline goes silent. Which is the whole point of Phase W.
+#   - reject_watch.json corrupt → reject_followup.py can't append T+5/T+10/T+20
+#     measurements, breaking the false-negative dataset (Phase N-2).
+#
+# This check validates STRUCTURE not just JSON parseability (which check_json
+# already covers). We enforce the top-level shape so a bad append/write on a
+# runner can't quietly poison the next run.
+
+def check_watchdog_state_schema() -> int:
+    """Structural validation of run_health.json + reject_watch.json."""
+    failed: list[str] = []
+
+    # ── run_health.json ──
+    p = REPO_ROOT / "run_health.json"
+    if p.exists():
+        try:
+            with p.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+            if not isinstance(data, dict):
+                failed.append("run_health.json: top-level must be object")
+            else:
+                jobs = data.get("jobs")
+                if jobs is not None and not isinstance(jobs, dict):
+                    failed.append("run_health.json: 'jobs' must be object")
+                hist = data.get("fresh_start_history")
+                if hist is not None and not isinstance(hist, list):
+                    failed.append("run_health.json: 'fresh_start_history' must be array")
+                if isinstance(jobs, dict):
+                    for job_name, entry in jobs.items():
+                        if not isinstance(entry, dict):
+                            failed.append(f"run_health.json: jobs[{job_name!r}] must be object")
+                            continue
+                        # last_success_utc should be a string when present
+                        lu = entry.get("last_success_utc")
+                        if lu is not None and not isinstance(lu, str):
+                            failed.append(f"run_health.json: jobs[{job_name!r}].last_success_utc must be str")
+        except json.JSONDecodeError as e:
+            failed.append(f"run_health.json: parse error {e}")
+        except OSError as e:
+            failed.append(f"run_health.json: read error {e}")
+    else:
+        print("   run_health.json not present yet (first run) — OK")
+
+    # ── reject_watch.json ──
+    p = REPO_ROOT / "reject_watch.json"
+    if p.exists():
+        try:
+            with p.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+            if not isinstance(data, list):
+                failed.append("reject_watch.json: top-level must be array")
+            else:
+                # Sample-check the first 5 entries
+                for i, e in enumerate(data[:5]):
+                    if not isinstance(e, dict):
+                        failed.append(f"reject_watch.json[{i}]: must be object")
+                        continue
+                    for req in ("symbol", "date"):
+                        if req not in e:
+                            failed.append(f"reject_watch.json[{i}]: missing '{req}'")
+        except json.JSONDecodeError as e:
+            failed.append(f"reject_watch.json: parse error {e}")
+        except OSError as e:
+            failed.append(f"reject_watch.json: read error {e}")
+    else:
+        print("   reject_watch.json not present yet (first run) — OK")
+
+    if failed:
+        print("❌ Watchdog state schema FAILED:")
+        for msg in failed:
+            print(f"   {msg}")
+        return 1
+
+    print("✅ Watchdog state schema OK")
+    return 0
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # CHECK 2 — .gitignore vs workflow `git add` consistency
 # ═══════════════════════════════════════════════════════════════════════════
 # Rationale: on 2026-07-03 the tracker.yml workflow failed for weeks because
@@ -661,6 +744,7 @@ def check_import_smoke() -> int:
 
 CHECKS = [
     ("json",                check_json_files),
+    ("watchdog-schema",     check_watchdog_state_schema),
     ("gitignore-workflow",  check_gitignore_vs_workflows),
     ("compliance",          check_compliance_phrases),
     ("env-drift",           check_env_drift),
@@ -673,6 +757,7 @@ CHECKS = [
 def main() -> int:
     ap = argparse.ArgumentParser(description="Static preflight checks")
     ap.add_argument("--json",                action="store_true")
+    ap.add_argument("--watchdog-schema",     action="store_true")
     ap.add_argument("--gitignore-workflow",  action="store_true")
     ap.add_argument("--compliance",          action="store_true")
     ap.add_argument("--env-drift",           action="store_true")
@@ -684,15 +769,16 @@ def main() -> int:
     args = ap.parse_args()
 
     # If no flag given, treat as --all
-    any_flag = any([args.json, args.gitignore_workflow, args.compliance,
-                    args.env_drift, args.fundamentals_parser, args.blocklists,
-                    args.import_smoke, args.all])
+    any_flag = any([args.json, args.watchdog_schema, args.gitignore_workflow,
+                    args.compliance, args.env_drift, args.fundamentals_parser,
+                    args.blocklists, args.import_smoke, args.all])
     if not any_flag:
         args.all = True
 
     selected = []
     flag_map = {
         "json":                args.json                or args.all,
+        "watchdog-schema":     args.watchdog_schema     or args.all,
         "gitignore-workflow":  args.gitignore_workflow  or args.all,
         "compliance":          args.compliance          or args.all,
         "env-drift":           args.env_drift           or args.all,
