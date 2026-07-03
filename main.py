@@ -949,11 +949,13 @@ def get_sector(symbol: str) -> str:
         return "PHARMA"
     if root.startswith(("MED", "BIO")) or root.endswith(("MED", "BIO", "PHARMA")):
         return "PHARMA"
-    # FINANCE — full words only. Requires FIN at start/end (FINCORP, JMFIN),
-    # or explicit BANK/CRED/LOAN anywhere.
+    # FINANCE — BANK/CRED/LOAN anywhere are unambiguous.
+    # For FIN we allow substring (catches JMFINCORP, MASFIN, LICHSGFIN…) and
+    # rely on the exclusion list at step 2b to intercept the known
+    # non-finance offenders (FINEORG, FINPIPE, …).
     if "BANK" in root or "CRED" in root or "LOAN" in root:
         return "FINANCE"
-    if root.startswith("FIN") or root.endswith("FIN"):
+    if "FIN" in root:
         return "FINANCE"
     # IT — TECH/SOFT/DIGIT strong signals; INFO/SYST only at start
     # (avoids INFOEDGE, SYSTEMATIX-type tickers slipping into IT).
