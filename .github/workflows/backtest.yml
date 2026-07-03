@@ -161,6 +161,12 @@ jobs:
 
       # Commit the staging folder back so you can review from any device.
       # This NEVER touches the live files.
+      #
+      # NOTE: backtest_staging/ is listed in .gitignore (so local ad-hoc
+      # backtest runs don't clutter the working tree). This workflow uses
+      # `git add -f` to force-add it in CI, which is the intentional
+      # override. Do NOT remove backtest_staging/ from .gitignore — it's
+      # correct there. Do NOT remove `-f` here — it's correct too.
       - name: Commit staging folder back to repo
         if: ${{ env.SKIP_BACKTEST != 'true' && github.event.inputs.staging_only != 'false' }}
         shell: bash
@@ -168,7 +174,7 @@ jobs:
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           [ -d backtest_staging ] || exit 0
-          git add backtest_staging/
+          git add -f backtest_staging/
           git diff --cached --quiet || \
             git commit -m "chore: quarterly backtest staging [skip ci]" && git push
 
