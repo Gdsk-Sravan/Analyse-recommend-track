@@ -741,7 +741,7 @@ SECTOR_CACHE_FILE = os.getenv("SECTOR_CACHE_FILE", "sector_cache.json")
 _CSV_LABEL_NORM = {
     "Auto": "AUTO", "Banking": "BANKING", "Capital Goods": "CAPITAL_GOODS",
     "Cement": "INFRA", "Chemicals": "CHEMICALS", "Consumer Goods": "FMCG",
-    "Consumer Services": "CONSUMER", "Defence": "DEFENCE", "Diversified": "OTHERS",
+    "Consumer Services": "CONSUMER", "Defence": "DEFENCE", "Diversified": "DIVERSIFIED",  # Bug 8 fix (2026-07-03)
     "Electronics Manufacturing": "CAPITAL_GOODS", "Finance": "FINANCE",
     "FinTech": "FINANCE", "FMCG": "FMCG", "Healthcare": "HEALTHCARE",
     "Infrastructure": "INFRA", "IT": "IT", "IT Hardware": "IT",
@@ -1192,15 +1192,15 @@ _LOG_FILE = None
 def init_run_log():
     global _LOG_FILE
     try:
-        fname = f"run_log_{datetime.date.today().strftime('%Y%m%d')}.txt"
+        fname = f"run_log_{ist_today().strftime('%Y%m%d')}.txt"
         _LOG_FILE = open(fname, "a", encoding="utf-8")
-        _log(f"=== PIPELINE STARTED {datetime.datetime.now().isoformat()} ===")
+        _log(f"=== PIPELINE STARTED {ist_now().isoformat()} ===")
     except Exception as e:
         print(f"[WARN] init_run_log failed: {e}")
 
 
 def _log(msg: str):
-    ts = datetime.datetime.now().strftime("%H:%M:%S")
+    ts = ist_now().strftime("%H:%M:%S")
     line = f"[{ts}] {msg}"
     print(line)
     if _LOG_FILE:
@@ -1306,7 +1306,7 @@ _FOMC_DATES_2026       = _FOMC_DATES
 
 def is_market_open(check_date=None) -> bool:
     if check_date is None:
-        check_date = datetime.date.today()
+        check_date = ist_today()
     if check_date.weekday() >= 5:
         return False
     if check_date.strftime("%Y-%m-%d") in NSE_HOLIDAYS:
@@ -1315,7 +1315,7 @@ def is_market_open(check_date=None) -> bool:
 
 
 def is_earnings_season() -> bool:
-    return datetime.date.today().month in {4, 5, 10, 11}
+    return ist_today().month in {4, 5, 10, 11}
 
 
 def earnings_season_threshold_adjustment() -> int:
@@ -1380,9 +1380,9 @@ def _split_telegram_message(text: str, max_len: int) -> list:
 
 def _save_failed_telegram(message: str) -> None:
     try:
-        fname = f"telegram_failed_{datetime.date.today().strftime('%Y%m%d')}.txt"
+        fname = f"telegram_failed_{ist_today().strftime('%Y%m%d')}.txt"
         with open(fname, "a", encoding="utf-8") as f:
-            f.write(f"\n\n=== {datetime.datetime.now().isoformat()} ===\n")
+            f.write(f"\n\n=== {ist_now().isoformat()} ===\n")
             f.write(message)
     except Exception:
         pass
@@ -1525,7 +1525,7 @@ def save_csv(data: list, base_filename: str) -> None:
     if not data:
         return
     try:
-        date_str = datetime.date.today().strftime("%Y%m%d")
+        date_str = ist_today().strftime("%Y%m%d")
         name, ext = os.path.splitext(base_filename)
         filename = f"{name}_{date_str}{ext}"
         clean = []
@@ -3074,7 +3074,7 @@ def fetch_delivery_data(symbol_clean: str, lookback_days: int = 30) -> dict:
         return default
     try:
         # nselib expects DD-MM-YYYY for from_date / to_date.
-        today   = datetime.datetime.now().date()
+        today   = ist_today()
         # Use a wider window than 20d because market holidays + weekends can
         # thin out the row count; we'll trim later.
         from_d  = today - datetime.timedelta(days=max(45, lookback_days + 15))
@@ -3158,7 +3158,7 @@ def fetch_delivery_data(symbol_clean: str, lookback_days: int = 30) -> dict:
 def fetch_delivery_cached(symbol_clean: str, cache: dict,
                           cache_ttl_hours: int = 24) -> dict:
     """24h-cached wrapper around fetch_delivery_data()."""
-    now    = datetime.datetime.now()
+    now    = ist_now()
     cached = cache.get(symbol_clean)
     if cached:
         try:
@@ -3197,7 +3197,7 @@ def delivery_score_from_signal(signal: str, ratio: float) -> float:
 def fetch_promoter_data_cached(symbol_clean: str, cache: dict,
                                 cache_ttl_hours: int = 24) -> dict:
     """Returns cached data if fresher than cache_ttl_hours; otherwise fetches live."""
-    now    = datetime.datetime.now()
+    now    = ist_now()
     cached = cache.get(symbol_clean)
     if cached:
         try:
@@ -3699,7 +3699,7 @@ def _fetch_fii_dii_google_news() -> "dict | None":
             _log("    [Google News] feedparser not available — skipped")
             return None
         from urllib.parse import quote
-        today_str = datetime.date.today().strftime("%d %b").lstrip("0")  # "29 Jun"
+        today_str = ist_today().strftime("%d %b").lstrip("0")  # "29 Jun"
 
         _CUMULATIVE_PHRASES_STATIC = (
             "so far", "lakh crore", "ytd", "cumulative",
@@ -3718,7 +3718,7 @@ def _fetch_fii_dii_google_news() -> "dict | None":
         # Phase C7e (2026-07-02): year-specific "total 2024" / "outflow in 2025" phrases
         # were hardcoded. Now generated dynamically from all years up to today so this
         # filter never goes stale on Jan 1 of a new year.
-        _cur_year = datetime.date.today().year
+        _cur_year = ist_today().year
         _year_phrases = tuple(
             phrase
             for y in range(2020, _cur_year + 1)
@@ -4040,7 +4040,7 @@ def _fii_dii_flows_disabled_legacy_impl(max_retries: int = 2) -> dict:
     from datetime import time as dtime
     import time as _time
 
-    now_ist     = datetime.datetime.now()
+    now_ist     = ist_now()
     now_t       = now_ist.time()
     just_closed = dtime(15, 30) <= now_t <= dtime(16, 15)
     is_prov     = now_t < dtime(18, 0)
@@ -4209,7 +4209,7 @@ def format_fii_dii_line(fii_data: dict) -> str:
     Shows 'N/A' for DII when it was not found (vs genuinely zero).
     """
     from datetime import time as dtime
-    now_ist     = datetime.datetime.now()
+    now_ist     = ist_now()
     just_closed = dtime(15, 30) <= now_ist.time() <= dtime(16, 30)
     market_open = dtime(9, 15)  <= now_ist.time() <  dtime(15, 30)
 
@@ -4672,7 +4672,7 @@ def fetch_bse_results_dates(symbol_clean: str) -> list:
     any failure. Silent on individual stock failures — the top-level counter
     reports coverage.
     """
-    today = datetime.date.today()
+    today = ist_today()
 
     # ── 1. yfinance calendar (primary) ────────────────────────────────────
     try:
@@ -4764,7 +4764,7 @@ def is_near_event(symbol_clean: str, results_dates: list,
     Checks: (1) BSE results dates for the specific stock, (2) NSE expiry dates.
     Returns (False, "") if clear to trade.
     """
-    today = datetime.date.today()
+    today = ist_today()
     cutoff = today + datetime.timedelta(days=window_days)
 
     # Check stock-specific results date
@@ -4808,7 +4808,7 @@ def _nse_expiry_dates(lookahead_days: int = 60) -> list:
     Weekly  = every Thursday.
     Monthly = last Thursday of each month (when it falls in the window).
     """
-    today  = datetime.date.today()
+    today  = ist_today()
     end    = today + datetime.timedelta(days=lookahead_days)
     events = []
     cur    = today
@@ -4833,7 +4833,7 @@ def _nse_expiry_dates(lookahead_days: int = 60) -> list:
 
 def _rbi_mpc_events(lookahead_days: int = 60) -> list:
     """Returns upcoming RBI MPC decision dates from the loaded schedule."""
-    today  = datetime.date.today()
+    today  = ist_today()
     end    = today + datetime.timedelta(days=lookahead_days)
     events = []
     for ds in _RBI_MPC_DATES:
@@ -4855,7 +4855,7 @@ def _rbi_mpc_events(lookahead_days: int = 60) -> list:
 
 def _fomc_events(lookahead_days: int = 60) -> list:
     """Returns upcoming FOMC decision dates (impacts FII flows + DXY)."""
-    today  = datetime.date.today()
+    today  = ist_today()
     end    = today + datetime.timedelta(days=lookahead_days)
     events = []
     for ds in _FOMC_DATES:
@@ -4901,7 +4901,7 @@ def build_events_calendar(lookahead_days: int = 30) -> list:
         except Exception:
             pass
 
-        today = datetime.date.today()
+        today = ist_today()
         end   = today + datetime.timedelta(days=lookahead_days)
         return [
             ev for ev in all_events
@@ -4919,7 +4919,7 @@ def load_events_config() -> list:
     Shows max 3 total events, only within the next 14 days.
     """
     all_events = build_events_calendar(lookahead_days=30)
-    today = datetime.date.today()
+    today = ist_today()
 
     # Step 1: sort by date (nearest first)
     all_events.sort(key=lambda x: x.get("date", ""))
@@ -5262,8 +5262,15 @@ def compute_news_penalty(ai_result: dict, age_days: int) -> float:
 
 def compute_final_confidence(base: float, regime: str, news_penalty: float,
                               macro_adj: float, bulk_adj: int) -> float:
+    # Bug 7 fix (2026-07-03): SIDEWAYS regime penalty relaxed from -5 → -2.
+    # Rationale: -5 stacked on min_confidence=80 in SIDEWAYS meant base_conf
+    # had to reach 85 for a BUY to fire — structurally near-impossible given
+    # the R/R cap (2.5x → 75 base points). Tracker analysis showed only
+    # NEAR_MISS rows in SIDEWAYS despite valid setups. -2 keeps SIDEWAYS
+    # more cautious than BULL but no longer double-punished with the
+    # threshold. Effective bar drops from 85 → 82 base which is achievable.
     REGIME_ADJ = {
-        "STRONG_BULL": +8, "BULL": +4, "SIDEWAYS": -5,
+        "STRONG_BULL": +8, "BULL": +4, "SIDEWAYS": -2,
         "TRANSITION": -3, "HIGH_VOLATILITY": -8, "BEAR": -20, "STRONG_BEAR": -40,
     }
     final = base + REGIME_ADJ.get(regime, 0) - news_penalty + macro_adj + bulk_adj
@@ -5408,7 +5415,7 @@ def compute_kill_switch_state(tracker: dict, capital: float = None) -> dict:
         if not completed:
             return default
 
-        today = datetime.date.today()
+        today = ist_today()
 
         def _close_date(pos: dict) -> datetime.date:
             """Best-effort close date from the various *_date fields."""
@@ -6466,7 +6473,7 @@ def monitor_portfolio(holdings: list, price_data: dict, regime: str) -> list:
             # FIX: prefer business days (T-days). Weekends inflated the counter.
             try:
                 _tdays = int(pd.bdate_range(entry_dt.date(),
-                                            datetime.date.today()).size) - 1
+                                            ist_today()).size) - 1
                 days_held = max(0, _tdays)
             except Exception:
                 days_held = (datetime.datetime.today() - entry_dt).days
@@ -7173,13 +7180,13 @@ def save_persistent_watchlist(watchlist_dict: dict) -> None:
 
 
 def merge_watchlist_with_history(todays_watchlist: list, history: dict) -> tuple:
-    today_str = datetime.date.today().isoformat()
+    today_str = ist_today().isoformat()
     updated_history = {}
     for stock in todays_watchlist:
         symbol     = stock.get("symbol", "")
         prev       = history.get(symbol, {})
         first_seen = prev.get("first_seen", today_str)
-        days_watched = (datetime.date.today() -
+        days_watched = (ist_today() -
                         datetime.date.fromisoformat(first_seen)).days
         stock["days_watched"] = days_watched
         stock["first_seen"]   = first_seen
@@ -7197,7 +7204,7 @@ def merge_watchlist_with_history(todays_watchlist: list, history: dict) -> tuple
 
 
 def tag_repeat_buy_signals(buys: list, tracker_entries: list) -> list:
-    today_str = datetime.date.today().isoformat()
+    today_str = ist_today().isoformat()
     for stock in buys:
         symbol = stock.get("symbol", "")
         match  = next((e for e in tracker_entries
@@ -7206,7 +7213,7 @@ def tag_repeat_buy_signals(buys: list, tracker_entries: list) -> list:
                        and e["status"] == "OPEN"
                        and e["suggested_date"] != today_str), None)
         if match:
-            days_since = (datetime.date.today() -
+            days_since = (ist_today() -
                           datetime.date.fromisoformat(match["suggested_date"])).days
             stock["repeat_tag"] = f"REPEAT DAY {days_since + 1}"
             existing = stock.get("warnings", [])
@@ -7242,7 +7249,7 @@ def save_tracker(entries: list) -> None:
 
 
 def add_to_tracker(entries: list, stock: dict, sig_type: str) -> list:
-    today_str = datetime.date.today().isoformat()
+    today_str = ist_today().isoformat()
     symbol    = stock.get("symbol", "")
     already   = any(
         e["symbol"] == symbol and e["suggested_date"] == today_str and e["status"] == "OPEN"
@@ -7331,7 +7338,7 @@ def update_tracker(entries: list) -> tuple:
     and trail multiplier is tightened by REGIME_TIGHTEN_FACTOR.
     """
     closed_today = []
-    today_iso = datetime.date.today().isoformat()
+    today_iso = ist_today().isoformat()
     regime = _current_exit_regime()
     for e in entries:
         if e["status"] != "OPEN":
@@ -7404,7 +7411,7 @@ def update_tracker(entries: list) -> tuple:
                 # Exit rules on the runner
                 days_in_runner = 0
                 try:
-                    days_in_runner = (datetime.date.today() -
+                    days_in_runner = (ist_today() -
                                       datetime.date.fromisoformat(str(e.get("t2_hit_date", today_iso))[:10])).days
                 except Exception:
                     pass
@@ -7544,7 +7551,7 @@ def update_tracker(entries: list) -> tuple:
 
 def _days_open(e: dict) -> int:
     try:
-        return (datetime.date.today() - datetime.date.fromisoformat(e["suggested_date"])).days
+        return (ist_today() - datetime.date.fromisoformat(e["suggested_date"])).days
     except Exception:
         return 0
 
@@ -7756,7 +7763,7 @@ def add_to_tracker_v2(tracker: dict, stock: dict, regime: str = "") -> dict:
     persists a signal that already passed the gates. Never raises.
     """
     try:
-        today_str = datetime.date.today().isoformat()
+        today_str = ist_today().isoformat()
         symbol    = stock.get("symbol", "")
         if not symbol or not isinstance(tracker, dict):
             return tracker
@@ -7824,7 +7831,7 @@ def update_tracker_v2_pnl(tracker: dict) -> dict:
       ACTIVE  → T1_HIT  → RUNNING (post-T2, runner_active)  → STOPPED_OUT/T2_HIT/RUNNER_*
               → STOPPED_OUT / EXPIRED / T2_HIT
     """
-    today_str = datetime.date.today().isoformat()
+    today_str = ist_today().isoformat()
     regime = _current_exit_regime()
 
     def _get_price(sym: str) -> float:
@@ -7866,7 +7873,7 @@ def update_tracker_v2_pnl(tracker: dict) -> dict:
             entry  = float(pos.get("entry", cur_px) or cur_px)
             pnl    = round((cur_px - entry) / entry * 100, 2) if entry > 0 else 0.0
             pos["days_tracked"] = (
-                datetime.date.today() -
+                ist_today() -
                 datetime.date.fromisoformat(pos.get("rec_date", today_str))
             ).days + 1
             hist = pos.setdefault("pnl_history", [])
@@ -7927,7 +7934,7 @@ def update_tracker_v2_pnl(tracker: dict) -> dict:
                 # Days since t2_hit
                 days_in_runner = 0
                 try:
-                    days_in_runner = (datetime.date.today() -
+                    days_in_runner = (ist_today() -
                                       datetime.date.fromisoformat(str(pos.get("t2_hit_date", today_str))[:10])).days
                 except Exception:
                     pass
@@ -8074,7 +8081,7 @@ def update_tracker_v2_pnl(tracker: dict) -> dict:
     for w in tracker.get("watchlist", []):
         try:
             days = (
-                datetime.date.today() -
+                ist_today() -
                 datetime.date.fromisoformat(w.get("rec_date", today_str))
             ).days + 1
             w["days_watching"] = days
@@ -9963,7 +9970,7 @@ def _run_pipeline_inner():
         _log(f"  [Audit] append failed (non-fatal): {e}")
 
     # ── 14b. Confidence history update (FEATURE 2) ──
-    _today_str_h = datetime.date.today().isoformat()
+    _today_str_h = ist_today().isoformat()
     conf_history = load_confidence_history()
     conf_history = update_confidence_history(conf_history, top_40, _today_str_h)
     if IS_SCHEDULED:
@@ -10123,7 +10130,7 @@ def _run_pipeline_inner():
     # Always persist — the Excel is the system-of-record for the tracker job
     # and downstream artifacts. Manual runs MUST still write it, otherwise the
     # Recommendation Tracker workflow has nothing to download.
-    today_str_pipe = datetime.date.today().isoformat()
+    today_str_pipe = ist_today().isoformat()
     save_recommendations_to_excel(
         buys, watchlist_stocks,
         {"regime": regime, "score": regime_data.get("score", 0)},
