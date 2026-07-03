@@ -6,7 +6,8 @@ on:
       run_mode:
         description: "Run mode"
         required: false
-        default: "manual"
+        # Phase W-3 (2026-07-03): default changed from 'manual' → 'scheduled'
+        default: "scheduled"
         type: choice
         options:
           - "manual"
@@ -82,7 +83,9 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           # Phase C7e: weekly_metrics.json is the week-over-week deltas store
           # — must be committed so next week's run can compute deltas.
-          files=(recommendation_tracker.xlsx weekly_metrics.json)
+          # Phase W (2026-07-03): also commit run_health.json for cross-workflow
+          # staleness detection.
+          files=(recommendation_tracker.xlsx weekly_metrics.json run_health.json)
           existing=()
           for f in "${files[@]}"; do [ -e "$f" ] && existing+=("$f"); done
           if [ ${#existing[@]} -eq 0 ]; then
@@ -97,4 +100,14 @@ jobs:
             git push
             echo "[INFO] Weekly factor summary committed"
           fi
+
+      # ── Phase W-2 (2026-07-03): failure Telegram alert ──
+      - name: Notify Telegram on failure (Phase W-2)
+        if: failure()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          python scripts/notify_telegram.py --text \
+            "🚨 weekly_summary FAILED on ${{ github.ref_name }}. Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
