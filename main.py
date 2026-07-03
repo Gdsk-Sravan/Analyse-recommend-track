@@ -117,6 +117,11 @@ def ist_today() -> "datetime.date":
 NSELIB_CACHE_DIR     = os.getenv("NSELIB_CACHE_DIR", "nselib_cache")
 LAST_KNOWN_GOOD_FILE = os.getenv("LAST_KNOWN_GOOD_FILE", "last_known_good.json")
 DECISION_AUDIT_FILE  = f"decision_audit_{ist_today().strftime('%Y%m%d')}.jsonl"
+# Phase N-2 (2026-07-03): reject-outcome watch list. main.py appends every
+# rejected stock's close/reasons here; scripts/reject_followup.py polls this
+# file after N days to see whether the reject was justified (stock dumped) or
+# a false negative (stock rallied — pattern we should stop rejecting).
+REJECT_WATCH_FILE    = os.getenv("REJECT_WATCH_FILE", "reject_watch.json")
 
 try:
     os.makedirs(NSELIB_CACHE_DIR, exist_ok=True)
@@ -267,6 +272,99 @@ def append_decision_audit(entry: dict) -> None:
     except Exception:
         # Never let audit logging crash the pipeline
         pass
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Phase N-2 (2026-07-03): reject-outcome watch list
+# ─────────────────────────────────────────────────────────────────────────────
+# Every REJECTED stock is appended here with today's close + top fail reasons.
+# scripts/reject_followup.py runs daily and for entries aged N=5/10/20 days
+# fetches subsequent close and computes realized return. Enables false-reject
+# discovery: "we rejected this stock because of X — but it rallied 15%, so
+# gate X is producing false negatives on this pattern."
+#
+# File format (list of dicts, newest first, capped by REJECT_WATCH_MAX_ROWS):
+#   [
+#     {"date": "2026-07-03", "symbol": "FOO.NS", "close": 123.45,
+#      "reasons": ["MARKET_CAP_LOW_₹350Cr_(min_₹500Cr)"],
+#      "sector": "Chemicals", "trade_quality": 62.3,
+#      "confidence": 71, "market_cap_cr": 350},
+#     ...
+#   ]
+# The follow-up script mutates entries by appending outcome_* fields; it does
+# NOT alter main.py's contract (main.py only ever appends).
+# ─────────────────────────────────────────────────────────────────────────────
+REJECT_WATCH_MAX_ROWS = int(os.getenv("REJECT_WATCH_MAX_ROWS", "5000"))
+
+
+def load_reject_watch() -> list:
+    """Load reject_watch.json — returns [] if missing / malformed / FRESH_START."""
+    if FRESH_START:
+        try:
+            _log("[FRESH_START] load_reject_watch → returning [] (old reject watch ignored)")
+        except Exception:
+            pass
+        return []
+    try:
+        if not os.path.exists(REJECT_WATCH_FILE):
+            return []
+        with open(REJECT_WATCH_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, list):
+            return data
+        return []
+    except Exception:
+        return []
+
+
+def save_reject_watch(rows: list) -> None:
+    """Write reject_watch.json, capping at REJECT_WATCH_MAX_ROWS (newest first)."""
+    try:
+        if len(rows) > REJECT_WATCH_MAX_ROWS:
+            rows = rows[:REJECT_WATCH_MAX_ROWS]
+        with open(REJECT_WATCH_FILE, "w", encoding="utf-8") as f:
+            json.dump(rows, f, indent=2, default=str)
+    except Exception as e:
+        try:
+            _log(f"[WARN] save_reject_watch failed: {e}")
+        except Exception:
+            pass
+
+
+def append_reject_watch_entries(rejects: list, run_date: str) -> int:
+    """
+    Append today's rejects to reject_watch.json. Idempotent: skips symbols
+    already in the file for the same run_date. Returns count actually appended.
+    """
+    watch = load_reject_watch()
+    seen_today = {
+        r.get("symbol") for r in watch
+        if r.get("date") == run_date
+    }
+    new_rows = []
+    for stock in rejects:
+        sym = stock.get("symbol")
+        if not sym or sym in seen_today:
+            continue
+        # Truncate reasons to top 3 (most-impactful hard gate first if present)
+        reasons = list(stock.get("fail_reasons", []))[:3]
+        entry = {
+            "date":           run_date,
+            "symbol":         sym,
+            "close":          float(stock.get("entry", 0) or stock.get("price", 0) or 0),
+            "reasons":        reasons,
+            "sector":         stock.get("sector", "Unknown"),
+            "trade_quality":  stock.get("trade_quality_score", stock.get("trade_quality", 0)),
+            "confidence":     stock.get("final_confidence", stock.get("confidence", 0)),
+            "market_cap_cr":  float(stock.get("market_cap_cr", 0) or 0),
+            "avg_val_lakhs":  float(stock.get("avg_value_lakhs", 0) or 0),
+        }
+        new_rows.append(entry)
+    if new_rows:
+        # Prepend new rows so newest-first ordering is preserved
+        watch = new_rows + watch
+        save_reject_watch(watch)
+    return len(new_rows)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -641,12 +739,23 @@ OPPORTUNITY_WEIGHTS = {
 
 def _update_ownership_quality(stock: dict) -> None:
     """
-    Updates ownership_quality factor score from real fundamentals.
-    Called after fetch_all_fundamentals_cached() injects ROE/pledge into stock dict.
+    Updates ownership_quality factor score from real fundamentals + delivery.
+    Called after fetch_all_fundamentals_cached() injects ROE/pledge into stock dict,
+    and AGAIN after delivery% is fetched (so the delivery bonus applies).
     Scale:
       ROE > 20% = excellent (+20), 12-20% = good (+10), < 5% = poor (-15)
       Pledge > 30% = bad (-20), 15-30% = caution (-10), < 5% = clean (+10)
       D/E > 2.0 = leveraged (-10), < 0.5 = clean (+10)
+
+    Phase G7-A (2026-07-03): Delivery% bonus / penalty from nselib data.
+    Delivery is the strongest single per-stock signal for NSE — retail day
+    traders can't fake it (delivery = shares actually taken into demat).
+    Only applies when delivery_source == "nselib" (real data, not defaults).
+      Today > (20d avg + 10pp)         → +8 (accumulation footprint)
+      Today > 60% absolute             → +5 (high conviction, retail can't manipulate)
+      Today < (20d avg - 10pp) AND up  → -10 (distribution / pump-and-dump)
+      DISTRIBUTION signal              → -8  (already flagged by nselib logic)
+
     Baseline 50; clamped 0-100.
 
     Phase C5 (rating ≥ 9.0): if ROE == 0 AND D/E == 0 AND pledge == 0 AND the
@@ -686,8 +795,52 @@ def _update_ownership_quality(stock: dict) -> None:
         elif de > 1.0:  score -= 5
         elif de < 0.5:  score += 10
 
+        # ── Phase G7-A: Delivery% bonus/penalty (only if real nselib data) ──
+        deliv_src = str(stock.get("delivery_source", "") or "").lower()
+        deliv_bonus = 0
+        deliv_reasons = []
+        if deliv_src == "nselib":
+            try:
+                d_today = float(stock.get("delivery_pct_today", 0) or 0)
+                d_avg   = float(stock.get("delivery_pct_20d_avg", 0) or 0)
+                d_sig   = str(stock.get("delivery_signal", "NEUTRAL") or "NEUTRAL")
+                # Prefer ret1d_pct, fall back to ret1d (score_stock's actual key)
+                ret1d   = float(stock.get("ret1d_pct", stock.get("ret1d", 0.0)) or 0.0)
+
+                # +8 accumulation: today's delivery meaningfully above 20d avg
+                if d_avg > 0 and d_today > (d_avg + 10.0):
+                    deliv_bonus += 8
+                    deliv_reasons.append(f"DELIV_ACCUM(+8 today {d_today:.0f}% vs 20d {d_avg:.0f}%)")
+
+                # +5 high absolute: >60% delivery = institutional participation
+                if d_today > 60.0:
+                    deliv_bonus += 5
+                    deliv_reasons.append(f"DELIV_HIGH(+5 {d_today:.0f}%)")
+
+                # -10 pump / distribution: price up but delivery collapsing
+                if d_avg > 0 and d_today < (d_avg - 10.0) and ret1d > 0:
+                    deliv_bonus -= 10
+                    deliv_reasons.append(
+                        f"DELIV_DIST(-10 today {d_today:.0f}% vs 20d {d_avg:.0f}%, "
+                        f"ret1d +{ret1d:.1f}%)"
+                    )
+
+                # -8 explicit distribution signal from nselib logic
+                if d_sig == "DISTRIBUTION":
+                    deliv_bonus -= 8
+                    deliv_reasons.append(f"DELIV_SIG_DIST(-8)")
+
+                # Cap the bonus at ±13 so it doesn't dominate ROE (+20 max)
+                deliv_bonus = max(-15, min(13, deliv_bonus))
+                score += deliv_bonus
+            except (TypeError, ValueError):
+                pass  # bad numeric input; skip delivery contribution
+
         stock["ownership_quality"] = round(max(0.0, min(100.0, score)), 1)
         stock["ownership_missing"] = False
+        stock["ownership_deliv_bonus"] = deliv_bonus
+        if deliv_reasons:
+            stock["ownership_deliv_reasons"] = deliv_reasons
         # Keep factor_scores in sync
         if "factor_scores" in stock:
             stock["factor_scores"]["ownership_quality"] = stock["ownership_quality"]
@@ -2455,7 +2608,7 @@ def _download_one(symbol: str, period: str = "6mo") -> tuple:
 def filter_and_download(symbols: list, period: str = "6mo",
                         max_workers: int = 12,
                         min_avg_volume: int = 100_000,
-                        min_avg_value_lakhs: float = 50.0,
+                        min_avg_value_lakhs: float = 200.0,
                         min_price: float = 20.0,
                         max_recent_circuits: int = 2) -> dict:
     """
@@ -2466,8 +2619,21 @@ def filter_and_download(symbols: list, period: str = "6mo",
       - pledge-blocklisted names (high_pledge_stocks.txt)
       - repeat circuit hitters (>max_recent_circuits days with |ret|≥9.5% in last 5)
 
+    Phase G8-A (2026-07-03): raised default min_avg_value_lakhs from 50 (₹0.5Cr)
+    to 200 (₹2Cr/day). Rationale — a ₹50k retail buy in a ₹50L/day stock is
+    1% of daily volume and moves the price against you by 0.3-1.5%. At ₹2Cr
+    turnover, same order is 0.25% of daily volume, ≤ 0.2% slippage. Env-
+    overridable via UNIVERSE_MIN_TURNOVER_LAKHS. Set to 0 to disable.
+
     All filters are opt-out via env: set the corresponding threshold to 0 to disable.
     """
+    # Phase G8-A: env override for turnover floor
+    try:
+        _env_turnover = os.getenv("UNIVERSE_MIN_TURNOVER_LAKHS")
+        if _env_turnover is not None:
+            min_avg_value_lakhs = float(_env_turnover)
+    except (TypeError, ValueError):
+        pass  # keep default
     _log(f"Downloading {len(symbols)} symbols with {max_workers} workers...")
 
     # Pre-filter blocklisted names BEFORE we hit the network — cheap and fast
@@ -2527,7 +2693,8 @@ def filter_and_download(symbols: list, period: str = "6mo",
                 failed += 1
     _log(
         f"Download complete: {len(tradable)} tradable | {failed} failed | "
-        f"{illiquid_vol} illiquid_vol | {illiquid_val} illiquid_val | "
+        f"{illiquid_vol} illiquid_vol | {illiquid_val} illiquid_val "
+        f"(<₹{min_avg_value_lakhs:.0f}L/day) | "
         f"{illiquid_price} penny (<₹{min_price:.0f}) | "
         f"{circuit_repeat} repeat_circuit (>{max_recent_circuits}/5d)"
     )
@@ -3383,6 +3550,8 @@ def fetch_all_fundamentals_cached(top_40: list, max_stocks: int = 30) -> list:
         stock["roe"]                 = pdata.get("roe", 0.0)
         stock["de_ratio"]            = pdata.get("de_ratio", 0.0)
         stock["roce"]                = pdata.get("roce", 0.0)
+        # Phase G8-B: expose market_cap_cr on the stock dict so Gate 3c can read it
+        stock["market_cap_cr"]       = pdata.get("market_cap_cr", 0.0)
         stock["fundamentals_source"] = pdata.get("source", "NEUTRAL_DEFAULT")
         # Refine ownership_quality with ROE + D/E (screener+YF data now available)
         _update_ownership_quality(stock)
@@ -3398,6 +3567,7 @@ def fetch_all_fundamentals_cached(top_40: list, max_stocks: int = 30) -> list:
         stock["roe"]                 = 0.0
         stock["de_ratio"]            = 0.0
         stock["roce"]                = 0.0
+        stock["market_cap_cr"]       = 0.0  # G8-B: 0 signals "unknown", not "tiny"
         stock["fundamentals_source"] = "NOT_FETCHED"
 
     save_fundamentals_cache(cache)
@@ -3424,6 +3594,10 @@ def fetch_all_fundamentals_cached(top_40: list, max_stocks: int = 30) -> list:
         stock["delivery_source"]      = ddata.get("source", "unavailable")
         if ddata.get("source") == "nselib":
             deliv_ok += 1
+        # Phase G7-A: re-run ownership_quality now that delivery keys exist,
+        # so the delivery bonus/penalty (+8/+5/-10/-8) actually contributes.
+        # First call at L3388 ran BEFORE delivery was fetched.
+        _update_ownership_quality(stock)
     # Skip stocks (outside top max_stocks) get neutral defaults so downstream
     # logic never trips on missing keys.
     for stock in skip:
@@ -6375,16 +6549,44 @@ def compute_all_factors(symbol: str, df,
         swing_low      = float(np.min(recent_lows))
         stop_candidate = round(swing_low * 0.995, 2)   # 0.5% buffer below swing low
         risk_raw_pct   = (entry - stop_candidate) / entry * 100 if entry > 0 else 8.0
+
+        # Phase G7-B (2026-07-03): ATR-aware stop caps.
+        # OLD: hard-clamp to 3% floor / 12% cap regardless of volatility.
+        # Problem: a low-vol stock (ATR=1.5%) gets a 12% stop = 8×ATR (noise-
+        # induced exits impossible), while a high-vol stock (ATR=5%) gets
+        # 12% = 2.4×ATR (constant whipsaw).
+        # NEW: cap by max(fixed_cap, entry - 3.5×ATR14); floor by
+        # min(fixed_floor, entry - 1.5×ATR14). Falls back to old fixed clamps
+        # if atr14 is missing/zero (defensive — never widens vs old behaviour).
+        atr14_val = float(atr14) if atr14 else 0.0
+        if atr14_val > 0 and entry > 0:
+            atr_pct       = (atr14_val / entry) * 100.0
+            # ATR-scaled floor: never tighter than 1.5×ATR (would be pure noise)
+            atr_floor_pct = max(2.0, min(4.0, 1.5 * atr_pct))
+            # ATR-scaled cap: never wider than 3.5×ATR (thesis clearly broken
+            # by then) but hard ceiling at 15% so absurd names can't slip in
+            atr_cap_pct   = max(8.0, min(15.0, 3.5 * atr_pct))
+        else:
+            # Legacy fixed clamps if ATR unavailable
+            atr_floor_pct = 3.0
+            atr_cap_pct   = 12.0
+
         # 2026-07-03: stop clamp is no longer silent — record which branch
         # fired on _soft_warnings so downstream logs / BUY card / audit can see
         # "this stop isn't at a real support level, it's synthetic".
         _stop_clamped = None
-        if risk_raw_pct < 2.0:
-            _stop_clamped = f"STOP_FLOOR_CLAMPED(raw {risk_raw_pct:.1f}% → 3% floor)"
-            stop_candidate = round(entry * 0.97, 2)    # 3% floor — stop too tight
-        elif risk_raw_pct > 15.0:
-            _stop_clamped = f"STOP_CAP_CLAMPED(raw {risk_raw_pct:.1f}% → 12% cap)"
-            stop_candidate = round(entry * 0.88, 2)    # 12% cap  — stop too wide
+        if risk_raw_pct < atr_floor_pct:
+            _stop_clamped = (
+                f"STOP_FLOOR_CLAMPED(raw {risk_raw_pct:.1f}% → "
+                f"{atr_floor_pct:.1f}% floor, ATR14={atr14_val:.2f})"
+            )
+            stop_candidate = round(entry * (1 - atr_floor_pct / 100.0), 2)
+        elif risk_raw_pct > atr_cap_pct:
+            _stop_clamped = (
+                f"STOP_CAP_CLAMPED(raw {risk_raw_pct:.1f}% → "
+                f"{atr_cap_pct:.1f}% cap, ATR14={atr14_val:.2f})"
+            )
+            stop_candidate = round(entry * (1 - atr_cap_pct / 100.0), 2)
         stop = stop_candidate
         if stop >= entry:
             # Swing low is above today's close — stock just broke a 10d low.
@@ -6753,6 +6955,53 @@ def run_gates(stock: dict, regime: str, thresholds: dict,
     pledge = float(promoter_data.get("promoter_pledge_pct", 0) or 0)
     if pledge > 40:
         return {"decision": "REJECTED", "fail_reasons": [f"PROMOTER_PLEDGE_{pledge:.0f}PCT"], "warnings": []}
+
+    # Gate 3c (Phase G8-B, 2026-07-03): Market-cap floor (HARD when data present)
+    # Micro-caps (< ₹500 Cr mcap) have ~3× the failure rate of small-caps in
+    # Indian markets: thin float, promoter-controlled, prone to price rigging,
+    # and Fii/DII cannot enter → no institutional floor on drawdowns.
+    #
+    # Behaviour:
+    #   - If market_cap_cr present AND > 0 AND < MIN_MARKET_CAP_CR   → HARD REJECT
+    #   - If market_cap_cr missing/zero → fall back to turnover proxy:
+    #         float_proxy_cr = avg_price × avg_vol × 250 / 1e7
+    #     (250 trading days as a conservative "annual liquidity" estimate).
+    #     If proxy < MIN_MARKET_CAP_CR × 0.5 AND we have real avg data → HARD REJECT.
+    #     Otherwise: soft warning only (don't punish stocks with just missing data).
+    # Env override: MIN_MARKET_CAP_CR (default 500). Set to 0 to disable.
+    try:
+        _min_mcap_cr = float(os.getenv("MIN_MARKET_CAP_CR", "500"))
+    except (TypeError, ValueError):
+        _min_mcap_cr = 500.0
+    if _min_mcap_cr > 0:
+        _mcap = float(promoter_data.get("market_cap_cr", 0) or stock.get("market_cap_cr", 0) or 0)
+        if _mcap > 0:
+            if _mcap < _min_mcap_cr:
+                return {
+                    "decision":     "REJECTED",
+                    "fail_reasons": [f"MARKET_CAP_LOW_₹{_mcap:.0f}Cr_(min_₹{_min_mcap_cr:.0f}Cr)"],
+                    "warnings":     [],
+                }
+        else:
+            # Proxy check: use price × 20d avg volume × 250 as annualized float size
+            _avg_price = float(stock.get("close_20d_avg", 0) or stock.get("entry", 0) or 0)
+            _avg_vol   = float(stock.get("avg_volume", 0) or 0)
+            if _avg_price > 0 and _avg_vol > 0:
+                _float_proxy_cr = (_avg_price * _avg_vol * 250) / 1e7
+                # Proxy threshold: 0.5× real threshold (proxy is noisy)
+                if _float_proxy_cr < (_min_mcap_cr * 0.5):
+                    return {
+                        "decision":     "REJECTED",
+                        "fail_reasons": [
+                            f"MARKET_CAP_PROXY_LOW_₹{_float_proxy_cr:.0f}Cr_"
+                            f"(proxy_min_₹{_min_mcap_cr * 0.5:.0f}Cr, mcap_missing)"
+                        ],
+                        "warnings":     [],
+                    }
+                else:
+                    warnings.append(f"MCAP_MISSING (proxy ~₹{_float_proxy_cr:.0f}Cr)")
+            else:
+                warnings.append("MCAP_MISSING (no proxy data)")
 
     # Gate 4: Liquidity (HARD)
     if stock.get("avg_volume", 0) < 100_000 or stock.get("avg_value_lakhs", 0) < 50:
@@ -10079,6 +10328,57 @@ def _run_pipeline_inner():
     buys.sort(key=lambda x: (-x.get("opportunity_score", 0), x.get("symbol", "")))
     watchlist_stocks.sort(key=lambda x: (-x.get("opportunity_score", 0), x.get("symbol", "")))
 
+    # ── Phase G7-C (2026-07-03): Intra-day sector diversity in BUY list ────
+    # Gate 14b caps sector concentration vs EXISTING holdings, but never
+    # against other BUYs picked on the same day. On a day with no existing
+    # positions, six real-estate names could all pass gates and fill the top
+    # of the BUY list — pure sector bet.
+    # Fix: greedy pass over the sorted BUY list, keeping at most
+    # MAX_BUYS_PER_SECTOR_INTRADAY (default = MAX_POSITIONS_PER_SECTOR) per
+    # sector. Overflow is demoted to WATCHLIST with a SECTOR_DAY_CAP tag so
+    # the audit shows why. Sort order guarantees the best-scored stock per
+    # sector wins.
+    _sector_cap = int(os.getenv(
+        "MAX_BUYS_PER_SECTOR_INTRADAY",
+        os.getenv("MAX_POSITIONS_PER_SECTOR", "2"),
+    ))
+    if buys and _sector_cap > 0:
+        _sector_counts: dict = {}
+        _kept, _demoted = [], []
+        for _stk in buys:
+            _sec = _stk.get("sector") or get_sector(_stk.get("symbol", "")) or "UNKNOWN"
+            _n = _sector_counts.get(_sec, 0)
+            if _n < _sector_cap:
+                _sector_counts[_sec] = _n + 1
+                _kept.append(_stk)
+            else:
+                # Demote: BUY → WATCHLIST with an explicit reason
+                _stk["decision"] = "WATCHLIST"
+                _stk.setdefault("warnings", []).append(
+                    f"SECTOR_DAY_CAP({_sec} — already {_sector_cap} BUYs today)"
+                )
+                _stk.setdefault("fail_reasons", []).append(
+                    f"SECTOR_DAY_CAP_{_sec.replace(' ', '_')}"
+                )
+                _wl_meta = classify_watchlist(
+                    _stk, regime, effective_thresholds,
+                    conf_history=_conf_history_for_wl,
+                )
+                _stk.update(_wl_meta)
+                _demoted.append(_stk)
+        if _demoted:
+            _log(
+                f"  [G7-C] Sector cap ({_sector_cap}/sector) demoted "
+                f"{len(_demoted)} BUY → WATCHLIST: "
+                + ", ".join(s.get("symbol", "?") for s in _demoted[:5])
+                + ("..." if len(_demoted) > 5 else "")
+            )
+        buys = _kept
+        watchlist_stocks.extend(_demoted)
+        watchlist_stocks.sort(
+            key=lambda x: (-x.get("opportunity_score", 0), x.get("symbol", ""))
+        )
+
     # Enforce max_buys cap
     # Phase C3 (2026-07-02): removed fii_stale halving — FII data is
     # structurally D-1/D-2 and was never a reliable signal to throttle
@@ -10090,10 +10390,24 @@ def _run_pipeline_inner():
     # ── 14a. Decision audit JSONL — Phase C ─────────────────────────────────
     # Append one line per stock that reached the gates. Used for post-mortem RCA
     # ("why did we buy X on day N?") and CL-level signal regression tests.
+    #
+    # Phase N-1 (2026-07-03): signal attribution extended.
+    # Every audit row now carries:
+    #   • factor_scores          — per-factor 0-100 scores (10 factors)
+    #   • factor_weights_applied — FACTOR_WEIGHTS constant snapshot
+    #   • tq_components          — trend/momentum/volume/rr/weekly/pa sub-scores
+    #   • trade_setup            — entry, stop, T1, T2, rr, net_rr_t2
+    #   • ownership_deliv_bonus  — G7-A delivery-bonus contribution
+    #   • market_cap_cr          — G8-B market-cap (real or missing→0)
+    #   • soft_warnings          — STOP_CAP_CLAMPED, MCAP_MISSING, etc.
+    # Downstream analysis (correlate factor_x with realized return) becomes
+    # possible without adding any new pipeline compute cost.
     try:
         for stock in (buys + watchlist_stocks + rejected):
+            _fs = stock.get("factor_scores", {}) or {}
             append_decision_audit({
                 "symbol":          stock.get("symbol"),
+                "sector":          stock.get("sector"),
                 "decision":        stock.get("decision"),
                 "confidence":      stock.get("confidence"),
                 "trade_quality":   stock.get("trade_quality"),
@@ -10101,6 +10415,32 @@ def _run_pipeline_inner():
                 "regime":          regime,
                 "fail_reasons":    stock.get("fail_reasons", []),
                 "warnings":        stock.get("warnings", []),
+                # ── N-1 signal attribution ──
+                "factor_scores":   _fs,
+                "factor_weights":  FACTOR_WEIGHTS,
+                "tq_components":   {
+                    "trend":     stock.get("trend_quality"),
+                    "momentum":  stock.get("momentum_quality"),
+                    "volume":    stock.get("volume_delivery"),
+                    "risk_rew":  stock.get("risk_reward"),
+                    "weekly_ok": bool(stock.get("weekly_trend_ok")),
+                    "pattern":   stock.get("price_pattern"),
+                },
+                "trade_setup":     {
+                    "entry":     stock.get("entry"),
+                    "stop":      stock.get("stop"),
+                    "target1":   stock.get("target1"),
+                    "target2":   stock.get("target2"),
+                    "rr":        stock.get("rr_ratio"),
+                    "net_rr_t2": stock.get("net_rr_t2"),
+                    "eff_stop_pct": stock.get("effective_stop_pct"),
+                },
+                "ownership_deliv_bonus":   stock.get("ownership_deliv_bonus"),
+                "ownership_deliv_reasons": stock.get("ownership_deliv_reasons", []),
+                "market_cap_cr":   stock.get("market_cap_cr"),
+                "avg_val_lakhs":   stock.get("avg_value_lakhs"),
+                "soft_warnings":   stock.get("_soft_warnings", []),
+                # ── macro / auxiliary context (unchanged from before) ──
                 "macro_quality":   macro.get("data_quality", "NORMAL"),
                 "macro_bad":       macro.get("bad_fields", []),
                 "fii_source":      macro.get("fii_source"),
@@ -10111,6 +10451,19 @@ def _run_pipeline_inner():
         _log(f"  [Audit] decision_audit appended {len(buys)+len(watchlist_stocks)+len(rejected)} rows → {DECISION_AUDIT_FILE}")
     except Exception as e:
         _log(f"  [Audit] append failed (non-fatal): {e}")
+
+    # ── 14a-2. Reject-outcome watch (Phase N-2) ─────────────────────────────
+    # Persist REJECTED stocks so scripts/reject_followup.py can measure their
+    # subsequent return at T+5, T+10, T+20. Only saved on scheduled runs to
+    # avoid polluting the file during manual experiments.
+    try:
+        if IS_SCHEDULED:
+            _added_rej = append_reject_watch_entries(rejected, ist_today().isoformat())
+            _log(f"  [Audit] reject_watch appended {_added_rej} new REJECTED symbols → {REJECT_WATCH_FILE}")
+        else:
+            _log(f"  [Audit] reject_watch skipped (manual run — set SCHEDULED_RUN=true to persist)")
+    except Exception as e:
+        _log(f"  [Audit] reject_watch append failed (non-fatal): {e}")
 
     # ── 14b. Confidence history update (FEATURE 2) ──
     _today_str_h = ist_today().isoformat()
