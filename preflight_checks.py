@@ -464,6 +464,149 @@ _MODULES_TO_SMOKE = [
 ]
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# CHECK 6 — fundamentals parser health (offline)
+# ═══════════════════════════════════════════════════════════════════════════
+# Rationale: the screener.in HTML parser silently regressed for months in
+# 2024-2026 — every stock returned ROE=0/DE=0/pledge=0 but the pipeline
+# didn't notice because "zero" wasn't distinguished from "not fetched yet".
+# This check runs main._parse_screener_html against a canned HTML snippet
+# that mirrors the CURRENT (2026-07) screener structure. If a future
+# refactor of the parser breaks it, this check fails at push time — not
+# in production 3 months later.
+
+_CANNED_SCREENER_HTML = """
+<html><body>
+<section id="top-ratios">
+  <ul>
+    <li>Market Cap<span class="value">₹1,09,627 Cr</span></li>
+    <li>ROCE<span class="value">16.1%</span></li>
+    <li>ROE<span class="value">38.2%</span></li>
+    <li>Stock P/E<span class="value">6.32</span></li>
+  </ul>
+</section>
+<table>
+  <tr><th></th><th>Jun 2025</th><th>Sep 2025</th><th>Dec 2025</th></tr>
+  <tr><td>Promoters+</td><td>56.38%</td><td>56.38%</td><td>56.38%</td></tr>
+  <tr><td>FIIs+</td><td>10.60%</td><td>12.15%</td><td>13.93%</td></tr>
+  <tr><td>DIIs+</td><td>16.47%</td><td>15.31%</td><td>13.43%</td></tr>
+  <tr><td>Public+</td><td>16.35%</td><td>16.05%</td><td>16.05%</td></tr>
+</table>
+</body></html>
+"""
+
+
+def check_fundamentals_parser() -> int:
+    """Verify main._parse_screener_html correctly extracts ROE/promoter% from
+    a canned HTML snippet matching current screener.in structure (2026-07).
+
+    This catches parser regressions at push time — the exact bug that
+    silently broke fundamentals for months in 2024-2026.
+    """
+    if str(REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT))
+
+    try:
+        from bs4 import BeautifulSoup  # type: ignore
+    except ImportError:
+        print("ℹ️  bs4 not installed — skipping fundamentals parser check")
+        return 0
+
+    os.environ.setdefault("IMPORT_SMOKE_TEST", "1")
+    os.environ.setdefault("DRY_RUN", "true")
+
+    try:
+        sys.modules.pop("main", None)
+        import main  # type: ignore
+    except Exception as e:  # noqa: BLE001
+        print(f"❌ Fundamentals parser check FAILED: cannot import main.py: {e}")
+        return 1
+
+    if not hasattr(main, "_parse_screener_html"):
+        print("❌ main._parse_screener_html not found — parser removed?")
+        return 1
+
+    soup = BeautifulSoup(_CANNED_SCREENER_HTML, "html.parser")
+    try:
+        result = main._parse_screener_html(soup)
+    except Exception as e:  # noqa: BLE001
+        print(f"❌ Fundamentals parser check FAILED: parser raised {type(e).__name__}: {e}")
+        return 1
+
+    errors: list[str] = []
+    # ROE must be extracted (38.2 from canned HTML)
+    roe = float(result.get("roe", 0) or 0)
+    if not (37.0 <= roe <= 40.0):
+        errors.append(f"ROE expected ~38.2, got {roe}")
+    # ROCE
+    roce = float(result.get("roce", 0) or 0)
+    if not (15.0 <= roce <= 17.0):
+        errors.append(f"ROCE expected ~16.1, got {roce}")
+    # Promoter holding — last column of the time series
+    ph = float(result.get("promoter_holding_pct", 0) or 0)
+    if not (55.0 <= ph <= 58.0):
+        errors.append(f"promoter_holding expected ~56.4, got {ph}")
+    # FII latest
+    fii = float(result.get("fii_pct", 0) or 0)
+    if not (13.0 <= fii <= 15.0):
+        errors.append(f"fii_pct expected ~13.9, got {fii}")
+
+    if errors:
+        print("❌ Fundamentals parser regression:")
+        for e in errors:
+            print(f"   {e}")
+        print()
+        print("   The screener.in HTML structure may have changed AGAIN.")
+        print("   Update the canned snippet in preflight_checks.py to match, OR")
+        print("   fix _parse_screener_html in main.py.")
+        return 1
+
+    print(f"✅ Fundamentals parser OK — canned HTML → "
+          f"ROE={roe:.1f}% ROCE={roce:.1f}% Promoter={ph:.1f}% FII={fii:.1f}%")
+    return 0
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# CHECK 7 — blocklist files present and parseable
+# ═══════════════════════════════════════════════════════════════════════════
+
+def check_blocklists() -> int:
+    """Verify high_pledge_stocks.txt exists and has at least a few entries.
+    Also verify asm_gsm_blocklist.txt is present (empty is OK — the file
+    just needs to exist so the loader doesn't warn every run)."""
+    if str(REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT))
+
+    ok = True
+    hp_path = REPO_ROOT / "high_pledge_stocks.txt"
+    asm_path = REPO_ROOT / "asm_gsm_blocklist.txt"
+
+    if not hp_path.exists():
+        print(f"❌ high_pledge_stocks.txt missing at {hp_path}")
+        ok = False
+    else:
+        # Count entries
+        n = 0
+        with open(hp_path, encoding="utf-8") as f:
+            for line in f:
+                s = line.split("#", 1)[0].strip()
+                if s:
+                    n += 1
+        if n < 5:
+            print(f"⚠️  high_pledge_stocks.txt has only {n} tickers — expected 20+ well-known offenders")
+            # Warning only, not fatal
+        else:
+            print(f"✅ high_pledge_stocks.txt has {n} blocked tickers")
+
+    if not asm_path.exists():
+        print(f"❌ asm_gsm_blocklist.txt missing at {asm_path}")
+        ok = False
+    else:
+        print(f"✅ asm_gsm_blocklist.txt present (empty by default is fine)")
+
+    return 0 if ok else 1
+
+
 def check_import_smoke() -> int:
     """Attempt to import main modules under IMPORT_SMOKE_TEST=1."""
     # Ensure REPO_ROOT is on sys.path (mimics what CI does)
@@ -521,34 +664,41 @@ CHECKS = [
     ("gitignore-workflow",  check_gitignore_vs_workflows),
     ("compliance",          check_compliance_phrases),
     ("env-drift",           check_env_drift),
+    ("fundamentals-parser", check_fundamentals_parser),
+    ("blocklists",          check_blocklists),
     ("import-smoke",        check_import_smoke),
 ]
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="Static preflight checks")
-    ap.add_argument("--json",               action="store_true")
-    ap.add_argument("--gitignore-workflow", action="store_true")
-    ap.add_argument("--compliance",         action="store_true")
-    ap.add_argument("--env-drift",          action="store_true")
-    ap.add_argument("--import-smoke",       action="store_true")
-    ap.add_argument("--all",                action="store_true",
+    ap.add_argument("--json",                action="store_true")
+    ap.add_argument("--gitignore-workflow",  action="store_true")
+    ap.add_argument("--compliance",          action="store_true")
+    ap.add_argument("--env-drift",           action="store_true")
+    ap.add_argument("--fundamentals-parser", action="store_true")
+    ap.add_argument("--blocklists",          action="store_true")
+    ap.add_argument("--import-smoke",        action="store_true")
+    ap.add_argument("--all",                 action="store_true",
                     help="Run every check")
     args = ap.parse_args()
 
     # If no flag given, treat as --all
     any_flag = any([args.json, args.gitignore_workflow, args.compliance,
-                    args.env_drift, args.import_smoke, args.all])
+                    args.env_drift, args.fundamentals_parser, args.blocklists,
+                    args.import_smoke, args.all])
     if not any_flag:
         args.all = True
 
     selected = []
     flag_map = {
-        "json":               args.json               or args.all,
-        "gitignore-workflow": args.gitignore_workflow or args.all,
-        "compliance":         args.compliance         or args.all,
-        "env-drift":          args.env_drift          or args.all,
-        "import-smoke":       args.import_smoke       or args.all,
+        "json":                args.json                or args.all,
+        "gitignore-workflow":  args.gitignore_workflow  or args.all,
+        "compliance":          args.compliance          or args.all,
+        "env-drift":           args.env_drift           or args.all,
+        "fundamentals-parser": args.fundamentals_parser or args.all,
+        "blocklists":          args.blocklists          or args.all,
+        "import-smoke":        args.import_smoke        or args.all,
     }
     for name, fn in CHECKS:
         if flag_map.get(name):
