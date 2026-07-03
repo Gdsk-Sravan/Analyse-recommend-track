@@ -2390,6 +2390,62 @@ def load_symbols(filepath: str = "stocks.txt") -> list:
     return fallback
 
 
+# ─── Phase G6 (2026-07-03): high-pledge blocklist ──────────────────────────
+# screener.in moved pledge% behind login → we cannot detect pledge dynamically.
+# We maintain a curated blocklist of well-known high-pledge / promoter-stress
+# NSE stocks and hard-reject them regardless of technical score.
+# See high_pledge_stocks.txt for the list + maintenance guidance.
+# Also supports asm_gsm_blocklist.txt for NSE surveillance stocks.
+_HIGH_PLEDGE_BLOCKLIST_CACHE: set | None = None
+
+def _load_blocklist_file(filepath: str) -> set:
+    """Parse a blocklist file: one ticker per line, # for comments."""
+    blocked: set = set()
+    if not os.path.exists(filepath):
+        return blocked
+    try:
+        with open(filepath, "r", encoding="utf-8") as f:
+            for line in f:
+                s = line.split("#", 1)[0].strip()
+                if not s:
+                    continue
+                if s.endswith(".NS"):
+                    s = s[:-3]
+                blocked.add(s.upper())
+    except Exception as e:
+        _log(f"[WARN] failed to read blocklist {filepath}: {e}")
+    return blocked
+
+
+def load_high_pledge_blocklist(filepath: str = "high_pledge_stocks.txt") -> set:
+    """Return a set of tickers (without .NS, uppercase) that should be
+    HARD-REJECTED. Merges high_pledge_stocks.txt + asm_gsm_blocklist.txt."""
+    global _HIGH_PLEDGE_BLOCKLIST_CACHE
+    if _HIGH_PLEDGE_BLOCKLIST_CACHE is not None:
+        return _HIGH_PLEDGE_BLOCKLIST_CACHE
+    pledge_set = _load_blocklist_file(filepath)
+    asm_set    = _load_blocklist_file("asm_gsm_blocklist.txt")
+    blocked = pledge_set | asm_set
+    if blocked:
+        _log(f"[INFO] Blocklist loaded: {len(pledge_set)} high-pledge + "
+             f"{len(asm_set)} ASM/GSM = {len(blocked)} unique tickers")
+    else:
+        _log(f"[WARN] no blocklist tickers loaded from {filepath} or asm_gsm_blocklist.txt")
+    _HIGH_PLEDGE_BLOCKLIST_CACHE = blocked
+    return blocked
+
+
+def is_pledge_blocked(symbol: str) -> bool:
+    """True if this ticker is on the high-pledge OR ASM/GSM blocklist."""
+    blocked = load_high_pledge_blocklist()
+    if not blocked:
+        return False
+    s = symbol.upper()
+    if s.endswith(".NS"):
+        s = s[:-3]
+    return s in blocked
+
+
 def _download_one(symbol: str, period: str = "6mo") -> tuple:
     time.sleep(random.uniform(*_NSE_DELAY_RANGE))
     df = fetch_price_data(symbol, period=period)
@@ -2399,12 +2455,37 @@ def _download_one(symbol: str, period: str = "6mo") -> tuple:
 def filter_and_download(symbols: list, period: str = "6mo",
                         max_workers: int = 12,
                         min_avg_volume: int = 100_000,
-                        min_avg_value_lakhs: float = 50.0) -> dict:
+                        min_avg_value_lakhs: float = 50.0,
+                        min_price: float = 20.0,
+                        max_recent_circuits: int = 2) -> dict:
+    """
+    Phase G6 (2026-07-03): universe hygiene — filters out:
+      - low avg volume (< min_avg_volume shares/day)
+      - low avg value  (< min_avg_value_lakhs ₹L/day)
+      - penny stocks   (avg price < min_price ₹)
+      - pledge-blocklisted names (high_pledge_stocks.txt)
+      - repeat circuit hitters (>max_recent_circuits days with |ret|≥9.5% in last 5)
+
+    All filters are opt-out via env: set the corresponding threshold to 0 to disable.
+    """
     _log(f"Downloading {len(symbols)} symbols with {max_workers} workers...")
+
+    # Pre-filter blocklisted names BEFORE we hit the network — cheap and fast
+    blocked_syms = load_high_pledge_blocklist()
+    if blocked_syms:
+        pre_count = len(symbols)
+        symbols = [s for s in symbols
+                   if s.replace(".NS", "").upper() not in blocked_syms]
+        pledge_dropped = pre_count - len(symbols)
+        if pledge_dropped:
+            _log(f"  Blocklist pre-filter: {pledge_dropped} high-pledge names removed → {len(symbols)} remaining")
+
     tradable = {}
     failed = 0
     illiquid_vol = 0
     illiquid_val = 0
+    illiquid_price = 0
+    circuit_repeat = 0
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {executor.submit(_download_one, sym, period): sym for sym in symbols}
         for future in as_completed(futures):
@@ -2414,8 +2495,9 @@ def filter_and_download(symbols: list, period: str = "6mo",
                 if df is None or len(df) < 20:
                     failed += 1
                     continue
+                closes = df["Close"].squeeze()
                 avg_vol = float(df["Volume"].squeeze().tail(20).mean())
-                avg_price = float(df["Close"].squeeze().tail(20).mean())
+                avg_price = float(closes.tail(20).mean())
                 avg_val_lakhs = (avg_vol * avg_price) / 100_000
                 if avg_vol < min_avg_volume:
                     illiquid_vol += 1
@@ -2423,15 +2505,31 @@ def filter_and_download(symbols: list, period: str = "6mo",
                 if avg_val_lakhs < min_avg_value_lakhs:
                     illiquid_val += 1
                     continue
+                # Phase G6: penny stock filter — wide spreads eat all edge
+                if min_price > 0 and avg_price < min_price:
+                    illiquid_price += 1
+                    continue
+                # Phase G6: repeat circuit filter — ≥N days with |1d ret|≥9.5%
+                # in last 5 sessions. Circuit-limit stocks are untradeable at
+                # retail scale (queue-jumped by algos, wide effective spread).
+                if max_recent_circuits >= 0 and len(closes) >= 6:
+                    try:
+                        rets = closes.pct_change().tail(5).abs()
+                        n_circ = int((rets >= 0.095).sum())
+                        if n_circ > max_recent_circuits:
+                            circuit_repeat += 1
+                            continue
+                    except Exception:
+                        pass
                 tradable[symbol] = df
             except Exception as e:
                 _log(f"[WARN] download failed for {sym}: {e}")
                 failed += 1
-    # Phase C1 (2026-07-02): honest breakdown so the 46% dropout is not silent.
     _log(
         f"Download complete: {len(tradable)} tradable | {failed} failed | "
-        f"{illiquid_vol} illiquid by volume (<{min_avg_volume:,}) | "
-        f"{illiquid_val} illiquid by value (<₹{min_avg_value_lakhs:.0f}L/day)"
+        f"{illiquid_vol} illiquid_vol | {illiquid_val} illiquid_val | "
+        f"{illiquid_price} penny (<₹{min_price:.0f}) | "
+        f"{circuit_repeat} repeat_circuit (>{max_recent_circuits}/5d)"
     )
     return tradable
 
@@ -2773,55 +2871,86 @@ _SCREENER_HEADERS = {
 
 
 def _parse_screener_html(soup) -> dict:
-    """Parse fundamentals + shareholding from a screener.in BeautifulSoup object."""
-    data = {}
-    # Key ratios section
-    ratio_section = soup.find("section", {"id": "top-ratios"})
+    """
+    PHASE_G6_SCREENER_V2 (2026-07-03) - screener.in HTML v2 parser.
+    Screener restructured HTML after mid-2024. Handles both structured
+    .name/.value spans AND inline text like "ROE38.2%".
+    D/E and Pledge no longer on free page - return 0 so caller can use
+    yfinance (D/E) and pledge blocklist as fallbacks.
+    """
+    import re as _re
+    data: dict = {}
+
+    def _num(txt):
+        if not txt:
+            return None
+        m = _re.search(r"-?\d[\d,]*\.?\d*", txt.replace("₹", ""))
+        if not m:
+            return None
+        try:
+            return float(m.group(0).replace(",", ""))
+        except ValueError:
+            return None
+
+    ratio_section = soup.find("section", {"id": "top-ratios"}) or soup.find(id="top-ratios")
     if ratio_section:
         for li in ratio_section.find_all("li"):
-            label = li.find("span", class_="name")
-            value = (li.find("span", class_="nowrap number") or
-                     li.find("span", class_="number") or
-                     li.find("span", class_="value"))
-            if label and value:
-                lbl = label.get_text(strip=True).lower()
-                raw = (value.get_text(strip=True)
-                       .replace(",", "").replace("%", "").replace("₹", "").strip())
-                try:
-                    val = float(raw)
-                    if "return on equity" in lbl or lbl == "roe":
-                        data["roe"] = val
-                    elif "debt / equity" in lbl or "d/e" in lbl or "debt to equity" in lbl:
-                        data["de_ratio"] = val
-                    elif "return on capital" in lbl or "roce" in lbl:
-                        data["roce"] = val
-                except ValueError:
-                    pass
+            name_el = li.find(class_=_re.compile(r"\bname\b"))
+            val_el = li.find(class_=_re.compile(r"\b(value|nowrap|number)\b"))
+            if name_el and val_el:
+                key = name_el.get_text(strip=True).lower()
+                val = _num(val_el.get_text(strip=True))
+            else:
+                txt = li.get_text(strip=True)
+                m = _re.match(r"^([A-Za-z][A-Za-z /()%.-]+?)([\d,.-].*)$", txt)
+                if not m:
+                    continue
+                key = m.group(1).strip().lower()
+                val = _num(m.group(2))
+            if val is None:
+                continue
+            if "return on equity" in key or key == "roe":
+                data["roe"] = val
+            elif "return on capital" in key or "roce" in key:
+                data["roce"] = val
+            elif "debt / equity" in key or "d/e" in key or "debt to equity" in key:
+                data["de_ratio"] = val
+            elif "market cap" in key:
+                data["market_cap_cr"] = val
+            elif "stock p/e" in key or key == "p/e":
+                data["pe"] = val
 
-    # Shareholding table
     for table in soup.find_all("table"):
-        text = table.get_text()
-        if "Promoter" in text and ("FII" in text or "FPI" in text):
-            for row in table.find_all("tr"):
-                cells = [td.get_text(strip=True) for td in row.find_all("td")]
-                if len(cells) >= 2:
-                    lbl = cells[0].lower()
-                    try:
-                        val = float(cells[-1].replace("%", "").replace(",", "").strip())
-                        if "promoter" in lbl and "pledge" not in lbl:
-                            data["promoter_holding_pct"] = val
-                        elif "pledge" in lbl or "pledged" in lbl:
-                            data["promoter_pledge_pct"] = val
-                        elif "fii" in lbl or "fpi" in lbl or "foreign" in lbl:
-                            data["fii_pct"] = val
-                        elif "dii" in lbl or "domestic inst" in lbl:
-                            data["dii_pct"] = val
-                    except (ValueError, IndexError):
-                        pass
-            break  # found the right table
+        rows = table.find_all("tr")
+        if not rows:
+            continue
+        header_cells = [td.get_text(strip=True) for td in rows[0].find_all(["td", "th"])]
+        if not any(_re.search(r"(Jun|Sep|Dec|Mar)\s*20\d\d", h or "") for h in header_cells):
+            continue
+        if "Promoter" not in table.get_text():
+            continue
+        for row in rows[1:]:
+            cells = [td.get_text(strip=True) for td in row.find_all(["td", "th"])]
+            if len(cells) < 2:
+                continue
+            lbl = cells[0].lower()
+            last_val = _num(cells[-1])
+            if last_val is None:
+                continue
+            if "promoter" in lbl and "pledge" not in lbl:
+                data["promoter_holding_pct"] = last_val
+            elif "pledge" in lbl or "pledged" in lbl:
+                data["promoter_pledge_pct"] = last_val
+            elif "fii" in lbl or "fpi" in lbl or "foreign" in lbl:
+                data["fii_pct"] = last_val
+            elif "dii" in lbl or "domestic" in lbl:
+                data["dii_pct"] = last_val
+            elif "public" in lbl:
+                data["public_pct"] = last_val
+        if "promoter_holding_pct" in data:
+            break
 
     return data
-
 
 def fetch_screener_data(symbol_clean: str) -> dict | None:
     """
@@ -2943,22 +3072,25 @@ def fetch_promoter_data(symbol_clean: str, delay_seconds: float = 2.5) -> dict:
 
     data = fetch_screener_data(symbol_clean)
     if data:
-        # FIX: screener HTML structure may have changed — ROE/D-E arrive as 0
-        # Supplement with yfinance when key financial ratios are all zero
+        # Phase G6 (2026-07-03): screener no longer exposes D/E on the free
+        # page. Whenever D/E is 0 (regardless of ROE), fill it from yfinance.
+        # yfinance also fills ROE if screener came back empty.
         yf_rl = False
-        if data.get("roe", 0) == 0 and data.get("de_ratio", 0) == 0:
+        needs_yf = (data.get("de_ratio", 0) == 0 or data.get("roe", 0) == 0)
+        if needs_yf:
             try:
                 yf_data = fetch_yfinance_fundamentals(symbol_clean + ".NS")
-                # Detect rate-limit: yfinance returns NEUTRAL_FUNDAMENTALS on
-                # 429; every key ratio is 0. Track that so BUY card can render "N/A".
-                if yf_data.get("roe", 0) == 0 and yf_data.get("de_ratio", 0) == 0 and yf_data.get("roce", 0) == 0:
+                # Rate-limit detection: yfinance returns all-zero neutral on 429.
+                if (yf_data.get("roe", 0) == 0 and yf_data.get("de_ratio", 0) == 0
+                        and yf_data.get("roce", 0) == 0):
                     yf_rl = True
                 else:
-                    if yf_data.get("roe", 0) != 0:
+                    # Only fill fields that are still zero (don't overwrite screener wins)
+                    if data.get("roe", 0) == 0 and yf_data.get("roe", 0) != 0:
                         data["roe"] = yf_data["roe"]
-                    if yf_data.get("de_ratio", 0) != 0:
+                    if data.get("de_ratio", 0) == 0 and yf_data.get("de_ratio", 0) != 0:
                         data["de_ratio"] = yf_data["de_ratio"]
-                    if yf_data.get("roce", 0) != 0:
+                    if data.get("roce", 0) == 0 and yf_data.get("roce", 0) != 0:
                         data["roce"] = yf_data["roce"]
             except Exception:
                 yf_rl = True
@@ -6612,6 +6744,12 @@ def run_gates(stock: dict, regime: str, thresholds: dict,
         return {"decision": "REJECTED", "fail_reasons": ["BLACK_SWAN_NEWS"], "warnings": []}
 
     # Gate 3: Promoter Pledge (HARD)
+    # Phase G6 (2026-07-03): Two-layer defence:
+    #   Layer A — pledge% from fundamentals cache (works when screener/yf has data)
+    #   Layer B — curated blocklist (protects when pledge% is 0 due to scraper miss)
+    _sym = stock.get("symbol", "")
+    if is_pledge_blocked(_sym):
+        return {"decision": "REJECTED", "fail_reasons": ["PROMOTER_PLEDGE_BLOCKLIST"], "warnings": []}
     pledge = float(promoter_data.get("promoter_pledge_pct", 0) or 0)
     if pledge > 40:
         return {"decision": "REJECTED", "fail_reasons": [f"PROMOTER_PLEDGE_{pledge:.0f}PCT"], "warnings": []}
@@ -8817,6 +8955,10 @@ def format_no_buy_explanation(top_rejected: list, regime: str,
                 key = "EVENT_BLOCK"
             elif key.startswith("KILL_SWITCH"):
                 key = "KILL_SWITCH"
+            elif key == "PROMOTER_PLEDGE_BLOCKLIST":
+                # Keep the blocklist reason distinct — helps the audit trail
+                # show WHICH names were caught by the curated list.
+                pass
             elif key.startswith("PROMOTER_PLEDGE_"):
                 key = "PROMOTER_PLEDGE"
             reason_counter[key] += 1
@@ -8836,6 +8978,7 @@ def format_no_buy_explanation(top_rejected: list, regime: str,
             "LIQUIDITY_FAIL":          "Insufficient liquidity",
             "REGIME_NO_BUY":           "Regime blocks new BUYs",
             "PROMOTER_PLEDGE":         "Promoter pledge too high",
+            "PROMOTER_PLEDGE_BLOCKLIST": "On curated high-pledge blocklist",
             "BLACK_SWAN_NEWS":         "Black-swan news",
             "DATA_INCOMPLETE":         "Data incomplete",
             "SUSPECT_PUMP_LOW_DELIVERY": "Suspect pump (low delivery)",
