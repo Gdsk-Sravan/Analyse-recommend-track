@@ -8113,12 +8113,29 @@ def format_risk_meter(nifty_state: dict, vix_in: float, breadth: float) -> list:
 def format_breadth_dashboard(total_universe: int, total_tradable: int,
                               qualified: int, near_buy: int,
                               developing: int, monitor: int,
-                              yesterday: dict = None) -> list:
-    """Compact 2-line breadth dashboard for mobile."""
-    rejected = total_universe - qualified
+                              yesterday: dict = None,
+                              rejected_at_gates: int = None) -> list:
+    """Compact 2-line breadth dashboard for mobile.
+
+    Semantics (as of 2026-07-03 fix):
+      • Universe     = all symbols in stocks.txt                (e.g. 2360)
+      • Tradable     = passed liquidity/volume filters          (e.g. 1274)
+      • Qualified    = entered the 13-gate system after scoring (e.g. 50 — top-N)
+      • Near Buy/Dev/Monitor = survivors classified in watchlist
+      • Rejected     = failed the gates (Qualified − BUY − Watchlist tiers)
+
+    BEFORE the fix, `Qualified` = BUY + Watchlist survivors (so 0 on no-signal
+    days) and `Rejected` = Universe − Qualified (so 2360 = whole universe).
+    That double-counted the illiquid-drop pool as "rejected" and hid the fact
+    that the top-50 actually reached the gates.
+    """
+    if rejected_at_gates is None:
+        # Legacy fallback — old callers pass qualified = BUY+watchlist_tiers,
+        # so approximate the pre-fix behaviour without crashing.
+        rejected_at_gates = max(0, total_universe - qualified)
     return [
         f"  📈 Breadth · Universe {total_universe} · Tradable {total_tradable} · Qualified {qualified}",
-        f"  Near Buy {near_buy} · Developing {developing} · Monitor {monitor} · Rejected {rejected}",
+        f"  Near Buy {near_buy} · Developing {developing} · Monitor {monitor} · Rejected {rejected_at_gates}",
     ]
 
 
@@ -8622,9 +8639,21 @@ def format_sector_lagging_rejects_section(rejected: list, regime: str,
 def format_no_buy_explanation(top_rejected: list, regime: str,
                                watchlist: list = None) -> list:
     """
-    When buys=0, show a single clean summary line pointing to the watchlist.
+    When buys=0, show:
+      1. The regime gate thresholds that had to be cleared
+      2. The top 3 rejection reasons across all rejected stocks (aggregated)
+      3. A pointer to WATCHLIST tiers (if any near-misses exist)
+
     Never duplicates stocks already shown in the WATCHLIST section below.
+
+    2026-07-03 fix: previously showed only a one-line "None — no setup" message,
+    which left the user asking "but WHY was everything rejected?" every time
+    the regime was tight. Now aggregates fail_reasons across all rejects and
+    shows the top-3 buckets so the user can see at a glance whether it's a
+    confidence problem, a trade-quality problem, a risk/reward problem, or
+    something structural like SECTOR_LAGGING / EVENT_BLOCK / PORTFOLIO_FULL.
     """
+    from collections import Counter
     thresh = REGIME_THRESHOLDS[regime]
     wl     = watchlist or []
     nm     = len([s for s in wl if s.get("tier") == "NEAR_MISS"])
@@ -8635,6 +8664,60 @@ def format_no_buy_explanation(top_rejected: list, regime: str,
         f"  None \u2014 no setup cleared all gates "
         f"(need Conf\u2265{thresh['min_confidence']} \u00b7 TQ\u2265{thresh['min_tq']} \u00b7 R/R\u2265{thresh['min_rr']})"
     ]
+
+    # ── Aggregate rejection reasons ────────────────────────────────────────
+    # Each rejected stock has a fail_reasons list like
+    #   ["CONF_FAIL(got 75.2, need 80)", "RR_FAIL(got 1.65, need 2.0)"]
+    # Strip the "(got X, need Y)" tail so CONF_FAIL / TQ_FAIL / RR_FAIL etc.
+    # aggregate cleanly. Non-parametric reasons (SECTOR_LAGGING, PORTFOLIO_FULL,
+    # KILL_SWITCH, LIQUIDITY_FAIL, HIGH_CORR_*, EVENT_BLOCK_*) pass through.
+    reason_counter = Counter()
+    total_rej      = 0
+    for s in (top_rejected or []):
+        frs = s.get("fail_reasons") or []
+        if not frs:
+            continue
+        total_rej += 1
+        for fr in frs:
+            # Strip parenthetical detail so buckets collapse.
+            key = str(fr).split("(", 1)[0].strip()
+            # Truncate very long HIGH_CORR_0.85_WITH_XYZ → HIGH_CORR
+            if key.startswith("HIGH_CORR_"):
+                key = "HIGH_CORR"
+            elif key.startswith("EVENT_BLOCK_"):
+                key = "EVENT_BLOCK"
+            elif key.startswith("KILL_SWITCH"):
+                key = "KILL_SWITCH"
+            elif key.startswith("PROMOTER_PLEDGE_"):
+                key = "PROMOTER_PLEDGE"
+            reason_counter[key] += 1
+
+    if total_rej > 0 and reason_counter:
+        # Human-friendly labels for the top buckets
+        _LBL = {
+            "CONF_FAIL":               "Confidence too low",
+            "TQ_FAIL":                 "Trade Quality too low",
+            "RR_FAIL":                 "Risk/Reward too low",
+            "SECTOR_LAGGING":          "Sector lagging",
+            "PORTFOLIO_FULL":          "Portfolio slots full",
+            "KILL_SWITCH":             "Kill-switch active",
+            "EVENT_BLOCK":             "Earnings/event blackout",
+            "HIGH_CORR":               "Too correlated w/ existing pos",
+            "LIQUIDITY_FAIL":          "Insufficient liquidity",
+            "REGIME_NO_BUY":           "Regime blocks new BUYs",
+            "PROMOTER_PLEDGE":         "Promoter pledge too high",
+            "BLACK_SWAN_NEWS":         "Black-swan news",
+            "DATA_INCOMPLETE":         "Data incomplete",
+            "SUSPECT_PUMP_LOW_DELIVERY": "Suspect pump (low delivery)",
+            "INSTITUTIONAL_EXIT":      "Institutional exit signal",
+        }
+        top3 = reason_counter.most_common(3)
+        lines.append(f"  \U0001f4ca <b>Top reject reasons</b> (of {total_rej} rejects):")
+        for key, cnt in top3:
+            label = _LBL.get(key, key)
+            pct   = int(round(cnt * 100.0 / total_rej))
+            lines.append(f"    \u2022 {label}: {cnt} ({pct}%)")
+
     if nm or dev or mon:
         parts = []
         if nm:  parts.append(f"\U0001f534 {nm} Near Miss")
@@ -8966,16 +9049,25 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
             pass
         lines.append("")
 
-    # ── Breadth Dashboard (BUG FIX 2: full universe counts) ──
+    # ── Breadth Dashboard (2026-07-03 fix: report the true gate-pool size) ──
+    # OLD semantics (buggy on no-signal days):
+    #   Qualified = BUY + Watchlist   →   0 when nothing passes → looked like
+    #                                     the whole universe was rejected pre-scoring
+    #   Rejected  = Universe - Qualified  →   2360 = whole universe (misleading)
+    #
+    # NEW semantics (matches what the user's mental model expects):
+    #   Qualified = stocks that reached the 13-gate system     (e.g. top-50)
+    #   Rejected  = of those, how many failed the gates        (excludes illiquid-drops)
     _near_c = len([w for w in watchlist if w.get("tier") == "NEAR_MISS"])
     _dev_c  = len([w for w in watchlist if w.get("tier") == "DEVELOPING"])
     _mon_c  = len([w for w in watchlist if w.get("tier") == "MONITOR"])
     _rej_c  = len(rejected_stocks or [])
-    _qual_c = len(buys) + len(watchlist)
+    _qual_c = len(buys) + len(watchlist) + _rej_c   # ← gate-pool size (BUY + WL + rejected-at-gates)
     lines.extend(format_breadth_dashboard(
-        universe_count or (len(buys) + len(watchlist) + _rej_c + len(shorts)),
-        tradable_count or (len(buys) + len(watchlist) + _rej_c),
+        universe_count or (_qual_c + len(shorts)),
+        tradable_count or _qual_c,
         _qual_c, _near_c, _dev_c, _mon_c,
+        rejected_at_gates = _rej_c,
     ))
     lines.append("")
 
