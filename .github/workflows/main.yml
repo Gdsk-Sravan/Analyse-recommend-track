@@ -6,7 +6,10 @@ on:
       run_mode:
         description: "Run mode"
         required: false
-        default: "manual"
+        # Phase W-3 (2026-07-03): default changed from 'manual' → 'scheduled'.
+        # cron-job.org triggers this workflow via the REST API without inputs,
+        # so the DEFAULT is what actually runs. Manual override still available.
+        default: "scheduled"
         type: choice
         options:
           - "manual"
@@ -242,6 +245,7 @@ jobs:
             vix_history_cache.json
             reject_watch.json
             reject_outcome_log.csv
+            run_health.json
           key: stock-reviewer-data-${{ runner.os }}-${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
             stock-reviewer-data-${{ runner.os }}-${{ github.ref_name }}-
@@ -251,6 +255,22 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+
+      # ── Phase W-4 (2026-07-03): FRESH_START safety valve ────────────────
+      # Refuse a FRESH_START if we already wiped state in the last 2 days
+      # (prevents accidentally repeated wipes from workflow reruns).
+      - name: Guard FRESH_START (Phase W-4)
+        if: ${{ env.FRESH_START == 'true' }}
+        run: |
+          python scripts/pipeline_health.py guard-fresh-start \
+            --workflow evening --window-days 2 \
+            --write-alert-file .fresh_start_alert.txt
+          rc=$?
+          if [ $rc -eq 2 ]; then
+            echo "::error::FRESH_START refused — recent wipe already recorded in run_health.json"
+            python scripts/notify_telegram.py --stdin --prefix "🛑" < .fresh_start_alert.txt || true
+            exit 1
+          fi
 
       - name: Preflight
         run: |
@@ -307,6 +327,7 @@ jobs:
             vix_history_cache.json
             reject_watch.json
             reject_outcome_log.csv
+            run_health.json
           key: stock-reviewer-data-${{ runner.os }}-${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Upload recommendation tracker Excel
@@ -365,12 +386,42 @@ jobs:
             weekly_metrics.json
             reject_watch.json
             reject_outcome_log.csv
+            run_health.json
           )
           existing=()
           for f in "${files[@]}"; do [ -e "$f" ] && existing+=("$f"); done
           [ ${#existing[@]} -eq 0 ] && exit 0
           git add "${existing[@]}"
           git diff --cached --quiet || git commit -m "chore: update portfolio state + tracker [skip ci]" && git push
+
+      # ── Phase W-6 (2026-07-03): success Telegram summary ──
+      # Sends a one-line "evening OK" so silence == real failure over 24h.
+      # Only on scheduled runs to avoid noise on manual debugging runs.
+      - name: Notify Telegram on success (Phase W-6)
+        if: ${{ success() && env.SCHEDULED_RUN == 'true' }}
+        continue-on-error: true
+        run: |
+          summary=$(python -c "
+          import json
+          try:
+              d = json.load(open('run_health.json'))
+              e = d.get('jobs', {}).get('evening', {})
+              parts = []
+              for k in ('buys','watchlist','tradable','regime','mode','last_success_utc'):
+                  if k in e: parts.append(f'{k}={e[k]}')
+              print(' | '.join(parts))
+          except Exception as ex:
+              print(f'(no health data: {ex})')
+          ")
+          python scripts/notify_telegram.py --text \
+            "✅ evening_pipeline OK — $summary"
+
+      # ── Phase W-2 (2026-07-03): failure Telegram alert ──
+      - name: Notify Telegram on failure (Phase W-2)
+        if: failure()
+        run: |
+          python scripts/notify_telegram.py --text \
+            "🚨 evening_pipeline FAILED on ${{ github.ref_name }}. Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
 
   # ─────────────────────────────────────────────────────────────────────────────
@@ -430,3 +481,14 @@ jobs:
       - name: Show result
         if: always()
         run: echo "Morning check complete at $(date)"
+
+      # ── Phase W-2 (2026-07-03): failure Telegram alert ──
+      # morning_check.py already sends its own kill-switch alerts; this covers
+      # the case where the script itself crashes before it can send anything.
+      - name: Notify Telegram on failure (Phase W-2)
+        if: failure()
+        run: |
+          # requests may not be installed on this minimal job
+          pip install requests -q || true
+          python scripts/notify_telegram.py --text \
+            "🚨 morning_check FAILED on ${{ github.ref_name }}. Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
