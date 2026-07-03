@@ -6,7 +6,8 @@ on:
       run_mode:
         description: "Run mode"
         required: false
-        default: "manual"
+        # Phase W-3 (2026-07-03): default changed from 'manual' → 'scheduled'
+        default: "scheduled"
         type: choice
         options:
           - "manual"
@@ -39,7 +40,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install yfinance openpyxl pandas numpy python-dotenv
+        run: pip install yfinance openpyxl pandas numpy python-dotenv requests
 
       # Fallback: if the xlsx is not yet committed to the repo, try to pull
       # the last artifact from main.yml. Once PERSIST_STATE_TO_REPO=true kicks
@@ -83,7 +84,13 @@ jobs:
           fi
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add recommendation_tracker.xlsx
+          # Phase W (2026-07-03): also commit run_health.json for cross-workflow
+          # staleness detection.
+          files=(recommendation_tracker.xlsx run_health.json)
+          existing=()
+          for f in "${files[@]}"; do [ -e "$f" ] && existing+=("$f"); done
+          [ ${#existing[@]} -eq 0 ] && exit 0
+          git add "${existing[@]}"
           if git diff --cached --quiet; then
             echo "[INFO] No changes to commit"
           else
@@ -91,4 +98,25 @@ jobs:
             git push
             echo "[INFO] Research analytics committed"
           fi
+
+      # ── Phase W-2 (2026-07-03): failure Telegram alert ──
+      - name: Notify Telegram on failure (Phase W-2)
+        if: failure()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          python scripts/notify_telegram.py --text \
+            "🚨 research_analytics FAILED on ${{ github.ref_name }}. Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+      # ── Phase W-6 (2026-07-03): success Telegram summary ──
+      - name: Notify Telegram on success (Phase W-6)
+        if: ${{ success() && github.event.inputs.run_mode == 'scheduled' }}
+        continue-on-error: true
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          python scripts/notify_telegram.py --text \
+            "✅ research_analytics OK — $(date -u +%Y-%m-%dT%H:%MZ)"
 
