@@ -102,6 +102,26 @@ jobs:
         run: |
           python scripts/preflight_checks.py --import-smoke
 
+      # ─── Step 7: fundamentals parser regression check ────────────────────
+      # Runs main._parse_screener_html against a canned HTML snippet matching
+      # current screener.in structure. Catches the exact bug that silently
+      # broke fundamentals for months in 2024-2026 (ROE/pledge = 0 for every
+      # stock because parser regex missed inline text format).
+      - name: Fundamentals parser regression check
+        env:
+          IMPORT_SMOKE_TEST: "1"
+          DRY_RUN: "true"
+        run: |
+          python scripts/preflight_checks.py --fundamentals-parser
+
+      # ─── Step 8: blocklist files sanity ──────────────────────────────────
+      # Ensures high_pledge_stocks.txt is not accidentally deleted / emptied.
+      # asm_gsm_blocklist.txt may be empty (that's the safe default) but must
+      # exist so main.py's loader doesn't spam warnings every run.
+      - name: Blocklist files sanity
+        run: |
+          python scripts/preflight_checks.py --blocklists
+
       - name: Preflight summary
         if: always()
         run: |
