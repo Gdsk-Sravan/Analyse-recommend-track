@@ -77,6 +77,13 @@ jobs:
         run: |
           python scripts/preflight_checks.py --json
 
+      # ─── Step 2b (Phase W, 2026-07-03): watchdog state schema ────────────
+      # Structural validation of run_health.json + reject_watch.json — bad
+      # writes on runners would silently break staleness detection.
+      - name: Validate watchdog state schema
+        run: |
+          python scripts/preflight_checks.py --watchdog-schema
+
       # ─── Step 3: gitignore vs workflow commit-back consistency ────────────
       # THIS IS THE ONE that would have caught the 2026-07-03 tracker failure.
       # Any file listed inside a `git add ...` block of any *.yml workflow
@@ -144,3 +151,19 @@ jobs:
           echo "If this run failed, DO NOT merge / DO NOT dispatch scheduled"
           echo "workflows against this SHA — a real recommendation cycle will"
           echo "burn CI time and produce garbage output."
+
+      # ── Phase W-2 (2026-07-03): failure Telegram alert ──
+      # Preflight runs on push + PR. If the scheduled runner just got a bad
+      # commit that would break the evening pipeline, we want to know NOW
+      # before 15:30 IST, not after silence at 15:31.
+      - name: Notify Telegram on failure (Phase W-2)
+        if: failure()
+        continue-on-error: true
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          pip install requests -q || true
+          python scripts/notify_telegram.py --text \
+            "🚨 preflight FAILED on ${{ github.ref_name }} @ ${{ github.sha }}. DO NOT merge / dispatch. Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
