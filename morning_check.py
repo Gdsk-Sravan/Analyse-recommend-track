@@ -47,6 +47,11 @@ KS_DAY_STOP_PCT       = float(os.getenv("KS_DAY_STOP_PCT", "2.0"))
 KS_WEEK_STOP_PCT      = float(os.getenv("KS_WEEK_STOP_PCT", "3.0"))
 KS_DD_HALVE_PCT       = float(os.getenv("KS_DD_HALVE_PCT", "5.0"))
 KS_DD_HALT_PCT        = float(os.getenv("KS_DD_HALT_PCT", "10.0"))
+# Phase 2 #31 — mirrors main.py: consecutive-loss counter only considers
+# losses closed within the last KS_LOSS_WINDOW_DAYS calendar days. Old
+# losses no longer haunt the kill switch forever. MUST match main.py's
+# compute_kill_switch_state (see main.py ~L5820).
+KS_LOSS_WINDOW_DAYS   = int(os.getenv("KS_LOSS_WINDOW_DAYS", "7"))
 TELEGRAM_MAX   = 4000
 
 
@@ -113,8 +118,19 @@ def _compute_morning_kill_switch() -> dict:
     completed_sorted = sorted(completed, key=_close_date)
 
     # 1. Consecutive losses (walk back from most recent)
+    # Phase 2 #31: only count losses closed within the last
+    # KS_LOSS_WINDOW_DAYS calendar days. Losses older than the cutoff
+    # break the streak. MUST mirror main.py compute_kill_switch_state
+    # so evening scan and morning check produce identical verdicts.
+    _ks_cutoff = datetime.datetime.combine(
+        datetime.date.today() - datetime.timedelta(days=KS_LOSS_WINDOW_DAYS),
+        datetime.time.min,
+    )
     consec_losses = 0
     for pos in reversed(completed_sorted):
+        _dt = _close_date(pos)
+        if _dt < _ks_cutoff:
+            break  # too old — streak ends
         if _pnl(pos) < 0:
             consec_losses += 1
         else:
