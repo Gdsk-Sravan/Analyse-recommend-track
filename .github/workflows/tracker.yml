@@ -44,7 +44,9 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install yfinance openpyxl pandas numpy python-dotenv requests
+        # 2026-07-05: add nselib + xlrd + tenacity for parity with main.py's
+        # requirements.txt (some helpers imported at module scope pull nselib).
+        run: pip install yfinance openpyxl pandas numpy python-dotenv requests nselib xlrd tenacity
 
       # ── Phase W-4 (2026-07-03): FRESH_START safety valve ────────────────
       # Refuse a FRESH_START if we already wiped state in the last 2 days.
