@@ -10602,7 +10602,17 @@ def _run_pipeline_inner():
         # "no headlines" (NO_NEWS) from "headline exists but summary was empty".
         stock["news_category"] = ai_result.get("category", "")
         stock["news_source"]   = ai_result.get("news_source", "")
-        stock["news_risk"]     = max(0, 100 - int(penalty * 2))
+        # Phase 3b #N9 (2026-07-05): NO_NEWS/NO_HEADLINES → 60 (neutral),
+        # not 100 (max). A stock literally nobody is writing about is likely
+        # a thinly-followed small/micro-cap — that's arguably a mild negative,
+        # not a top-of-scale reward. news_risk is a 0.15-weighted factor in
+        # confidence, so 60 vs 100 = ~6-pt swing. Real news scored 0..90 keeps
+        # its differential range; only the "no data" placeholder is capped.
+        _cat = ai_result.get("category", "")
+        if _cat in ("NO_NEWS",) or ai_result.get("news_source", "").startswith("NO_HEADLINES"):
+            stock["news_risk"] = 60
+        else:
+            stock["news_risk"] = max(0, 100 - int(penalty * 2))
 
     # ── 9. Promoter data + fundamentals — sequential with 24h cache (no rate limiting) ──
     # FIX: widen from 20 -> 30 so 3-of-5 BUYs no longer come back with ROE=0.
@@ -11037,6 +11047,13 @@ def _run_pipeline_inner():
     _log(f"  Portfolio heat: {heat['heat_pct']:.1f}% / {heat['max_heat_pct']:.0f}% max "
          f"({'OK' if heat['heat_ok'] else 'NEAR LIMIT'})")
 
+    # Phase 3b #N8 (2026-07-05): apply kill-switch size_multiplier to actual
+    # position sizing. Previously the multiplier was only LOGGED — sizes
+    # remained full even when drawdown ≥ KS_DD_HALVE_PCT (5%) said "halve".
+    # On buys_paused the gate already blocks new BUYs; here we handle the
+    # damped case where 0 < mult < 1.0 (typically 0.5 on 5-10% drawdown).
+    _ks_mult = float(_ks.get("size_multiplier", 1.0) or 1.0)
+    _ks_mult = max(0.0, min(1.0, _ks_mult))
     for stock in buys:
         pos = kelly_position_size(
             entry=stock.get("entry", 0),
@@ -11048,6 +11065,20 @@ def _run_pipeline_inner():
             heat=heat,
             max_position_pct=_MAX_POSITION_PCT_ENV,
         )
+        # Apply kill-switch damping (only when < 1.0; buys_paused case is
+        # already blocked earlier by Gate 5b).
+        if _ks_mult < 1.0 and pos.get("shares", 0) > 0:
+            _orig_shares = int(pos["shares"])
+            _new_shares = max(1, int(_orig_shares * _ks_mult))
+            _entry = float(stock.get("entry", 0) or 0)
+            _stop = float(stock.get("stop", 0) or 0)
+            _rps = max(0.0, _entry - _stop)
+            pos["shares"] = _new_shares
+            pos["position_value"] = round(_new_shares * _entry, 2)
+            pos["position_pct"] = round(pos["position_value"] / PORTFOLIO_CAPITAL * 100, 1) \
+                if PORTFOLIO_CAPITAL > 0 else 0.0
+            pos["max_loss"] = round(_new_shares * _rps, 2)
+            pos["sizing_method"] = f"{pos.get('sizing_method', 'FIXED_1.5PCT')}_KS_DAMPED_{_ks_mult:.2f}x"
         stock.update(pos)
 
     # ── 14d. Short signal detection ──
