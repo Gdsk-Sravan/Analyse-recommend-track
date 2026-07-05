@@ -5848,9 +5848,15 @@ def check_sector_concentration(candidate_sector: str,
             return default
 
         cand = str(candidate_sector).strip().upper()
+        # 2026-07-05: legacy BUY records saved before Phase C7 may lack the
+        # "sector" field entirely. Compute it on-the-fly from the symbol so
+        # the cap actually works instead of silently ignoring those rows.
         same_sector = [
             h for h in holdings
-            if str(h.get("sector", "") or "").strip().upper() == cand
+            if str(
+                h.get("sector")
+                or (get_sector(h.get("symbol", "")) if h.get("symbol") else "")
+            ).strip().upper() == cand
         ]
         count = len(same_sector)
 
@@ -8033,25 +8039,36 @@ def initialize_tracker_if_new() -> dict:
                 "entry": 645.30, "stop": 607.93,
                 "target1": 707.58, "target2": 757.40,
                 "confidence": 65.7, "tq": 94.0,
-                "regime": "HIGH_VOLATILITY", "status": "ACTIVE",
+                "regime": "HIGH_VOLATILITY",
+                # 2026-07-05: sector added so sector-concentration cap (Phase C7)
+                # can actually gate future BUYs. Resolved via get_sector().
+                "sector": get_sector("SIYSIL.NS"),
+                "status": "ACTIVE",
                 "t1_hit_date": None, "t2_hit_date": None, "stop_hit_date": None,
                 "days_tracked": 1, "pnl_history": [],
             }
         ],
         "watchlist": [
             {"symbol": "BOSCHLTD.NS",   "rec_date": "2026-06-25", "tier": "NEAR_MISS",
+             "sector": get_sector("BOSCHLTD.NS"),
              "conf_at_rec": 62.5, "conf_gap_at_rec": 1.5, "status": "WATCHING", "days_watching": 1},
             {"symbol": "GENUSPOWER.NS", "rec_date": "2026-06-25", "tier": "NEAR_MISS",
+             "sector": get_sector("GENUSPOWER.NS"),
              "conf_at_rec": 62.1, "conf_gap_at_rec": 1.9, "status": "WATCHING", "days_watching": 1},
             {"symbol": "KRISHANA.NS",   "rec_date": "2026-06-25", "tier": "NEAR_MISS",
+             "sector": get_sector("KRISHANA.NS"),
              "conf_at_rec": 60.8, "conf_gap_at_rec": 3.2, "status": "WATCHING", "days_watching": 1},
             {"symbol": "NAZARA.NS",     "rec_date": "2026-06-25", "tier": "NEAR_MISS",
+             "sector": get_sector("NAZARA.NS"),
              "conf_at_rec": 60.4, "conf_gap_at_rec": 3.6, "status": "WATCHING", "days_watching": 1},
             {"symbol": "SONACOMS.NS",   "rec_date": "2026-06-25", "tier": "DEVELOPING",
+             "sector": get_sector("SONACOMS.NS"),
              "tq_at_rec": 89.4, "conf_gap_at_rec": 5.2, "status": "WATCHING", "days_watching": 1},
             {"symbol": "CEIGALL.NS",    "rec_date": "2026-06-25", "tier": "DEVELOPING",
+             "sector": get_sector("CEIGALL.NS"),
              "tq_at_rec": 97.0, "conf_gap_at_rec": 5.4, "status": "WATCHING", "days_watching": 1},
             {"symbol": "RATNAVEER.NS",  "rec_date": "2026-06-25", "tier": "DEVELOPING",
+             "sector": get_sector("RATNAVEER.NS"),
              "tq_at_rec": 99.0, "conf_gap_at_rec": 5.5, "status": "WATCHING", "days_watching": 1},
         ],
         "completed": [],
@@ -8177,7 +8194,10 @@ def add_to_tracker_v2(tracker: dict, stock: dict, regime: str = "") -> dict:
             "confidence":    round(float(stock.get("final_confidence", 0) or 0), 1),
             "tq":            round(float(stock.get("trade_quality_score", 0) or 0), 1),
             "regime":        regime or stock.get("regime", ""),
-            "sector":        stock.get("sector", "OTHERS"),
+            # 2026-07-05: fall back to get_sector() if the upstream stock dict
+            # didn't propagate a sector — belt-and-braces for the Phase C7
+            # sector-concentration cap.
+            "sector":        stock.get("sector") or get_sector(symbol),
             # Position-size % of capital (used by compute_kill_switch_state)
             "position_pct":  float(stock.get("position_pct", 5.0) or 5.0),
             "status":        "ACTIVE",
