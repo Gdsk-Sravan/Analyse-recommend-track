@@ -7187,6 +7187,50 @@ def run_gates(stock: dict, regime: str, thresholds: dict,
             else:
                 warnings.append("MCAP_MISSING (no proxy data)")
 
+    # Gate 3d — Phase 4-A (2026-07-06): Fundamentals data-missing check (SOFT).
+    # When BOTH screener.in AND yfinance fail to return real fundamentals
+    # (rate-limit, HTTP errors, or empty responses), ROE / D/E / pledge are
+    # zeroed out and the pledge/mcap/ROE gates all abstain because there's
+    # no data to reject. Historically this caused the 2026-07-06 00:35 IST
+    # run to surface 3 BUYs (PANAMAPET, NELCO, LANDMARK) despite NELCO's
+    # real ROE being 0.5% and LANDMARK's D/E being 1.74 — both hard fails
+    # once screener came back online 20 minutes later.
+    #
+    # Fix: any stock whose fundamentals_source signals "couldn't fetch real
+    # data" is demoted to WATCHLIST rather than accepted as a full BUY.
+    # Uses the same soft-fail path as SECTOR_CAP / EVENT_BLOCK.
+    #
+    # Trigger sources (all mean "no real data"):
+    #   NEUTRAL_DEFAULT  — cache miss + all 3 fallbacks empty
+    #   NOT_FETCHED     — skipped due to max_stocks cap
+    #   SCREENER+YF_RL  — screener returned zeros AND yfinance rate-limited
+    #
+    # Env override: FUND_DATA_GATE_ENABLED (default 1). Set to 0 to disable
+    # (useful if screener/yf are down for hours and we still want *some*
+    # signal on top-40 candidates — they land on WATCHLIST anyway then).
+    try:
+        _fund_gate_on = int(os.getenv("FUND_DATA_GATE_ENABLED", "1"))
+    except (TypeError, ValueError):
+        _fund_gate_on = 1
+    if _fund_gate_on:
+        _fsrc = str(stock.get("fundamentals_source", "") or "").upper()
+        _pdata_src = str((promoter_data or {}).get("source", "") or "").upper()
+        _missing_markers = ("NEUTRAL_DEFAULT", "NOT_FETCHED", "SCREENER+YF_RL")
+        # Belt-and-braces: also treat ROE==0 AND D/E==0 AND pledge==0 as a miss
+        # (some cache paths write source="" instead of one of the markers).
+        _roe_missing = float(promoter_data.get("roe", 0) or 0) == 0.0
+        _de_missing  = float(promoter_data.get("de_ratio", 0) or 0) == 0.0
+        _pl_missing  = float(promoter_data.get("promoter_pledge_pct", 0) or 0) == 0.0
+        _all_zero = _roe_missing and _de_missing and _pl_missing
+        _src_missing = (any(m in _fsrc for m in _missing_markers)
+                        or any(m in _pdata_src for m in _missing_markers))
+        if _src_missing or (_all_zero and _fsrc != "" and "SCREENER+YF" not in _fsrc):
+            fail_reasons.append(f"FUND_DATA_MISSING(src={_fsrc or _pdata_src or 'unknown'})")
+            warnings.append(
+                f"FUND_DATA_MISSING: ROE/D/E/pledge unavailable (src={_fsrc or 'unknown'}) "
+                f"— demoted to WATCHLIST until real fundamentals return"
+            )
+
     # Gate 4: Liquidity (HARD)
     # Phase 2 #23 (2026-07-05): min turnover configurable via env.
     # Old hardcoded 50 lakh (₹5L / day) was low enough that a 2-3 lakh
@@ -7477,6 +7521,7 @@ def run_gates(stock: dict, regime: str, thresholds: dict,
             or "INSTITUTIONAL_EXIT" in f or "SECTOR_CAP" in f
             or "KILL_SWITCH" in f
             or "REGIME_EXPOSURE_CAP" in f   # Phase 3a #40 — regime exposure cap
+            or "FUND_DATA_MISSING" in f    # Phase 4-A — fundamentals unavailable
             for f in scoreable_fails
         )
         # Phase C6 (2026-07-02): make the "score-based fail" whitelist EXPLICIT
@@ -11079,6 +11124,62 @@ def _run_pipeline_inner():
                 if PORTFOLIO_CAPITAL > 0 else 0.0
             pos["max_loss"] = round(_new_shares * _rps, 2)
             pos["sizing_method"] = f"{pos.get('sizing_method', 'FIXED_1.5PCT')}_KS_DAMPED_{_ks_mult:.2f}x"
+
+        # Phase 4-B (2026-07-06): resize against EFFECTIVE stop when
+        # HIGH_GAP_RISK is set. The nominal stop_pct only accounts for
+        # in-session slippage; overnight/gap risk (p90 of 60-day gaps)
+        # can be 2× larger. Without this correction, a stock like
+        # PANAMAPET (nominal stop 6.9%, p90 gap 12.4%, effective stop
+        # 19.3%) gets sized as if max-loss is ₹6.9K when the real
+        # gap-inclusive max-loss is ~₹19K — a 2.8× understatement of risk.
+        #
+        # Fix: when high_gap_risk is True, recompute shares using the
+        # effective (nominal + p90 gap) stop as the risk-per-share. This
+        # preserves the intended risk_per_trade% (Kelly / 1.5% fixed) at
+        # the *actual* stop level the stock will exit at during a gap.
+        #
+        # Guardrails:
+        #   - Only shrinks (never grows) — max(1, min(orig, new))
+        #   - Requires p90_gap_pct > 0.5 to fire (ignore microscopic gaps)
+        #   - Env override: GAP_STOP_SIZING_ENABLED=0 disables
+        #   - Tags sizing_method _GAP_ADJ_Nx so audit trail shows the shrink
+        try:
+            _gap_size_on = int(os.getenv("GAP_STOP_SIZING_ENABLED", "1"))
+        except (TypeError, ValueError):
+            _gap_size_on = 1
+        _hgr = bool(stock.get("high_gap_risk", False))
+        _p90_gap = float(stock.get("p90_gap_pct", 0) or 0)
+        if (_gap_size_on and _hgr and _p90_gap > 0.5
+                and pos.get("shares", 0) > 0):
+            _entry_g = float(stock.get("entry", 0) or 0)
+            _stop_g = float(stock.get("stop", 0) or 0)
+            if _entry_g > 0 and _stop_g > 0 and _stop_g < _entry_g:
+                _nominal_stop_pct = (_entry_g - _stop_g) / _entry_g * 100.0
+                _eff_stop_pct = _nominal_stop_pct + _p90_gap
+                if _eff_stop_pct > _nominal_stop_pct * 1.01:  # guard div-by-zero + noise
+                    # Preserve the intended risk% at the effective stop:
+                    # new_shares / orig_shares = nominal / effective
+                    _shrink = _nominal_stop_pct / _eff_stop_pct
+                    _orig_shares_g = int(pos.get("shares", 0))
+                    _new_shares_g = max(1, int(_orig_shares_g * _shrink))
+                    if _new_shares_g < _orig_shares_g:
+                        _rps_nominal = max(0.0, _entry_g - _stop_g)
+                        _rps_effective = _entry_g * (_eff_stop_pct / 100.0)
+                        pos["shares"] = _new_shares_g
+                        pos["position_value"] = round(_new_shares_g * _entry_g, 2)
+                        pos["position_pct"] = round(
+                            pos["position_value"] / PORTFOLIO_CAPITAL * 100, 1
+                        ) if PORTFOLIO_CAPITAL > 0 else 0.0
+                        # max_loss remains at nominal stop (that's what tracker
+                        # exits at). effective_max_loss surfaces gap-risk.
+                        pos["max_loss"] = round(_new_shares_g * _rps_nominal, 2)
+                        pos["effective_max_loss"] = round(_new_shares_g * _rps_effective, 2)
+                        pos["effective_stop_pct"] = round(_eff_stop_pct, 2)
+                        pos["gap_shrink_factor"] = round(_shrink, 3)
+                        pos["sizing_method"] = (
+                            f"{pos.get('sizing_method', 'FIXED_1.5PCT')}"
+                            f"_GAP_ADJ_{_shrink:.2f}x"
+                        )
         stock.update(pos)
 
     # ── 14d. Short signal detection ──
