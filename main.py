@@ -119,6 +119,12 @@ def ist_today() -> "datetime.date":
 NSELIB_CACHE_DIR     = os.getenv("NSELIB_CACHE_DIR", "nselib_cache")
 LAST_KNOWN_GOOD_FILE = os.getenv("LAST_KNOWN_GOOD_FILE", "last_known_good.json")
 DECISION_AUDIT_FILE  = f"decision_audit_{ist_today().strftime('%Y%m%d')}.jsonl"
+# Phase 1 #51 + #52 + #54 (2026-07-05): research instrumentation artifacts.
+# All append-only, tolerated to be missing on first run.
+TRADABLE_STATE_FILE       = os.getenv("TRADABLE_STATE_FILE", "last_tradable.json")
+TRADABLE_DROPOUT_FILE     = os.getenv("TRADABLE_DROPOUT_FILE", "tradable_dropouts.jsonl")
+PRICE_FETCH_FAIL_FILE     = os.getenv("PRICE_FETCH_FAIL_FILE", "price_fetch_failures.jsonl")
+DAILY_SNAPSHOT_DIR        = os.getenv("DAILY_SNAPSHOT_DIR", "daily_snapshots")
 # Phase N-2 (2026-07-03): reject-outcome watch list. main.py appends every
 # rejected stock's close/reasons here; scripts/reject_followup.py polls this
 # file after N days to see whether the reject was justified (stock dumped) or
@@ -728,14 +734,17 @@ def apply_regime_calibration(thresholds: dict, calibration: dict) -> dict:
     return out
 
 # Opportunity score weights — primary ranking metric (ENHANCEMENT 1)
+# ─── Phase 2 #37 (2026-07-05): remove factor-double-counting ────────────────
+# trend/volume/sector/macro are ALREADY inside final_confidence (as factor
+# weights via compute_base_confidence). Adding them again here double-counts.
+# Fix: keep only the 3 outer-layer signals (conf, tq, rr) and redistribute
+# the freed 0.25 weight to conf (structural quality) and tq (execution).
+# Old sum: 0.30+0.25+0.20+0.10+0.05+0.05+0.05 = 1.00
+# New sum: 0.50+0.30+0.20                     = 1.00
 OPPORTUNITY_WEIGHTS = {
-    "confidence":     0.30,
-    "trade_quality":  0.25,
+    "confidence":     0.50,
+    "trade_quality":  0.30,
     "risk_reward":    0.20,
-    "trend_strength": 0.10,
-    "volume_quality": 0.05,
-    "sector_strength":0.05,
-    "macro_alignment":0.05,
 }
 
 
@@ -871,14 +880,16 @@ def compute_opportunity_score(stock: dict) -> float:
         sector = float(stock.get("sector_strength",fs.get("sector_strength",50)) or 50)
         macro  = float(stock.get("macro_alignment",fs.get("macro_alignment",50)) or 50)
 
+        # Phase 2 #37 (2026-07-05): trend/volume/sector/macro no longer
+        # additively contribute — they are already inside final_confidence
+        # via compute_base_confidence's factor weights. Reading them again
+        # was double-counting. Left the local reads above for future
+        # audit/telemetry but they're not used in opp.
+        _ = (trend, volume, sector, macro)  # silence unused-var linter
         opp = (
             conf     * OPPORTUNITY_WEIGHTS["confidence"] +
             tq       * OPPORTUNITY_WEIGHTS["trade_quality"] +
-            rr_score * OPPORTUNITY_WEIGHTS["risk_reward"] +
-            trend    * OPPORTUNITY_WEIGHTS["trend_strength"] +
-            volume   * OPPORTUNITY_WEIGHTS["volume_quality"] +
-            sector   * OPPORTUNITY_WEIGHTS["sector_strength"] +
-            macro    * OPPORTUNITY_WEIGHTS["macro_alignment"]
+            rr_score * OPPORTUNITY_WEIGHTS["risk_reward"]
         )
         return round(opp, 1)
     except Exception:
@@ -2465,21 +2476,26 @@ def _rule_based_news_score(text: str) -> dict:
     for kw in BLACK_SWAN_KEYWORDS:
         if kw in tl:
             return {"severity": 92, "category": "BLACK_SWAN", "is_black_swan": True,
-                    "summary": f"Black swan keyword: {kw}"}
+                    "summary": f"Black swan keyword: {kw}", "news_source": "RULE_BASED"}
     neg = sum(1 for kw in NEGATIVE_KEYWORDS if kw in tl)
     pos = sum(1 for kw in POSITIVE_KEYWORDS if kw in tl)
     if neg >= 3:
-        return {"severity": 65, "category": "HIGH_RISK",     "is_black_swan": False, "summary": f"{neg} negative signals"}
+        return {"severity": 65, "category": "HIGH_RISK",     "is_black_swan": False, "summary": f"{neg} negative signals", "news_source": "RULE_BASED"}
     elif neg >= 1:
-        return {"severity": 35, "category": "MODERATE_RISK", "is_black_swan": False, "summary": f"{neg} negative signal(s)"}
+        return {"severity": 35, "category": "MODERATE_RISK", "is_black_swan": False, "summary": f"{neg} negative signal(s)", "news_source": "RULE_BASED"}
     elif pos >= 1:
-        return {"severity": -30, "category": "POSITIVE",     "is_black_swan": False, "summary": f"{pos} positive signal(s)"}
-    return {"severity": 0, "category": "NEUTRAL", "is_black_swan": False, "summary": "No significant news"}
+        return {"severity": -30, "category": "POSITIVE",     "is_black_swan": False, "summary": f"{pos} positive signal(s)", "news_source": "RULE_BASED"}
+    return {"severity": 0, "category": "NEUTRAL", "is_black_swan": False, "summary": "No significant news", "news_source": "RULE_BASED"}
 
 
 def ai_news_risk(symbol: str, headlines: list) -> dict:
+    # Phase 1 #53 (2026-07-05): tag every return path with `news_source` so
+    # post-mortem analysis can distinguish real LLM output from silent fallbacks.
+    # Values: NO_HEADLINES | GROQ_AI | RULE_BASED_FALLBACK | RULE_BASED_MONITOR_ONLY.
+    # The last value is set upstream by the pipeline for ranks 51-100 (#55).
     if not headlines:
-        return {"severity": 0, "category": "NO_NEWS", "is_black_swan": False, "summary": "No news"}
+        return {"severity": 0, "category": "NO_NEWS", "is_black_swan": False,
+                "summary": "No news", "news_source": "NO_HEADLINES"}
     clean_headlines = [h[:120] for h in headlines[:5]]
     headlines_text = "\n".join(f"- {h}" for h in clean_headlines)
     prompt = (
@@ -2495,8 +2511,13 @@ def ai_news_risk(symbol: str, headlines: list) -> dict:
     if text:
         result = _parse_ai_json(text)
         if result:
+            result["news_source"] = "GROQ_AI"
             return result
-    return _rule_based_news_score(headlines_text)
+    fallback = _rule_based_news_score(headlines_text)
+    # Override the RULE_BASED tag added by _rule_based_news_score to make the
+    # LLM-failed path distinguishable from the rank-51-100 rule-based path.
+    fallback["news_source"] = "RULE_BASED_FALLBACK"
+    return fallback
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -2505,8 +2526,16 @@ def ai_news_risk(symbol: str, headlines: list) -> dict:
 
 _NSE_DELAY_RANGE = (0.3, 1.0)
 
+# Phase 1 #54 (2026-07-05): silent-failure visibility for fetch_price_data.
+# Every None return path now records {symbol, reason, ts} into this list.
+# Flushed to price_fetch_failures.jsonl at end of _run_pipeline_inner.
+_PRICE_FETCH_FAILURES: list = []
+
 
 def fetch_price_data(symbol: str, period: str = "6mo"):
+    # #54: capture the specific failure reason so we can distinguish
+    # rate-limit vs delisted vs data-quality issues in post-mortem.
+    _fail_reason = "UNKNOWN"
     try:
         import warnings, logging
         # Suppress yfinance noise: "possibly delisted", "401 crumb", progress bars
@@ -2516,9 +2545,23 @@ def fetch_price_data(symbol: str, period: str = "6mo"):
             df = yf.download(symbol, period=period, interval="1d",
                              progress=False, auto_adjust=True,
                              multi_level_index=False)
-        if df is not None and len(df) > 20:
+        if df is None:
+            _fail_reason = "NONE_RETURNED"
+        elif len(df) <= 20:
+            _fail_reason = f"INSUFFICIENT_ROWS_{len(df)}"
+        else:
             df.columns = [c[0] if isinstance(c, tuple) else c for c in df.columns]
             return df
+    except Exception as e:
+        _fail_reason = f"EXC_{type(e).__name__}:{str(e)[:60]}"
+    # Best-effort logging — never let this crash the caller.
+    try:
+        _PRICE_FETCH_FAILURES.append({
+            "symbol": symbol,
+            "period": period,
+            "reason": _fail_reason,
+            "ts":     ist_now().isoformat(),
+        })
     except Exception:
         pass
     return None
@@ -2995,9 +3038,17 @@ def fetch_bulk_deals(days_back: int = 3) -> dict:
 
 
 def bulk_deal_score(symbol: str, bulk_deals_dict: dict) -> int:
+    # Phase 2 #16 (2026-07-05): dampened bulk-deal impact.
+    # A single bulk-deal print is a very noisy signal for retail-scale swing
+    # trades (2-5 day horizon): institutions bulk-buy over weeks/months and
+    # the print is often a rebalance, block-cross, or promoter selldown rather
+    # than directional conviction. Old +6/-8 was strong enough to move a name
+    # from WATCHLIST to BUY on a single print. New +2/-3 keeps the signal
+    # visible (still tie-breaks between close candidates) but prevents
+    # single-day headline noise from flipping decisions.
     action = bulk_deals_dict.get(symbol)
-    if action == "BUY":  return 6
-    elif action == "SELL": return -8
+    if action == "BUY":  return 2
+    elif action == "SELL": return -3
     return 0
 
 
@@ -3485,11 +3536,16 @@ def delivery_score_from_signal(signal: str, ratio: float) -> float:
     try:
         # Clamp ratio to a sane band before scaling.
         r = max(0.3, min(2.0, float(ratio)))
-        # Piecewise: 1.0 → 55, 1.5 → 90, 2.0 → 100, 0.7 → 30, 0.4 → 10.
+        # Phase 2 #32 (2026-07-05): halved the accumulation slope so a
+        # single-day 2× spike no longer saturates volume_delivery to 100.
+        # Old: (r-1.0)*90 → 1.0→55, 1.5→100 (saturated), 2.0→145 clipped.
+        # New: (r-1.0)*45 → 1.0→55, 1.5→77.5, 2.0→100. Distribution branch
+        # (r<1.0) intentionally kept steeper — distribution is asymmetrically
+        # more informative than accumulation for retail pump-and-dump names.
         if r >= 1.0:
-            score = 55 + (r - 1.0) * 90 / 1.0   # 1.0→55, 2.0→145 clipped to 100
+            score = 55 + (r - 1.0) * 45          # 1.0→55, 1.5→77.5, 2.0→100
         else:
-            score = 55 - (1.0 - r) * 75 / 0.6   # 1.0→55, 0.4→(55-75)=-20 clipped
+            score = 55 - (1.0 - r) * 75 / 0.6    # unchanged: 1.0→55, 0.4→-20 clipped
         # Signal override at the extremes so labels remain consistent
         if signal == "STRONG_ACCUM": score = max(score, 88)
         elif signal == "DISTRIBUTION": score = min(score, 18)
@@ -3813,7 +3869,11 @@ def macro_regime_adjustment(macro: dict) -> int:
     elif vix_ratio > 1.15: adj -= 4   # elevated
     elif vix_ratio < 0.8:  adj += 4   # suppressed VIX = complacency, slight caution
     elif vix_ratio < 0.9:  adj += 2
-    return max(-20, min(10, adj))
+    # Phase 2 #15 (2026-07-05): symmetric clamp — old max was +10 which
+    # arbitrarily suppressed macro tailwinds while allowing full -20 headwind.
+    # BULL regimes with cooperative macro were being penalized vs BEAR regimes
+    # with hostile macro. Now ±20 both ways.
+    return max(-20, min(20, adj))
 
 
 def _nse_session_get(path: str, timeout: int = 12) -> "requests.Response | None":
@@ -5752,8 +5812,19 @@ def compute_kill_switch_state(tracker: dict, capital: float = None) -> dict:
         )
 
         # 1) Consecutive-loss streak (walk BACKWARD from most recent close)
+        # Phase 2 #31 (2026-07-05): only count losses within the last N days.
+        # Without this window, if your last 3 closed trades were losses months
+        # ago and you haven't traded since, the pipeline pauses BUYs forever.
+        # Env-tunable via KS_LOSS_WINDOW_DAYS (default 7 = one trading week).
+        try:
+            _ks_window_days = int(os.getenv("KS_LOSS_WINDOW_DAYS", "7"))
+        except (TypeError, ValueError):
+            _ks_window_days = 7
+        _ks_cutoff = today - datetime.timedelta(days=_ks_window_days)
         consec = 0
         for pos, _dt in reversed(closed_sorted):
+            if _dt < _ks_cutoff:
+                break   # too old to be part of a live streak
             pnl = float(pos.get("final_pnl", 0) or 0)
             if pnl < 0:
                 consec += 1
@@ -7015,8 +7086,18 @@ def run_gates(stock: dict, regime: str, thresholds: dict,
                 warnings.append("MCAP_MISSING (no proxy data)")
 
     # Gate 4: Liquidity (HARD)
-    if stock.get("avg_volume", 0) < 100_000 or stock.get("avg_value_lakhs", 0) < 50:
-        return {"decision": "REJECTED", "fail_reasons": ["LIQUIDITY_FAIL"], "warnings": []}
+    # Phase 2 #23 (2026-07-05): min turnover configurable via env.
+    # Old hardcoded 50 lakh (₹5L / day) was low enough that a 2-3 lakh
+    # bulk print could clear the gate for a thinly-traded name. Raising
+    # the default to 200 lakh (₹2 Cr / day) filters out the long tail of
+    # illiquid mid/small caps where retail slippage exceeds the R/R edge.
+    # Set GATE4_MIN_TURNOVER_LAKHS=50 to restore old behavior.
+    try:
+        _min_turnover = float(os.getenv("GATE4_MIN_TURNOVER_LAKHS", "200"))
+    except (TypeError, ValueError):
+        _min_turnover = 200.0
+    if stock.get("avg_volume", 0) < 100_000 or stock.get("avg_value_lakhs", 0) < _min_turnover:
+        return {"decision": "REJECTED", "fail_reasons": [f"LIQUIDITY_FAIL(turnover<{_min_turnover:.0f}L)"], "warnings": []}
 
     # Gate 5: Market Regime max_buys (HARD)
     if thresh["max_buys"] == 0:
@@ -7487,21 +7568,57 @@ def classify_watchlist(stock: dict, regime: str, thresholds: dict,
     # Split a static NEAR_MISS into RISING vs FADING using 3-day conf history.
     # A stock at 78 conf climbing 72→75→78 is a much stronger watch target
     # than one at 78 falling 85→82→78. `traj` ∈ {"RISING","FADING","FLAT",""}.
+    #
+    # Phase 1 #42b (2026-07-05): gap-safe trajectory read.
+    # The history now stores None sentinels for days when the symbol was NOT
+    # in top-N. A trajectory that spans a None is invalid (the symbol was
+    # temporarily invisible), so we return traj="" instead of a misleading
+    # RISING/FADING label built from stale endpoints.
     traj = ""
     traj_delta = 0.0
     try:
         sym = stock.get("symbol", "")
         confs = ((conf_history or {}).get(sym) or {}).get("confs", []) or []
-        if len(confs) >= 2:
-            traj_delta = float(confs[-1]) - float(confs[0])
+        # Consider only the trailing 3 entries for the delta calc.
+        window = confs[-3:] if len(confs) >= 2 else confs
+        if len(window) >= 2 and all(v is not None for v in window):
+            traj_delta = float(window[-1]) - float(window[0])
             if traj_delta >= 3.0:
                 traj = "RISING"
             elif traj_delta <= -3.0:
                 traj = "FADING"
             else:
                 traj = "FLAT"
+        # else: leave traj="" so downstream skips trajectory-based tiering.
     except Exception:
         pass
+
+    # Phase 1 #43 (2026-07-05): READY_BLOCKED detection.
+    # A stock is READY_BLOCKED if its scoring is fine (conf close AND tq at
+    # threshold AND rr ok) but a "structural" hard filter blocks it — i.e.
+    # market-cap floor, liquidity, promoter pledge, kill switch, black-swan
+    # news. These setups are NOT bad; they're just unbuyable at current price
+    # or size. Persisting them into the watchlist tells research: "this
+    # methodology WORKED but was gated out by a structural constraint."
+    _fail_reasons_raw = stock.get("fail_reasons", []) or []
+    _STRUCTURAL_PREFIXES = (
+        "MARKET_CAP_LOW", "MCAP_MISSING",
+        "LIQUIDITY_FAIL",
+        "PROMOTER_PLEDGE_", "PROMOTER_PLEDGE_BLOCKLIST",
+        "KILL_SWITCH",
+        "BLACK_SWAN_NEWS",
+        "REGIME_NO_BUY",
+        "SECTOR_DAY_CAP_",
+    )
+    _has_structural = any(
+        any(r.startswith(p) for p in _STRUCTURAL_PREFIXES)
+        for r in _fail_reasons_raw
+    )
+    _scoring_ok = (
+        conf_gap <= 5.0
+        and tq >= thresh["min_tq"] - 2.0
+        and (stock.get("rr_ratio", 0) or 0) >= thresh["min_rr"] - 0.1
+    )
 
     base = {
         "conf":     conf,
@@ -7516,11 +7633,28 @@ def classify_watchlist(stock: dict, regime: str, thresholds: dict,
         "rr_ratio": get_stock_rr(stock, levels),
         "risk_pct": levels["risk_pct"],
         "current":  levels["current"],
-        "fail_reasons": stock.get("fail_reasons", []),
+        "fail_reasons": _fail_reasons_raw,
         "warnings":     stock.get("warnings", []),
         "trajectory":    traj,
         "traj_delta":    round(traj_delta, 1),
+        # Phase 1 #45 (2026-07-05): regime tag on every watchlist row so
+        # post-mortem can filter "which regime produced this tier mix?"
+        "regime_at_classification": regime,
     }
+
+    # Phase 1 #43: READY_BLOCKED takes precedence over gap-based tiers.
+    # These are the highest-quality watchlist entries: the methodology
+    # said BUY but a hard filter said NO.
+    if _has_structural and _scoring_ok:
+        _blocker = next(
+            (r for r in _fail_reasons_raw
+             if any(r.startswith(p) for p in _STRUCTURAL_PREFIXES)),
+            "UNKNOWN"
+        )
+        return {**base, "tier": "READY_BLOCKED",
+                "note": f"Setup ready but blocked by {_blocker}. Track for structural change.",
+                "days_to_watch": 5, "watch_days": 5,
+                "blocker_reason": _blocker}
 
     # Tier logic — trajectory-aware (Phase C5):
     #   NEAR_MISS_RISING  : gap ≤ 15 AND traj == RISING     → prioritize (2d watch)
@@ -7546,9 +7680,19 @@ def classify_watchlist(stock: dict, regime: str, thresholds: dict,
                 "note": f"TQ {tq:.1f} building. Conf gap {conf_gap:.1f}.",
                 "days_to_watch": 7, "watch_days": 7}
     else:
+        # Phase 1 #47 (2026-07-05): MONITOR gets a `monitor_reason` field so
+        # research can partition MONITOR into "far from setup" vs "off-thesis"
+        # cohorts. The reason encodes the primary distance from qualification.
+        if conf_gap > 25 and tq < 70:
+            _mon_reason = "LOW_CONF_AND_TQ"
+        elif conf_gap > 25:
+            _mon_reason = "CONF_FAR"
+        else:
+            _mon_reason = "TQ_LOW"
         return {**base, "tier": "MONITOR",
                 "note": "Early stage. Review in 2 weeks.",
-                "days_to_watch": 14, "watch_days": 14}
+                "days_to_watch": 14, "watch_days": 14,
+                "monitor_reason": _mon_reason}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -7578,6 +7722,16 @@ def save_persistent_watchlist(watchlist_dict: dict) -> None:
 
 
 def merge_watchlist_with_history(todays_watchlist: list, history: dict) -> tuple:
+    """Merge today's watchlist with persistent history.
+
+    Phase 1 #48+#49 (2026-07-05): the history entry now tracks:
+      * `tier_since` — date the current tier started (reset on tier change).
+        Enables "days-in-current-tier" analysis (e.g., how long a stock sits
+        as READY_BLOCKED before either becoming BUY or fading).
+      * `warnings`, `fail_reasons`, `conf`, `conf_gap`, `regime`, `blocker_reason`,
+        `monitor_reason` — all persisted so daily snapshot readers can build
+        the tier-transition matrix without re-running the pipeline.
+    """
     today_str = ist_today().isoformat()
     updated_history = {}
     for stock in todays_watchlist:
@@ -7588,15 +7742,38 @@ def merge_watchlist_with_history(todays_watchlist: list, history: dict) -> tuple
                         datetime.date.fromisoformat(first_seen)).days
         stock["days_watched"] = days_watched
         stock["first_seen"]   = first_seen
+        # Phase 1 #48: tier_since — reset when tier changes.
+        _prev_tier   = prev.get("tier")
+        _curr_tier   = stock.get("tier", "MONITOR")
+        if _prev_tier != _curr_tier:
+            _tier_since = today_str
+        else:
+            _tier_since = prev.get("tier_since", today_str)
+        _days_in_tier = (ist_today() -
+                         datetime.date.fromisoformat(_tier_since)).days
+        stock["tier_since"]    = _tier_since
+        stock["days_in_tier"]  = _days_in_tier
         if days_watched > 0:
             stock["note"] = stock.get("note", "") + f" [Day {days_watched + 1}]"
         max_days = stock.get("days_to_watch", 14)
         if days_watched <= max_days:
             updated_history[symbol] = {
-                "first_seen":  first_seen,
-                "tier":        stock.get("tier", "MONITOR"),
-                "entry_ref":   stock.get("entry", 0),
-                "last_seen":   today_str,
+                "first_seen":    first_seen,
+                "tier":          _curr_tier,
+                "tier_since":    _tier_since,
+                "entry_ref":     stock.get("entry", 0),
+                "last_seen":     today_str,
+                # Phase 1 #49: persist decision-relevant context for research.
+                "conf":          stock.get("conf"),
+                "conf_gap":      stock.get("conf_gap"),
+                "tq":            stock.get("tq"),
+                "rr_ratio":      stock.get("rr_ratio"),
+                "regime":        stock.get("regime_at_classification"),
+                "warnings":      list(stock.get("warnings", []) or []),
+                "fail_reasons":  list(stock.get("fail_reasons", []) or []),
+                "blocker_reason": stock.get("blocker_reason"),
+                "monitor_reason": stock.get("monitor_reason"),
+                "trajectory":    stock.get("trajectory"),
             }
     return todays_watchlist, updated_history
 
@@ -9283,7 +9460,12 @@ def format_no_buy_explanation(top_rejected: list, regime: str,
 # ─────────────────────────────────────────────────────────────────────────────
 
 def load_confidence_history() -> dict:
-    """Load {symbol: {dates:[], confs:[]}} rolling 3-day window."""
+    """Load {symbol: {dates:[], confs:[]}} rolling 5-day window.
+
+    Phase 1 #42a (2026-07-05): widened from 3d to 5d and now stores None
+    sentinels for days when the symbol was not in top-N. classify_watchlist
+    reads this and refuses to compute a trajectory across gaps.
+    """
     # Phase C7c: FRESH_START wipes confidence history for one run
     if FRESH_START:
         _log("[FRESH_START] load_confidence_history → returning {} (old confidence_history.json ignored)")
@@ -9299,19 +9481,47 @@ def load_confidence_history() -> dict:
 
 def update_confidence_history(history: dict, scored_stocks: list,
                                today_str: str) -> dict:
-    """Update rolling 3-day confidence for all scored stocks."""
+    """Update rolling 5-day confidence for all scored stocks.
+
+    Phase 1 #42a (2026-07-05):
+      * Window widened 3→5 days.
+      * Symbols present in history but NOT in today's scored list get a
+        None sentinel for today — preserves the fact that the symbol was
+        temporarily invisible. classify_watchlist's trajectory calc
+        refuses to compute across a None.
+      * Symbols with all-None trailing window are garbage-collected.
+    """
+    _WINDOW = 5
     try:
+        _today_syms = set()
         for stock in scored_stocks:
             sym  = stock.get("symbol", "")
             conf = float(stock.get("final_confidence", 0) or 0)
             if not sym:
                 continue
+            _today_syms.add(sym)
             if sym not in history:
                 history[sym] = {"dates": [], "confs": []}
             history[sym]["dates"].append(today_str)
             history[sym]["confs"].append(conf)
-            history[sym]["dates"] = history[sym]["dates"][-3:]
-            history[sym]["confs"] = history[sym]["confs"][-3:]
+            history[sym]["dates"] = history[sym]["dates"][-_WINDOW:]
+            history[sym]["confs"] = history[sym]["confs"][-_WINDOW:]
+        # Insert None gap markers for symbols we've tracked before but which
+        # dropped out of top-N today. Skip if we already recorded today.
+        for sym, rec in list(history.items()):
+            if sym in _today_syms:
+                continue
+            dates = rec.get("dates", []) or []
+            if dates and dates[-1] == today_str:
+                continue
+            rec.setdefault("dates", []).append(today_str)
+            rec.setdefault("confs", []).append(None)
+            rec["dates"] = rec["dates"][-_WINDOW:]
+            rec["confs"] = rec["confs"][-_WINDOW:]
+            # GC: if the whole window is None, drop the symbol — it hasn't
+            # been seen for W days, no need to keep tracking.
+            if all(v is None for v in rec["confs"]):
+                history.pop(sym, None)
     except Exception:
         pass
     return history
@@ -10082,6 +10292,46 @@ def _run_pipeline_inner():
     tradable = filter_and_download(symbols, period="6mo", max_workers=12)
     _log(f"  Tradable: {len(tradable)} stocks")
 
+    # ── 5a. Phase 1 #51 (2026-07-05): universe dropout diff logger ──
+    # Compare today's tradable set with yesterday's saved state and log the
+    # symmetric difference to tradable_dropouts.jsonl. Enables answering
+    # "which stock silently left the universe today, and when?" post-hoc.
+    # Never fails the pipeline; wrapped in a broad try.
+    try:
+        _prev_tradable = set()
+        if os.path.exists(TRADABLE_STATE_FILE):
+            with open(TRADABLE_STATE_FILE, "r") as _f:
+                _prev = json.load(_f) or {}
+            _prev_tradable = set(_prev.get("symbols", []))
+        _curr_tradable = set(tradable.keys())
+        _dropped_out   = sorted(_prev_tradable - _curr_tradable)
+        _newly_in      = sorted(_curr_tradable - _prev_tradable)
+        if _prev_tradable and (_dropped_out or _newly_in):
+            _diff_entry = {
+                "date":           ist_today().isoformat(),
+                "ts":             ist_now().isoformat(),
+                "prev_size":      len(_prev_tradable),
+                "curr_size":      len(_curr_tradable),
+                "dropped_out":    _dropped_out,
+                "newly_in":       _newly_in,
+                "universe_size":  len(symbols),
+            }
+            with open(TRADABLE_DROPOUT_FILE, "a", encoding="utf-8") as _f:
+                _f.write(json.dumps(_diff_entry, default=str) + "\n")
+            _log(f"  [Dropouts] {len(_dropped_out)} dropped, {len(_newly_in)} added → {TRADABLE_DROPOUT_FILE}")
+        # Only overwrite the state file on scheduled runs so manual
+        # experiments don't corrupt the day-over-day baseline.
+        if IS_SCHEDULED:
+            with open(TRADABLE_STATE_FILE, "w") as _f:
+                json.dump({
+                    "date":     ist_today().isoformat(),
+                    "ts":       ist_now().isoformat(),
+                    "symbols":  sorted(_curr_tradable),
+                    "count":    len(_curr_tradable),
+                }, _f, indent=2, default=str)
+    except Exception as _drop_exc:
+        _log(f"  [WARN] tradable dropout logger failed (non-fatal): {_drop_exc}")
+
     # ── 5b. Enrich sector map for all tradable symbols ──
     _log("[5b/17] Enriching sector map: nselib bulk first, yfinance fallback...")
     enrich_sectors_from_nselib()
@@ -10148,22 +10398,47 @@ def _run_pipeline_inner():
     # score-#41 stock with an exceptional setup can still reach the gate
     # stage. Extra 10 stocks add ~2s of news/AI fetch — negligible.
     # Variable name stays "top_40" to avoid renaming 15 call sites; it's
-    # now a well-known misnomer for "top-50 candidate list".
-    _TOP_N = int(os.getenv("TOP_N_CANDIDATES", "50"))
+    # now a well-known misnomer for "top-N candidate list".
+    #
+    # Phase 1 #50+#55 (2026-07-05): widened further from 50 → 100 for
+    # research coverage. Ranks 51-100 are "monitor-only":
+    #   * they DO go through the full scoring / gates,
+    #   * they do NOT hit the LLM news endpoint (rule-based only, tagged
+    #     news_source="RULE_BASED_MONITOR_ONLY" downstream at step 8),
+    #   * they do NOT get fundamentals fetched (fetch_all_fundamentals_cached
+    #     already caps at 30, so this is automatic),
+    #   * they DO appear in daily_snapshots for post-hoc analysis.
+    # Ranks 1-50 keep the full-pipeline behavior (unchanged).
+    _TOP_N = int(os.getenv("TOP_N_CANDIDATES", "100"))
+    _FULL_LLM_TOP_N = int(os.getenv("FULL_LLM_TOP_N", "50"))
     top_40 = scored[:_TOP_N]
-    _log(f"  Top {len(top_40)}: best base conf {top_40[0]['base_confidence']:.1f} ({top_40[0]['symbol']})")
+    _log(f"  Top {len(top_40)}: best base conf {top_40[0]['base_confidence']:.1f} ({top_40[0]['symbol']}) — LLM for top {min(_FULL_LLM_TOP_N, len(top_40))}, monitor-only for rest")
 
-    # ── 8. News + AI risk for top 40 ──
-    _log(f"[8/17] News + AI risk for top {len(top_40)}...")
-    for stock in top_40:
+    # ── 8. News + AI risk for top N ──
+    # Phase 1 #55 (2026-07-05): split behavior — top-N uses full LLM
+    # (existing path), ranks 51-100 use rule-based only with a distinct
+    # news_source tag so post-mortem can filter monitor-only rows out.
+    _log(f"[8/17] News + AI risk (LLM for top {min(_FULL_LLM_TOP_N, len(top_40))}, rule-based for rest)...")
+    for _idx, stock in enumerate(top_40):
         sym_clean  = stock["symbol"].replace(".NS", "")
         headlines  = fetch_news_for_symbol(sym_clean)
+        _is_full_llm = _idx < _FULL_LLM_TOP_N
         if headlines:
-            ai_result = ai_news_risk(sym_clean, [h["title"] for h in headlines])
+            if _is_full_llm:
+                ai_result = ai_news_risk(sym_clean, [h["title"] for h in headlines])
+            else:
+                # Rule-based only for monitor-only ranks — no Groq call.
+                _headlines_text = "\n".join(f"- {h['title'][:120]}" for h in headlines[:5])
+                ai_result = _rule_based_news_score(_headlines_text)
+                ai_result["news_source"] = "RULE_BASED_MONITOR_ONLY"
             age       = min(h["age_days"] for h in headlines)
             penalty   = compute_news_penalty(ai_result, age)
         else:
-            ai_result = {"severity": 0, "category": "NO_NEWS", "is_black_swan": False, "summary": ""}
+            ai_result = {
+                "severity": 0, "category": "NO_NEWS",
+                "is_black_swan": False, "summary": "",
+                "news_source": "NO_HEADLINES" if _is_full_llm else "NO_HEADLINES_MONITOR_ONLY",
+            }
             penalty   = 0.0
         stock["news_penalty"]  = penalty
         stock["is_black_swan"] = ai_result.get("is_black_swan", False)
@@ -10171,6 +10446,7 @@ def _run_pipeline_inner():
         # FIX: persist news category so BUY-card renderer can distinguish
         # "no headlines" (NO_NEWS) from "headline exists but summary was empty".
         stock["news_category"] = ai_result.get("category", "")
+        stock["news_source"]   = ai_result.get("news_source", "")
         stock["news_risk"]     = max(0, 100 - int(penalty * 2))
 
     # ── 9. Promoter data + fundamentals — sequential with 24h cache (no rate limiting) ──
@@ -10351,7 +10627,31 @@ def _run_pipeline_inner():
         if "opportunity_score" not in stock:
             stock["opportunity_score"] = compute_opportunity_score(stock)
     buys.sort(key=lambda x: (-x.get("opportunity_score", 0), x.get("symbol", "")))
-    watchlist_stocks.sort(key=lambda x: (-x.get("opportunity_score", 0), x.get("symbol", "")))
+    # Phase 1 #44 (2026-07-05): watchlist sort by (tier priority, conf_gap asc).
+    # Rationale: for research, the most useful row on top is the one closest
+    # to becoming a BUY — not the one with the biggest opportunity_score
+    # (which factors in signal quality that already got vetoed). Tier order:
+    #   READY_BLOCKED     0  — methodology worked, only structural blocker
+    #   NEAR_MISS_RISING  1
+    #   NEAR_MISS         2
+    #   NEAR_MISS_FADING  3
+    #   DEVELOPING        4
+    #   MONITOR           5
+    # Within a tier, ascending conf_gap surfaces the one with the smallest
+    # distance to qualification.
+    _TIER_PRIO = {
+        "READY_BLOCKED":     0,
+        "NEAR_MISS_RISING":  1,
+        "NEAR_MISS":         2,
+        "NEAR_MISS_FADING":  3,
+        "DEVELOPING":        4,
+        "MONITOR":           5,
+    }
+    watchlist_stocks.sort(key=lambda x: (
+        _TIER_PRIO.get(x.get("tier", "MONITOR"), 9),
+        x.get("conf_gap", 999),
+        x.get("symbol", ""),
+    ))
 
     # ── Phase G7-C (2026-07-03): Intra-day sector diversity in BUY list ────
     # Gate 14b caps sector concentration vs EXISTING holdings, but never
@@ -10363,16 +10663,41 @@ def _run_pipeline_inner():
     # sector. Overflow is demoted to WATCHLIST with a SECTOR_DAY_CAP tag so
     # the audit shows why. Sort order guarantees the best-scored stock per
     # sector wins.
+    #
+    # Phase 2 #38 (2026-07-05): apply max_buys ceiling INSIDE the greedy
+    # loop instead of truncating afterward. Old order (sector-cap → truncate)
+    # could drop a diverse-sector candidate in favor of a same-sector one
+    # already at the head of the list. New order fills the top max_buys slots
+    # subject to sector-cap as a per-slot filter, so we keep the best-scored
+    # stock per sector up to both caps simultaneously.
     _sector_cap = int(os.getenv(
         "MAX_BUYS_PER_SECTOR_INTRADAY",
         os.getenv("MAX_POSITIONS_PER_SECTOR", "2"),
     ))
+    _regime_max_buys = effective_thresholds[regime]["max_buys"]
     if buys and _sector_cap > 0:
         _sector_counts: dict = {}
         _kept, _demoted = [], []
         for _stk in buys:
             _sec = _stk.get("sector") or get_sector(_stk.get("symbol", "")) or "UNKNOWN"
             _n = _sector_counts.get(_sec, 0)
+            # Phase 2 #38: also stop once we have enough BUYs; remaining
+            # candidates are demoted with an OVER_MAX_BUYS tag so audit is clear.
+            if len(_kept) >= _regime_max_buys:
+                _stk["decision"] = "WATCHLIST"
+                _stk.setdefault("warnings", []).append(
+                    f"OVER_MAX_BUYS({_regime_max_buys} filled by higher-ranked)"
+                )
+                _stk.setdefault("fail_reasons", []).append(
+                    f"OVER_MAX_BUYS_{_regime_max_buys}"
+                )
+                _wl_meta = classify_watchlist(
+                    _stk, regime, effective_thresholds,
+                    conf_history=_conf_history_for_wl,
+                )
+                _stk.update(_wl_meta)
+                _demoted.append(_stk)
+                continue
             if _n < _sector_cap:
                 _sector_counts[_sec] = _n + 1
                 _kept.append(_stk)
@@ -10393,18 +10718,25 @@ def _run_pipeline_inner():
                 _demoted.append(_stk)
         if _demoted:
             _log(
-                f"  [G7-C] Sector cap ({_sector_cap}/sector) demoted "
+                f"  [G7-C] Sector cap ({_sector_cap}/sector) + max_buys "
+                f"({_regime_max_buys}) demoted "
                 f"{len(_demoted)} BUY → WATCHLIST: "
                 + ", ".join(s.get("symbol", "?") for s in _demoted[:5])
                 + ("..." if len(_demoted) > 5 else "")
             )
         buys = _kept
         watchlist_stocks.extend(_demoted)
-        watchlist_stocks.sort(
-            key=lambda x: (-x.get("opportunity_score", 0), x.get("symbol", ""))
-        )
+        # Phase 1 #44 (2026-07-05): re-sort by (tier priority, conf_gap asc)
+        # after demotions land — keeps research-friendly ordering.
+        watchlist_stocks.sort(key=lambda x: (
+            _TIER_PRIO.get(x.get("tier", "MONITOR"), 9),
+            x.get("conf_gap", 999),
+            x.get("symbol", ""),
+        ))
 
-    # Enforce max_buys cap
+    # Enforce max_buys cap (defensive belt-and-braces — the greedy loop above
+    # already respects _regime_max_buys, but this guard protects the case
+    # where _sector_cap == 0 (feature disabled) or `buys` bypassed the loop.
     # Phase C3 (2026-07-02): removed fii_stale halving — FII data is
     # structurally D-1/D-2 and was never a reliable signal to throttle
     # sizing on. max_buys is now driven purely by regime thresholds and
@@ -10657,6 +10989,106 @@ def _run_pipeline_inner():
         {"regime": regime, "score": regime_data.get("score", 0)},
         today_str_pipe
     )
+
+    # ── 17b. Phase 1 #54 (2026-07-05): flush price-fetch failures ─────────
+    # Every fetch_price_data(...) that returned None (any reason) is here.
+    # Written once at end-of-run to avoid touching disk from hot loops.
+    try:
+        if _PRICE_FETCH_FAILURES:
+            with open(PRICE_FETCH_FAIL_FILE, "a", encoding="utf-8") as _pff:
+                for _rec in _PRICE_FETCH_FAILURES:
+                    _pff.write(json.dumps(_rec, default=str) + "\n")
+            _log(f"  [PriceFail] {len(_PRICE_FETCH_FAILURES)} failures logged → {PRICE_FETCH_FAIL_FILE}")
+            # Clear the module-global buffer so a re-invocation in the same
+            # Python process (rare — mostly tests) doesn't double-log.
+            _PRICE_FETCH_FAILURES.clear()
+    except Exception as _pff_exc:
+        _log(f"  [WARN] price fetch failure flush failed (non-fatal): {_pff_exc}")
+
+    # ── 17c. Phase 1 #52 (2026-07-05): daily research snapshot ────────────
+    # One JSONL per day containing the top-N (currently 100) fully-scored
+    # candidates with full factor breakdown. This is the primary corpus for
+    # post-freeze research: rank stability, factor-return correlation,
+    # false-positive analysis. Additive-only — never changes pipeline output.
+    #
+    # File: {DAILY_SNAPSHOT_DIR}/{YYYY-MM-DD}.jsonl (one line per stock)
+    # Overwritten each run of the same day so re-runs produce the latest
+    # snapshot (previous days' files are never touched).
+    try:
+        os.makedirs(DAILY_SNAPSHOT_DIR, exist_ok=True)
+        _snap_path = os.path.join(
+            DAILY_SNAPSHOT_DIR,
+            f"{ist_today().isoformat()}.jsonl",
+        )
+        # Build a lookup from symbol → decision so we know how each snapshot
+        # row was resolved (BUY / WATCHLIST / REJECTED / SCORED_ONLY).
+        _decision_map: dict = {}
+        for _s in buys:
+            _decision_map[_s.get("symbol")] = "BUY"
+        for _s in watchlist_stocks:
+            _decision_map.setdefault(_s.get("symbol"), _s.get("tier", "WATCHLIST"))
+        for _s in rejected:
+            _decision_map.setdefault(_s.get("symbol"), "REJECTED")
+        # `top_40` is now the top-100 (or _TOP_N env-override). Everyone here
+        # has a full factor breakdown from step 7.
+        _snap_rows = 0
+        with open(_snap_path, "w", encoding="utf-8") as _snap:
+            for _rank, stock in enumerate(top_40, start=1):
+                _sym = stock.get("symbol")
+                _snap_row = {
+                    "date":            ist_today().isoformat(),
+                    "ts":              ist_now().isoformat(),
+                    "rank":            _rank,
+                    "symbol":          _sym,
+                    "sector":          stock.get("sector") or get_sector(_sym or ""),
+                    "decision":        _decision_map.get(_sym, "SCORED_ONLY"),
+                    "regime":          regime,
+                    "base_confidence": stock.get("base_confidence"),
+                    "final_confidence": stock.get("final_confidence"),
+                    "trade_quality":   stock.get("trade_quality_score"),
+                    "opportunity":    stock.get("opportunity_score"),
+                    "rr_ratio":        stock.get("rr_ratio"),
+                    "entry":           stock.get("entry"),
+                    "stop":            stock.get("stop"),
+                    "target1":         stock.get("target1"),
+                    "target2":         stock.get("target2"),
+                    "atr":             stock.get("atr"),
+                    "close":           stock.get("close"),
+                    "avg_value_lakhs": stock.get("avg_value_lakhs"),
+                    "market_cap_cr":   stock.get("market_cap_cr"),
+                    # ── factor-level attribution (10 factors) ──
+                    "factor_scores":   stock.get("factor_scores", {}),
+                    "factor_weights":  FACTOR_WEIGHTS,
+                    # ── trade quality sub-components ──
+                    "tq_components": {
+                        "trend":     stock.get("trend_quality"),
+                        "momentum":  stock.get("momentum_quality"),
+                        "volume":    stock.get("volume_delivery"),
+                        "risk_rew":  stock.get("risk_reward"),
+                        "weekly_ok": bool(stock.get("weekly_trend_ok")),
+                        "pattern":   stock.get("price_pattern"),
+                    },
+                    # ── news attribution + source ──
+                    "news_penalty":    stock.get("news_penalty"),
+                    "news_category":   stock.get("news_category"),
+                    "news_source":     stock.get("news_source"),
+                    "is_black_swan":   bool(stock.get("is_black_swan")),
+                    # ── ownership / delivery context ──
+                    "ownership_deliv_bonus": stock.get("ownership_deliv_bonus"),
+                    "roe":             stock.get("roe"),
+                    "de_ratio":        stock.get("de_ratio"),
+                    "roce":            stock.get("roce"),
+                    "promoter_pledge_pct": stock.get("promoter_pledge_pct"),
+                    "fundamentals_source": stock.get("fundamentals_source"),
+                    # ── gate outcome ──
+                    "fail_reasons":    stock.get("fail_reasons", []),
+                    "warnings":        stock.get("warnings", []),
+                }
+                _snap.write(json.dumps(_snap_row, default=str) + "\n")
+                _snap_rows += 1
+        _log(f"  [Snapshot] {_snap_rows} rows → {_snap_path}")
+    except Exception as _snap_exc:
+        _log(f"  [WARN] daily snapshot writer failed (non-fatal): {_snap_exc}")
 
     # ── 18. Done ──
     _log("[DONE] Pipeline complete.")
