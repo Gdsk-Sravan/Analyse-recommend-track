@@ -649,7 +649,14 @@ REGIME_THRESHOLDS = {
     "TRANSITION":      {"min_confidence": 83, "min_tq": 78, "min_rr": 2.0, "max_buys": 2,  "max_exposure": 0.55, "max_stop_pct": 7.0},
     "HIGH_VOLATILITY": {"min_confidence": 85, "min_tq": 80, "min_rr": 2.2, "max_buys": 1,  "max_exposure": 0.40, "max_stop_pct": 5.0},
     "BEAR":            {"min_confidence": 92, "min_tq": 88, "min_rr": 2.5, "max_buys": 0,  "max_exposure": 0.20, "max_stop_pct": 5.0},
-    "STRONG_BEAR":     {"min_confidence": 99, "min_tq": 99, "min_rr": 3.0, "max_buys": 0,  "max_exposure": 0.00, "max_stop_pct": 4.0},
+    # Phase 3a #26 (2026-07-05): STRONG_BEAR tuned from unreachable 99/99/3.0
+    # to 95/92/3.0. max_buys=0 still enforces "no new positions" as the
+    # PRIMARY gate; the numeric thresholds are for the audit trail ("how
+    # close did we get?") and for reactivation after regime normalizes.
+    # Old values were mathematically impossible so all STRONG_BEAR audits
+    # showed conf_gap=huge, hiding whether the underlying setup was actually
+    # decent.
+    "STRONG_BEAR":     {"min_confidence": 95, "min_tq": 92, "min_rr": 3.0, "max_buys": 0,  "max_exposure": 0.00, "max_stop_pct": 4.0},
 }
 
 # Factor weights — 10 factors, sum = 1.00
@@ -2517,6 +2524,15 @@ def ai_news_risk(symbol: str, headlines: list) -> dict:
     # Override the RULE_BASED tag added by _rule_based_news_score to make the
     # LLM-failed path distinguishable from the rank-51-100 rule-based path.
     fallback["news_source"] = "RULE_BASED_FALLBACK"
+    # Phase 3a #41 (2026-07-05): loud fallback logging so a silent Groq
+    # outage doesn't appear as "no news problem" in the daily log. Previously
+    # every LLM failure produced a rule-based result with no [WARN] trace,
+    # so a 100% AI degradation looked identical to a healthy quiet news day.
+    # Format includes symbol + reason so post-mortem can distinguish
+    # (a) Groq quota exhausted, (b) JSON parse failure, (c) network timeout.
+    _reason = "GROQ_NO_TEXT" if not text else "GROQ_PARSE_FAIL"
+    _log(f"[AI FALLBACK] {symbol}: rule-based used ({_reason}) — "
+         f"severity={fallback.get('severity',0)} cat={fallback.get('category','?')}")
     return fallback
 
 
@@ -2657,7 +2673,7 @@ def filter_and_download(symbols: list, period: str = "6mo",
                         max_workers: int = 12,
                         min_avg_volume: int = 100_000,
                         min_avg_value_lakhs: float = 200.0,
-                        min_price: float = 20.0,
+                        min_price: float = None,
                         max_recent_circuits: int = 2) -> dict:
     """
     Phase G6 (2026-07-03): universe hygiene — filters out:
@@ -2682,6 +2698,21 @@ def filter_and_download(symbols: list, period: str = "6mo",
             min_avg_value_lakhs = float(_env_turnover)
     except (TypeError, ValueError):
         pass  # keep default
+    # Phase 3a #30 (2026-07-05): env override for penny-stock floor.
+    # Default ₹20 kept as the historical baseline.
+    if min_price is None:
+        try:
+            min_price = float(os.getenv("MIN_STOCK_PRICE", "20.0"))
+        except (TypeError, ValueError):
+            min_price = 20.0
+    # Phase 3a #29 (2026-07-05): 5d turnover ratio floor.
+    # Requires last-5-day avg turnover ≥ min_avg_value_lakhs * MIN_5D_RATIO
+    # (default 0.60) to reject stocks whose 20d avg is inflated by one
+    # historical block-print. 0.0 disables. Overridable via env.
+    try:
+        min_5d_ratio = float(os.getenv("MIN_5D_TURNOVER_RATIO", "0.60"))
+    except (TypeError, ValueError):
+        min_5d_ratio = 0.60
     _log(f"Downloading {len(symbols)} symbols with {max_workers} workers...")
 
     # Pre-filter blocklisted names BEFORE we hit the network — cheap and fast
@@ -2699,6 +2730,7 @@ def filter_and_download(symbols: list, period: str = "6mo",
     illiquid_vol = 0
     illiquid_val = 0
     illiquid_price = 0
+    illiquid_5d = 0   # Phase 3a #29
     circuit_repeat = 0
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {executor.submit(_download_one, sym, period): sym for sym in symbols}
@@ -2719,6 +2751,20 @@ def filter_and_download(symbols: list, period: str = "6mo",
                 if avg_val_lakhs < min_avg_value_lakhs:
                     illiquid_val += 1
                     continue
+                # Phase 3a #29 (2026-07-05): 5d avg turnover ratio check —
+                # reject stocks whose 20d turnover is inflated by a lone big
+                # block-print but whose current week is anemic.
+                if min_5d_ratio > 0 and len(df) >= 6:
+                    try:
+                        _c5 = closes.tail(5)
+                        _v5 = df["Volume"].squeeze().tail(5)
+                        _avg_val_5d_lakhs = float((_c5 * _v5).mean()) / 100_000
+                        _floor = min_avg_value_lakhs * min_5d_ratio
+                        if _avg_val_5d_lakhs < _floor:
+                            illiquid_5d += 1
+                            continue
+                    except Exception:
+                        pass
                 # Phase G6: penny stock filter — wide spreads eat all edge
                 if min_price > 0 and avg_price < min_price:
                     illiquid_price += 1
@@ -2743,6 +2789,7 @@ def filter_and_download(symbols: list, period: str = "6mo",
         f"Download complete: {len(tradable)} tradable | {failed} failed | "
         f"{illiquid_vol} illiquid_vol | {illiquid_val} illiquid_val "
         f"(<₹{min_avg_value_lakhs:.0f}L/day) | "
+        f"{illiquid_5d} illiquid_5d (<{min_5d_ratio*100:.0f}% of 20d) | "
         f"{illiquid_price} penny (<₹{min_price:.0f}) | "
         f"{circuit_repeat} repeat_circuit (>{max_recent_circuits}/5d)"
     )
@@ -3588,8 +3635,16 @@ def fetch_all_fundamentals_cached(top_40: list, max_stocks: int = 30) -> list:
     _log(f"[INFO] Fundamentals cache: {len(cache)} symbols cached")
 
     def _prio(s):
-        # Best proxy for BUY-likelihood: final_confidence > base_confidence > 0.
-        return -(s.get("final_confidence", 0) or s.get("base_confidence", 0) or 0)
+        # At this pipeline stage (step 9), final_confidence has not yet been
+        # computed — that assignment happens later in step 11. The only
+        # meaningful ranking signal available here is base_confidence
+        # (assigned in step 7 when `scored` was built). We used to read
+        # `final_confidence` with an or-chain fallback, but the read was a
+        # footgun: any future default of final_confidence != 0 would silently
+        # break fundamentals priority ordering. Keep this explicit.
+        # Original audit item #7 flagged this as a bug — the ACTUAL bug was
+        # misleading intent, not incorrect behavior. See PATCH_LOG_v1.md.
+        return -float(s.get("base_confidence", 0) or 0)
     ordered  = sorted(top_40, key=_prio)
     to_fetch = ordered[:max_stocks]
     skip     = ordered[max_stocks:]
@@ -4915,7 +4970,12 @@ def compute_sector_rotation(tradable: dict) -> dict:
 def sector_rotation_score(sector: str, rotation: dict) -> tuple:
     data   = rotation.get(sector, {})
     status = data.get("status", "NEUTRAL")
-    adj    = {"LEADING": 15, "NEUTRAL": 0, "WEAKENING": -8, "LAGGING": -15}
+    # Phase 3a #28 (2026-07-05): widened LEADING/LAGGING magnitude from
+    # ±15 → ±25 so sector_strength has a real 25-75 range instead of a
+    # narrow 35-65 band. Prior range gave the 0.15 factor weight only
+    # ~±2.3 conf-pt swing which couldn't flip a decision.
+    # Velocity overlay unchanged (±5 secondary signal).
+    adj    = {"LEADING": 25, "NEUTRAL": 0, "WEAKENING": -12, "LAGGING": -25}
     # Phase 4: rotation velocity overlay — reward sectors rotating IN even
     # while still statically LAGGING (contrarian setup); penalize rotating OUT.
     velocity = data.get("rotation_velocity", "UNKNOWN")
@@ -5644,7 +5704,14 @@ def compute_final_confidence(base: float, regime: str, news_penalty: float,
         "STRONG_BULL": +8, "BULL": +4, "SIDEWAYS": -2,
         "TRANSITION": -3, "HIGH_VOLATILITY": -8, "BEAR": -20, "STRONG_BEAR": -40,
     }
-    final = base + REGIME_ADJ.get(regime, 0) - news_penalty + macro_adj + bulk_adj
+    # Phase 3a N6 (2026-07-05): removed `+ macro_adj` — macro was double-counted.
+    # It is already applied inside compute_all_factors as `macro_alignment = 60 + macro_adj*2`
+    # which then feeds compute_base_confidence at weight 0.03. Adding raw
+    # macro_adj again here inflated by 30-100% of the intended weight.
+    # Preserved kwarg for backwards compatibility with callers that pass it,
+    # but only bulk_adj remains as an out-of-factor bonus.
+    _ = macro_adj  # explicit no-op — see comment above
+    final = base + REGIME_ADJ.get(regime, 0) - news_penalty + bulk_adj
     return round(max(0.0, min(100.0, final)), 2)
 
 
@@ -6617,11 +6684,15 @@ def compute_all_factors(symbol: str, df,
         result["rs_diff21"]   = round(rs_diff21, 2)
 
         # ── Factor 6: News Risk (placeholder — filled by pipeline after AI) ──
-        # Phase C5 (rating ≥ 9.0): use None (MISSING) instead of 50 so
-        # compute_base_confidence redistributes weight instead of diluting.
-        # The pipeline overwrites this with a real score for the top 40 stocks
-        # (AI-derived: 100 if NO_NEWS, lower if penalty > 0).
-        result["news_risk"] = None
+        # Phase 3a N2 (2026-07-05): use neutral 50 as pre-news placeholder.
+        # Previously used None which triggered weight-redistribution in
+        # compute_base_confidence and inflated confidence by ~6 pts for
+        # small-caps with no news coverage, distorting the top-100 ranking.
+        # The pipeline overwrites this with the real AI-derived value at
+        # L10458 for the top-100 (100 if NO_NEWS, lower on penalty), and then
+        # calls compute_base_confidence AGAIN at L10496 so final confidence
+        # is unaffected — this fix only cleans up initial ranking bias.
+        result["news_risk"] = 50
 
         # ── Factor 7: Risk / Reward ──
         entry = round(last, 2)
@@ -6753,15 +6824,30 @@ def compute_all_factors(symbol: str, df,
         result["price_pattern"]   = pa_pattern
         result["weekly_trend_ok"] = weekly_ok
 
-        # ── Trade Quality Score (now includes weekly + price action) ──
-        # Weights: trend 30% | momentum 20% | volume 15% | rr 15% | weekly 10% | price_action 10%
+        # ── Trade Quality Score — Phase 3a N1 (2026-07-05) ──
+        # OLD: 0.30·trend + 0.20·momentum + 0.15·volume + 0.15·rr +
+        #      0.10·weekly + 0.10·pa   ← DOUBLE-COUNTED with FACTOR_WEIGHTS
+        # NEW: complementary factors only (weekly/pa/rr/pattern_boost).
+        # Rationale: trend, momentum, volume are ALREADY in FACTOR_WEIGHTS at
+        # (0.20+0.16+0.10)=0.46 of confidence. Repeating them in TQ means a
+        # trending stock gets scored twice for the same evidence, and the
+        # min_tq gate becomes redundant with the min_confidence gate.
+        # New TQ measures *setup structural quality*: weekly-frame alignment,
+        # candle pattern quality, R/R, and a pattern-boost bonus. Range still 0-100.
+        # `_pattern_boost` = extra credit for named bullish patterns (breakout,
+        # bullish_engulfing, hammer_at_ema20). 60 = neutral; +/-20 for boost/penalty.
+        _pattern_boost = 60.0
+        _pp = (pa_pattern or "").lower()
+        if any(kw in _pp for kw in ("breakout", "bullish_engulf", "hammer", "cup_handle", "flag")):
+            _pattern_boost = 80.0
+        elif any(kw in _pp for kw in ("bearish", "topping", "distribution", "gap_down")):
+            _pattern_boost = 30.0
+        result["_pattern_boost"] = _pattern_boost
         result["trade_quality_score"] = round(
-            result["trend_quality"]    * 0.30 +
-            result["momentum_quality"] * 0.20 +
-            result["volume_delivery"]  * 0.15 +
-            result["risk_reward"]      * 0.15 +
-            w_score                    * 0.10 +
-            pa_score                   * 0.10,
+            w_score                * 0.35 +   # weekly-frame trend alignment
+            pa_score               * 0.25 +   # price-action pattern
+            result["risk_reward"]  * 0.25 +   # R/R quality
+            _pattern_boost         * 0.15,    # pattern-boost / warning
             1,
         )
 
@@ -6783,14 +6869,30 @@ def compute_all_factors(symbol: str, df,
         # can distinguish "measured neutral 50" from "not measured at all".
         # compute_base_confidence uses this signal to redistribute weight
         # instead of diluting toward neutral 50.
+        #
+        # Phase 3a N5 (2026-07-05): NaN-safe mirror. Some upstream libs (pandas
+        # rolling, numpy on all-NaN slices) can leak NaN into factor scores.
+        # NaN would then survive round() as NaN, poison the sum in
+        # compute_base_confidence, and produce NaN final_confidence which
+        # silently fails min_confidence gate (NaN comparisons are always False).
+        # Convert NaN/inf → None so redistribution kicks in cleanly.
         def _mirror(v):
             if v is None:
                 return None
             try:
-                return round(float(v), 1)
+                f = float(v)
+                # numpy nan/inf slip through as floats — reject them here
+                if not (f == f) or f in (float("inf"), float("-inf")):
+                    return None
+                return round(f, 1)
             except (TypeError, ValueError):
                 return None
         result["factor_scores"] = {k: _mirror(result.get(k)) for k in FACTOR_WEIGHTS}
+        # Also sanitize the raw factor keys so downstream consumers never see NaN
+        for _k in FACTOR_WEIGHTS:
+            _sanitized = _mirror(result.get(_k))
+            if _sanitized is not None:
+                result[_k] = _sanitized
 
     except Exception as e:
         _log(f"[WARN] compute_all_factors failed for {symbol}: {e}")
@@ -7114,6 +7216,25 @@ def run_gates(stock: dict, regime: str, thresholds: dict,
         fail_reasons.append(f"KILL_SWITCH({ks.get('reason', 'ACTIVE')})")
         warnings.append(f"KILL_SWITCH_ACTIVE: {ks.get('reason', '?')}")
 
+    # Gate 5c — Phase 3a #40 (2026-07-05): regime exposure cap (SOFT).
+    # REGIME_THRESHOLDS defines `max_exposure` per regime (BEAR 0.20,
+    # HIGH_VOL 0.40, etc.) but historically it was never read. This gate
+    # enforces it: if current portfolio exposure has already reached the
+    # regime cap, new BUYs are demoted to WATCHLIST (soft). Existing
+    # positions unaffected. Exposure headroom of 0 means we're at the
+    # limit; a fresh entry would push us over.
+    _headroom = float((portfolio or {}).get("exposure_headroom", 1.0) or 0.0)
+    _cur_exp  = float((portfolio or {}).get("current_exposure", 0.0) or 0.0)
+    _max_exp  = float((portfolio or {}).get("max_exposure", 1.0) or 1.0)
+    if _headroom <= 0.02 and _max_exp < 1.0:  # 2% buffer to avoid edge flapping
+        fail_reasons.append(
+            f"REGIME_EXPOSURE_CAP({_cur_exp*100:.0f}%>={_max_exp*100:.0f}%)"
+        )
+        warnings.append(
+            f"EXPOSURE_AT_CAP: {_cur_exp*100:.0f}% used vs {_max_exp*100:.0f}% "
+            f"regime cap — new BUYs deferred to WATCHLIST"
+        )
+
     # Gate 6: Confidence (HARD with grace band)
     # Phase C5 (rating ≥ 9.0): if conf is within 1.0 pt of the threshold AND
     # the stock already comfortably exceeds TQ + R/R thresholds, accept it as
@@ -7355,6 +7476,7 @@ def run_gates(stock: dict, regime: str, thresholds: dict,
             "EVENT_BLOCK" in f or "HIGH_CORR" in f or "SECTOR_LAGGING" in f
             or "INSTITUTIONAL_EXIT" in f or "SECTOR_CAP" in f
             or "KILL_SWITCH" in f
+            or "REGIME_EXPOSURE_CAP" in f   # Phase 3a #40 — regime exposure cap
             for f in scoreable_fails
         )
         # Phase C6 (2026-07-02): make the "score-based fail" whitelist EXPLICIT
@@ -7583,9 +7705,17 @@ def classify_watchlist(stock: dict, regime: str, thresholds: dict,
         window = confs[-3:] if len(confs) >= 2 else confs
         if len(window) >= 2 and all(v is not None for v in window):
             traj_delta = float(window[-1]) - float(window[0])
-            if traj_delta >= 3.0:
+            # Phase 3a N7 (2026-07-05): widened deadband from ±3.0 → ±4.0
+            # to prevent single-point oscillations from flipping RISING ↔
+            # FADING day-over-day. A stock climbing 74→75→77 (delta +3.0)
+            # used to register RISING; next day 75→77→76 (delta +1.0) would
+            # register FLAT, followed by 77→76→74 (delta -3.0) registering
+            # FADING — three tier flips in three days despite the stock
+            # essentially chopping in a 4-pt range. New band requires ≥4-pt
+            # net move over 3 days for a directional label.
+            if traj_delta >= 4.0:
                 traj = "RISING"
-            elif traj_delta <= -3.0:
+            elif traj_delta <= -4.0:
                 traj = "FADING"
             else:
                 traj = "FLAT"
@@ -7675,7 +7805,7 @@ def classify_watchlist(stock: dict, regime: str, thresholds: dict,
             return {**base, "tier": "NEAR_MISS",
                     "note": f"Needs +{conf_gap:.1f} conf. Watch for volume trigger.",
                     "days_to_watch": 3, "watch_days": 3}
-    elif conf_gap <= 25 and tq >= 70:
+    elif conf_gap <= 25 and tq >= max(60, thresh["min_tq"] - 15):
         return {**base, "tier": "DEVELOPING",
                 "note": f"TQ {tq:.1f} building. Conf gap {conf_gap:.1f}.",
                 "days_to_watch": 7, "watch_days": 7}
@@ -10175,6 +10305,12 @@ def _run_pipeline_inner():
     _log("=== NSE SWING TRADE PIPELINE v6.0 STARTING ===")
     _log(f"  Capital: Rs{PORTFOLIO_CAPITAL:,.0f} | Groq keys: {len(GROQ_KEYS)}")
     _log(f"  Run mode: {'SCHEDULED — day counters will advance' if IS_SCHEDULED else 'MANUAL — day counters frozen, history not written'}")
+    # Phase 3a #34 (2026-07-05): reset _PIPELINE_REGIME at pipeline entry so a
+    # premature abort (market-closed, no tradable, no Nifty) can't leak the
+    # PREVIOUS run's regime into sibling scripts (morning_check, exit
+    # engines) via globals()["_PIPELINE_REGIME"]. Cleared to "" instead of
+    # deleted so downstream `.get()` returns "" cleanly.
+    globals()["_PIPELINE_REGIME"] = ""
     _ensure_portfolio_json()
 
     # ── Sector map (must be first — used by all scoring) ──
@@ -10349,6 +10485,25 @@ def _run_pipeline_inner():
         return
     regime_data = detect_market_regime(nifty_df, breadth, macro)
     regime      = regime_data["regime"]
+
+    # Phase 3a #24 (2026-07-05): survivor-bias diagnostic.
+    # Our `breadth` is computed from the POST-liquidity-filter `tradable`
+    # dict (stocks that passed 200L/day + penny + circuit filters). Under
+    # deteriorating conditions, low-liquidity names drop out FIRST, so
+    # tradable breadth stays artificially bullish while the raw universe
+    # is already showing damage. We surface a "pass-through ratio"
+    # (tradable / total_universe) — a low ratio (e.g. <60%) is a warning
+    # signal that the raw universe has already broken down and our
+    # regime signal may be inflated. This is informational only —
+    # regime still uses filtered breadth to keep decisions consistent
+    # with what we can actually trade. Cost: zero extra fetches.
+    try:
+        _passthrough = len(tradable) / max(len(symbols), 1)
+        _flag = " ⚠️ SURVIVOR_BIAS_RISK" if _passthrough < 0.60 else ""
+        _log(f"  Universe pass-through: {len(tradable)}/{len(symbols)} = "
+             f"{_passthrough*100:.1f}%{_flag}")
+    except Exception:
+        pass
 
     # Phase E1d: pin the current regime into the module scope so exit engines
     # (update_tracker / update_tracker_v2_pnl) can consult it for risk-off
@@ -10556,10 +10711,36 @@ def _run_pipeline_inner():
     elif _ks.get("size_multiplier", 1.0) < 1.0:
         _log(f"  [KILL SWITCH] Sizes DAMPED to {_ks['size_multiplier']}x — "
              f"{_ks.get('reason')} (dd={_ks['drawdown_from_peak_pct']}%)")
+    # Phase 3a #40 (2026-07-05): compute current portfolio exposure so
+    # gates can enforce regime-specific `max_exposure`. Historically this
+    # field was declared in REGIME_THRESHOLDS but never read anywhere,
+    # producing a silent gap: in BEAR (max_exposure 0.20) the pipeline
+    # could still allocate 60%+ if the trader had 4 open positions.
+    # Exposure is defined as sum(open holding values) / capital.
+    _current_exposure = 0.0
+    try:
+        for _h in holdings:
+            _hsym = _h.get("symbol", "")
+            _hshares = float(_h.get("shares", 0) or 0)
+            _hpx = current_prices.get(_hsym) or float(_h.get("entry_price", 0) or 0)
+            if _hshares > 0 and _hpx > 0:
+                _current_exposure += _hshares * _hpx
+        _current_exposure /= max(float(PORTFOLIO_CAPITAL), 1.0)
+    except Exception as _e_exp:
+        _log(f"  [WARN] exposure calc failed (non-fatal): {_e_exp}")
+        _current_exposure = 0.0
+    _regime_max_exposure = float(effective_thresholds[regime].get("max_exposure", 1.0))
+    _exposure_headroom   = max(0.0, _regime_max_exposure - _current_exposure)
+    _log(f"  Exposure: {_current_exposure*100:.1f}% used / "
+         f"{_regime_max_exposure*100:.0f}% cap ({regime}) "
+         f"→ headroom {_exposure_headroom*100:.1f}%")
     portfolio_context = {
-        "active_count":   len([a for a in portfolio_alerts if a["action"] == "HOLD"]),
-        "existing_count": len(holdings),
-        "kill_switch":    _ks,
+        "active_count":       len([a for a in portfolio_alerts if a["action"] == "HOLD"]),
+        "existing_count":     len(holdings),
+        "kill_switch":        _ks,
+        "current_exposure":   _current_exposure,     # 0.0 .. 1.0+
+        "max_exposure":       _regime_max_exposure,  # regime cap
+        "exposure_headroom":  _exposure_headroom,    # available fraction
     }
     buys, watchlist_stocks, rejected = [], [], []
 
