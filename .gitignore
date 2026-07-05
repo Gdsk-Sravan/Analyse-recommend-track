@@ -37,12 +37,32 @@ backtest_staging/
 # Regenerated caches (safe to skip)
 sector_cache.json
 fundamentals_cache.json
+# delivery_cache.json — DO NOT ignore: workflows (main.yml + tracker.yml)
+#   commit this back to git so the delivery-quantity cache survives beyond the
+#   90-day artifact retention. Adding it here breaks `git add` with a hard
+#   error ("The following paths are ignored by one of your .gitignore files").
 vix_history_cache.json
 universe_cache_meta.json
 weekly_job_meta.json
 tradable_universe.csv
 qualified_stocks.csv
 low_volatility_stocks.txt
+
+# ─── Phase G6 (2026-07-03): DO NOT IGNORE these curated blocklists ───────
+# high_pledge_stocks.txt   — curated list of high-pledge / distressed promoter
+#                            stocks. main.py hard-rejects these regardless of
+#                            technical score.
+# asm_gsm_blocklist.txt    — NSE surveillance (ASM Stage 2+ / GSM) tickers.
+#                            main.py hard-rejects these too.
+# stocks.txt               — the 2,360-symbol universe.
+#
+# All three MUST be committed. GitHub Actions runners are fresh VMs each
+# scheduled run — if these files aren't in the repo, they won't exist on the
+# runner and load_high_pledge_blocklist() will return an empty set → problem
+# stocks slip through into recommendations.
+#
+# Never add *.txt to this file. If a future *.txt cache needs ignoring, list
+# it by exact name, not a wildcard.
 
 # Forge/VS Code backup files
 *.bak-by-forge-*
