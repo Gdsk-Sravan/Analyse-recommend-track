@@ -6381,17 +6381,28 @@ def price_action_score(closes: np.ndarray, highs: np.ndarray,
         #   "Up-day volume > highest down-day volume in the last 10 days,
         #    while stock is in a base or trending above 10/50-day MA."
         # ChartMill Setup Quality: "More bonus points for recent pocket pivots"
+        #
+        # India refinement (2026-07-05): US pocket-pivot theory assumes NASDAQ-
+        # scale liquidity. On NSE mid/small-caps, a "pocket pivot" on 30k shares
+        # is noise, not institutional footprint. Floor at 100k shares (absolute)
+        # AND ₹50 lakh notional (avg_val_lakhs proxy via close*volume) so we only
+        # award POCKET_PIVOT credit when there's real institutional participation.
         if volumes is not None and n >= 11 and len(volumes) >= 11:
             try:
                 # Today must be an up day
                 today_up = closes[-1] > closes[-2]
                 today_vol = float(volumes[-1])
+                # India volume floor: 100k shares AND ₹50 lakh notional
+                _india_vol_ok = (
+                    today_vol >= 100_000
+                    and (today_vol * float(closes[-1])) >= 50_00_000  # ₹50 lakh
+                )
                 # Highest DOWN-day volume in the last 10 sessions (excluding today)
                 down_vols = [
                     float(volumes[-i]) for i in range(2, 12)
                     if i <= len(closes) and closes[-i] < closes[-i-1]
                 ]
-                if today_up and down_vols and today_vol > max(down_vols):
+                if today_up and down_vols and today_vol > max(down_vols) and _india_vol_ok:
                     # Also require: still in uptrend (above EMA20)
                     if closes[-1] > ema20:
                         return 90, "POCKET_PIVOT"
@@ -6993,7 +7004,20 @@ def compute_all_factors(symbol: str, df,
         # CANSLIM "L=Leader"; ChartMill "Strong Stocks near New High" screener.
         # Stocks within 15% of 52W-high are typically breakout leaders.
         # Emit as `near_52w_pct` (0-100 score) usable in TQ formula.
+        #
+        # India refinement (2026-07-05): US 52W-high leadership assumes clean
+        # price discovery. In India, penny stocks and SEBI-surveilled names can
+        # be pumped near 52W-high without real institutional buying — often
+        # visible as thin delivery. Guard the bonus with two India-specific
+        # quality floors:
+        #   1) Market cap ≥ ₹500 Cr        (already the Gate 3c floor)
+        #   2) volume_delivery score > 55  (blended vol/delivery/OBV proxy;
+        #      55 ≈ "clearly better than average day" — filters out low-
+        #      delivery pump patterns typical of ASM/GSM candidates)
+        # If either floor fails, downgrade bonus to 50 (neutral, no credit)
+        # so a manipulator's chart alone can't earn the CANSLIM-L reward.
         _n52_pct = 0.0
+        _n52_downgraded = False
         try:
             if high_52w and high_52w > 0:
                 _dist_pct = (high_52w - entry) / high_52w * 100  # 0 = at high, 20 = 20% below
@@ -7002,9 +7026,21 @@ def compute_all_factors(symbol: str, df,
                 elif _dist_pct <= 15.0:   _n52_pct = 70   # near enough (CANSLIM L)
                 elif _dist_pct <= 25.0:   _n52_pct = 55   # moderate
                 else:                     _n52_pct = 40   # far from 52W high
+                # India quality floor — only applies if we were going to give a bonus (>55)
+                if _n52_pct > 55.0:
+                    _mcap = float(result.get("market_cap_cr", 0.0) or 0.0)
+                    _vd   = float(result.get("volume_delivery", 50.0) or 50.0)
+                    # market_cap_cr == 0 means "unknown" (G8-B convention) → do NOT punish
+                    _mcap_ok = (_mcap == 0.0) or (_mcap >= 500.0)
+                    _vd_ok   = _vd > 55.0
+                    if not (_mcap_ok and _vd_ok):
+                        _n52_pct = 50.0  # neutral: no CANSLIM-L credit without quality
+                        _n52_downgraded = True
         except Exception:
             _n52_pct = 50.0
         result["near_52w_score"] = round(_n52_pct, 1)
+        if _n52_downgraded:
+            result.setdefault("_soft_warnings", []).append("NEAR_52W_NO_QUALITY")
 
         # ── Trade Quality Score — Phase 3a N3 / Option B+VC (2026-07-05) ──
         # EVOLUTION:
@@ -7103,6 +7139,35 @@ def compute_all_factors(symbol: str, df,
             _ext_penalty = 15.0
         elif _extension_pct > 15.0:
             _ext_penalty = 5.0
+
+        # ── India refinement (2026-07-05): Expiry-week volume down-weight ──
+        # NSE weekly F&O expiry lands every Thursday; monthly expiry is the
+        # last Thursday of the month. On expiry weeks, hedging/rollover flows
+        # inflate cash-market volume by 20-40% without reflecting fresh
+        # directional conviction. Feeding raw volume into TQ during expiry
+        # weeks over-credits noise trades.
+        #
+        # Fix: on expiry-week days (Wed/Thu/Fri of a Thursday-expiry week),
+        # down-weight the volume component by 30% BEFORE it enters the TQ
+        # formula. Uses local system date — cheap, deterministic, no external
+        # data dep. Monthly expiry (last Thursday of month) gets the same
+        # treatment (weekly-expiry rule already covers it since every Thursday
+        # is at minimum a weekly expiry).
+        _expiry_week_flag = False
+        try:
+            _today_local = datetime.date.today()
+            _dow = _today_local.weekday()   # Mon=0 .. Sun=6, Thu=3
+            # Wed(2), Thu(3), Fri(4) all fall within the expiry-week volume
+            # contamination window — Wed sees pre-positioning, Fri sees rollover
+            # cleanup. Skip Mon/Tue (fresh directional volume).
+            if _dow in (2, 3, 4):
+                _expiry_week_flag = True
+                _vol_component = _vol_component * 0.70
+        except Exception:
+            _expiry_week_flag = False
+        result["expiry_week"] = _expiry_week_flag
+        if _expiry_week_flag:
+            result.setdefault("_soft_warnings", []).append("EXPIRY_WEEK_VOL_ADJ")
 
         # ── Trade Quality Score — Phase 3b (2026-07-05) ──
         # New: added _n52_pct as a component (Fix #2), penalty from _extension
