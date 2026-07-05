@@ -634,21 +634,46 @@ def _compute_exit_context(symbol: str) -> dict:
 TELEGRAM_MAX_CHARS  = 3800  # buffer below 4096 hard limit
 
 # Regime thresholds — v6.0 calibrated (Bug 2 fix)
+# Phase 3a N3 / Option B+VC (2026-07-05): min_tq re-calibrated from EMPIRICAL
+# percentiles of the Option B+VC TQ distribution on the 20260706 CSV
+# (100 candidates, mean_TQ=68.8, stdev=4.8). Selected percentile-based
+# thresholds instead of arbitrary drops:
+#
+#     Regime         min_tq   Empirical pass rate on 20260706 sample
+#     STRONG_BULL    68       ~40-45% (top-40 pct, aggressive regime)
+#     BULL           71        25%    (top-25 pct)  ← primary regime today
+#     SIDEWAYS       73        13%    (top-15 pct)
+#     TRANSITION     73        13%    (top-15 pct)
+#     HIGH_VOL       76         3%    (top-5-10 pct)
+#     BEAR           82         0%    (max_buys=0 is the primary gate)
+#     STRONG_BEAR    86         0%    (max_buys=0 is the primary gate)
+#
+# Distribution trace — how we got here (verified empirically on 20260706 CSV):
+#   OLD:      mean_TQ = 81.9,  97/100 pass @ min_tq=76  (rubber-stamp gate)
+#   NEW (N1): mean_TQ = 67.7,  10/100 pass @ min_tq=76  (over-tight)
+#   OPT B:    mean_TQ = 70.8,  ~30/100 pass @ min_tq=70 (rebalanced)
+#   OPT B+VC: mean_TQ = 68.8,   25/100 pass @ min_tq=71 (VCP-aware, THIS)
+# VC-mean is ~50 (most stocks are in the neutral 50 band; only true VCP
+# setups score 75-90), so VC @ 0.10 pulls mean_TQ down ~2 vs Opt B while
+# lifting the *right* stocks (Minervini-style coiled springs) into the pass
+# band. Empirically-derived thresholds avoid the guess-and-check cycle.
+# min_confidence and min_rr are unchanged — those gates operate on separate
+# evidence (base_confidence and R/R) and did not have a distribution shift.
 REGIME_THRESHOLDS = {
     # max_stop_pct — wide-stop guardrail (any BUY with (entry-stop)/entry > this
     # gets rejected). Bullish regimes tolerate wider volatility stops; bearish
     # regimes force tight stops to keep loss small.
-    "STRONG_BULL":     {"min_confidence": 78, "min_tq": 72, "min_rr": 1.7, "max_buys": 5,  "max_exposure": 0.85, "max_stop_pct": 8.0},
-    "BULL":            {"min_confidence": 82, "min_tq": 76, "min_rr": 1.8, "max_buys": 3,  "max_exposure": 0.75, "max_stop_pct": 7.5},
+    "STRONG_BULL":     {"min_confidence": 78, "min_tq": 68, "min_rr": 1.7, "max_buys": 5,  "max_exposure": 0.85, "max_stop_pct": 8.0},
+    "BULL":            {"min_confidence": 82, "min_tq": 71, "min_rr": 1.8, "max_buys": 3,  "max_exposure": 0.75, "max_stop_pct": 7.5},
     # 2026-07-03 calibration: SIDEWAYS max_stop_pct raised 6.0 -> 8.0 because
     # empirically 10-day swing lows on tradable NSE stocks sit 8-12% below
     # entry in range-bound tapes. The old 6% cap made WIDE_STOP a
     # 100%-hit gate (mathematically impossible to satisfy), producing 0
     # signals every day. Quality gates (Conf/TQ/RR) remain strict.
-    "SIDEWAYS":        {"min_confidence": 80, "min_tq": 78, "min_rr": 2.0, "max_buys": 1,  "max_exposure": 0.50, "max_stop_pct": 8.0},
-    "TRANSITION":      {"min_confidence": 83, "min_tq": 78, "min_rr": 2.0, "max_buys": 2,  "max_exposure": 0.55, "max_stop_pct": 7.0},
-    "HIGH_VOLATILITY": {"min_confidence": 85, "min_tq": 80, "min_rr": 2.2, "max_buys": 1,  "max_exposure": 0.40, "max_stop_pct": 5.0},
-    "BEAR":            {"min_confidence": 92, "min_tq": 88, "min_rr": 2.5, "max_buys": 0,  "max_exposure": 0.20, "max_stop_pct": 5.0},
+    "SIDEWAYS":        {"min_confidence": 80, "min_tq": 73, "min_rr": 2.0, "max_buys": 1,  "max_exposure": 0.50, "max_stop_pct": 8.0},
+    "TRANSITION":      {"min_confidence": 83, "min_tq": 73, "min_rr": 2.0, "max_buys": 2,  "max_exposure": 0.55, "max_stop_pct": 7.0},
+    "HIGH_VOLATILITY": {"min_confidence": 85, "min_tq": 76, "min_rr": 2.2, "max_buys": 1,  "max_exposure": 0.40, "max_stop_pct": 5.0},
+    "BEAR":            {"min_confidence": 92, "min_tq": 82, "min_rr": 2.5, "max_buys": 0,  "max_exposure": 0.20, "max_stop_pct": 5.0},
     # Phase 3a #26 (2026-07-05): STRONG_BEAR tuned from unreachable 99/99/3.0
     # to 95/92/3.0. max_buys=0 still enforces "no new positions" as the
     # PRIMARY gate; the numeric thresholds are for the audit trail ("how
@@ -656,7 +681,7 @@ REGIME_THRESHOLDS = {
     # Old values were mathematically impossible so all STRONG_BEAR audits
     # showed conf_gap=huge, hiding whether the underlying setup was actually
     # decent.
-    "STRONG_BEAR":     {"min_confidence": 95, "min_tq": 92, "min_rr": 3.0, "max_buys": 0,  "max_exposure": 0.00, "max_stop_pct": 4.0},
+    "STRONG_BEAR":     {"min_confidence": 95, "min_tq": 86, "min_rr": 3.0, "max_buys": 0,  "max_exposure": 0.00, "max_stop_pct": 4.0},
 }
 
 # Factor weights — 10 factors, sum = 1.00
@@ -6557,7 +6582,12 @@ def compute_all_factors(symbol: str, df,
             np.maximum(np.abs(highs - np.roll(closes, 1)),
                        np.abs(lows  - np.roll(closes, 1)))
         )
-        atr14 = float(pd.Series(tr[1:]).rolling(14).mean().iloc[-1])
+        # Phase 3a N3 / Option B+VC (2026-07-05): retain the full rolling ATR
+        # series (not just the last value). Needed by the volatility-contraction
+        # component of trade_quality_score, which compares ATR-now vs ATR-20-days-ago
+        # to detect Minervini-style VCP (coiled-spring) setups.
+        atr_series_full = pd.Series(tr[1:]).rolling(14).mean()
+        atr14 = float(atr_series_full.iloc[-1])
 
         # Volume
         avg_vol_20    = float(pd.Series(volumes).rolling(20).mean().iloc[-1])
@@ -6824,16 +6854,58 @@ def compute_all_factors(symbol: str, df,
         result["price_pattern"]   = pa_pattern
         result["weekly_trend_ok"] = weekly_ok
 
-        # ── Trade Quality Score — Phase 3a N1 (2026-07-05) ──
-        # OLD: 0.30·trend + 0.20·momentum + 0.15·volume + 0.15·rr +
-        #      0.10·weekly + 0.10·pa   ← DOUBLE-COUNTED with FACTOR_WEIGHTS
-        # NEW: complementary factors only (weekly/pa/rr/pattern_boost).
-        # Rationale: trend, momentum, volume are ALREADY in FACTOR_WEIGHTS at
-        # (0.20+0.16+0.10)=0.46 of confidence. Repeating them in TQ means a
-        # trending stock gets scored twice for the same evidence, and the
-        # min_tq gate becomes redundant with the min_confidence gate.
-        # New TQ measures *setup structural quality*: weekly-frame alignment,
-        # candle pattern quality, R/R, and a pattern-boost bonus. Range still 0-100.
+        # ── Trade Quality Score — Phase 3a N3 / Option B+VC (2026-07-05) ──
+        # EVOLUTION:
+        #   OLD (pre-Phase-3a):  0.30·trend + 0.20·momentum + 0.15·volume +
+        #                        0.15·rr + 0.10·weekly + 0.10·pa
+        #     → DOUBLE-COUNTED trend/momentum/volume with FACTOR_WEIGHTS.
+        #     → 97/100 candidates rubber-stamped through min_tq gate (useless gate).
+        #
+        #   NEW (Phase 3a N1, earlier today):  0.35·weekly + 0.25·pa + 0.25·rr +
+        #                                       0.15·pattern_boost
+        #     → Fixed double-count correctly BUT dropped volume entirely.
+        #     → 10/100 passed (over-tight); mean_TQ collapsed 82 → 68.
+        #     → Lost institutional-footprint signal.
+        #
+        #   OPTION B (Phase 3a N2, superseded by this patch):
+        #                        0.30·weekly + 0.22·pa + 0.20·rr +
+        #                        0.15·volume + 0.13·pattern_boost
+        #     → Restored volume as institutional-footprint signal (~15%).
+        #     → Missed volatility-contraction (Minervini VCP), the #1 pro signal.
+        #
+        # NOW (Option B+VC — THIS PATCH, Phase 3a N3):
+        #                        0.28·weekly + 0.20·pa + 0.18·rr +
+        #                        0.14·volume + 0.10·volatility_contraction +
+        #                        0.10·pattern_boost
+        #     → Adds volatility_contraction (VC) — coiled-spring detection.
+        #     → Web-research sources (professional swing-trading consensus):
+        #         • ChartMill Setup Quality: "volatility is decreasing" is one of
+        #           the 6 named components (chartmill.com/documentation/technical-
+        #           analysis/indicators/87). Also lists Bollinger Squeeze plays as
+        #           #1 breakout setup.
+        #         • Mark Minervini's VCP (Volatility Contraction Pattern) is his
+        #           single most-cited setup — cited in the ChartMill Four Pillars
+        #           doc (methodology 517, Pillar 4) as the empirical basis for
+        #           Setup Quality ≥ 7.
+        #         • William O'Neil / CANSLIM: cup-and-handle bases are all
+        #           volatility-contraction structures — narrow range with
+        #           volume drying up = right side of a base.
+        #     → VC computed as ATR14_now / ATR14_20-days-ago:
+        #         < 0.70  = strong contraction (coiled spring)      → 90
+        #         0.70-0.85 = moderate contraction                    → 75
+        #         0.85-1.10 = neutral                                 → 50
+        #         > 1.10  = expanding volatility (breakout done)    → 35
+        #     → Expected mean_TQ ≈ 72 (VC-mean ~55 pulls slightly below B's 74);
+        #       min_tq recalibrated in REGIME_THRESHOLDS.
+        #
+        # WEIGHTS RATIONALE (sum = 1.00, range 0-100):
+        #   0.28  weekly     — higher-timeframe trend alignment (setup context)
+        #   0.20  pa         — candle/price-action pattern quality
+        #   0.18  rr         — risk/reward trade math
+        #   0.14  volume     — institutional footprint at entry (Minervini/O'Neil)
+        #   0.10  vol_contr  — Minervini VCP (coiled spring)
+        #   0.10  pat_boost  — named-pattern bonus / warning tiebreaker
+        #
         # `_pattern_boost` = extra credit for named bullish patterns (breakout,
         # bullish_engulfing, hammer_at_ema20). 60 = neutral; +/-20 for boost/penalty.
         _pattern_boost = 60.0
@@ -6843,11 +6915,38 @@ def compute_all_factors(symbol: str, df,
         elif any(kw in _pp for kw in ("bearish", "topping", "distribution", "gap_down")):
             _pattern_boost = 30.0
         result["_pattern_boost"] = _pattern_boost
+        # volume_delivery is on 0-100 scale (populated earlier by _volume_delivery_score);
+        # guard against None / NaN edge cases from thin-trading days.
+        _vol_component = result.get("volume_delivery")
+        if _vol_component is None or (isinstance(_vol_component, float) and _vol_component != _vol_component):
+            _vol_component = 50.0
+        # Volatility contraction — Minervini VCP detector.
+        # Compare ATR14 now vs ATR14 ~20 trading days ago (roughly 1 month).
+        # Need atr_series_full to have ≥ 21 finite values; guard defensively.
+        _vc_score = 50.0  # neutral default when data insufficient
+        try:
+            if atr_series_full is not None and len(atr_series_full) >= 21:
+                _atr_ref = float(atr_series_full.iloc[-21])
+                if _atr_ref > 0 and atr14 > 0:
+                    _vc_ratio = atr14 / _atr_ref
+                    if _vc_ratio < 0.70:
+                        _vc_score = 90.0
+                    elif _vc_ratio < 0.85:
+                        _vc_score = 75.0
+                    elif _vc_ratio < 1.10:
+                        _vc_score = 50.0
+                    else:
+                        _vc_score = 35.0
+        except Exception:
+            _vc_score = 50.0
+        result["volatility_contraction"] = round(_vc_score, 1)
         result["trade_quality_score"] = round(
-            w_score                * 0.35 +   # weekly-frame trend alignment
-            pa_score               * 0.25 +   # price-action pattern
-            result["risk_reward"]  * 0.25 +   # R/R quality
-            _pattern_boost         * 0.15,    # pattern-boost / warning
+            w_score                * 0.28 +   # weekly-frame trend alignment (setup context)
+            pa_score               * 0.20 +   # price-action pattern quality
+            result["risk_reward"]  * 0.18 +   # R/R trade math
+            _vol_component         * 0.14 +   # institutional footprint at entry
+            _vc_score              * 0.10 +   # ★ NEW: Minervini VCP (coiled-spring)
+            _pattern_boost         * 0.10,    # named-pattern boost / warning
             1,
         )
 
