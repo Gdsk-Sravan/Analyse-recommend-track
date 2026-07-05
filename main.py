@@ -6335,24 +6335,141 @@ def weekly_trend_score(df_daily) -> tuple:
 
 
 def price_action_score(closes: np.ndarray, highs: np.ndarray,
-                       lows: np.ndarray, ema20: float, atr14: float) -> tuple:
+                       lows: np.ndarray, ema20: float, atr14: float,
+                       volumes: np.ndarray = None) -> tuple:
     """
-    Detects 3 high-edge NSE price patterns. Returns (score 0-100, pattern_name).
+    Detects high-edge NSE price patterns. Returns (score 0-100, pattern_name).
 
-    1. Inside bar after trend (tight range = coiling energy before move)
-       - High-probability low-risk entry on the next bar break
-    2. False breakdown recovery (bears trapped = strong continuation signal)
-       - Price dipped below a recent swing low then closed back above ema20
-    3. 3-bar tight consolidation near EMA20 (spring before move)
-       - Price range over 3 bars < 2.5% while above EMA20
+    Pattern priority (highest edge first — return early on first match):
+    ────────────────────────────────────────────────────────────────────
+    Original 3 patterns:
+      1. INSIDE_BAR (score 82)                — tight range = coiling energy
+      2. FALSE_BREAKDOWN_RECOVERY (score 88) — bear-trap continuation
+      3. TIGHT_CONSOLIDATION (score 80)      — 3-bar spring near EMA20
+
+    Phase 3b (2026-07-05) — 4 new patterns from CANSLIM/Minervini/O'Neil literature:
+      4. POCKET_PIVOT (score 90)             — O'Neil/Morales institutional footprint:
+                                               up-day volume > highest DOWN-day
+                                               volume in last 10 days, in an
+                                               established uptrend. ChartMill:
+                                               "bonus points for recent pocket
+                                               pivots" (highest-weight setup).
+      5. CUP_HANDLE (score 92)               — CANSLIM signature base: proper
+                                               U-shape 30-60 bars with a shallow
+                                               handle. Buy point = handle high.
+      6. FLAT_BASE (score 85)                — CANSLIM/O'Neil: 5+ weeks (25+
+                                               bars) sideways within 10% range,
+                                               above EMA20. "At least 7 weeks
+                                               on weekly charts" per O'Neil.
+      7. VCP_CONTRACTION (score 88)          — Minervini VCP: 3+ successively
+                                               tighter pullbacks over ~60 bars,
+                                               each contraction smaller than
+                                               the last.
 
     If none detected → NONE (score 50, neutral — doesn't penalise the stock)
+
+    NOTE: `volumes` is optional for backward compatibility. When absent, the
+    Pocket Pivot check is skipped (returns None) and other patterns still work.
     """
     try:
         n = len(closes)
         if n < 15:
             return 50, "NONE"
 
+        # ─── Pattern 4 (NEW): Pocket Pivot ───────────────────────────
+        # O'Neil/Morales/Kacher's Trade Like an O'Neil Disciple:
+        #   "Up-day volume > highest down-day volume in the last 10 days,
+        #    while stock is in a base or trending above 10/50-day MA."
+        # ChartMill Setup Quality: "More bonus points for recent pocket pivots"
+        if volumes is not None and n >= 11 and len(volumes) >= 11:
+            try:
+                # Today must be an up day
+                today_up = closes[-1] > closes[-2]
+                today_vol = float(volumes[-1])
+                # Highest DOWN-day volume in the last 10 sessions (excluding today)
+                down_vols = [
+                    float(volumes[-i]) for i in range(2, 12)
+                    if i <= len(closes) and closes[-i] < closes[-i-1]
+                ]
+                if today_up and down_vols and today_vol > max(down_vols):
+                    # Also require: still in uptrend (above EMA20)
+                    if closes[-1] > ema20:
+                        return 90, "POCKET_PIVOT"
+            except Exception:
+                pass
+
+        # ─── Pattern 5 (NEW): Cup-and-Handle (conservative) ──────────
+        # CANSLIM signature. Simplified geometric check:
+        #   - Look back 30-60 bars for the cup depth
+        #   - Left rim near right rim (< 5% diff)
+        #   - Cup depth 12-33% (proper cup, not V-shape)
+        #   - Handle in last 5-15 bars: shallow pullback (< 12%)
+        #   - Handle high < cup rim (still setting up, not broken out yet)
+        if n >= 50:
+            try:
+                cup_window = closes[-60:-15]  # cup body (excludes handle)
+                left_rim  = float(np.max(cup_window[:10]))
+                right_rim = float(np.max(cup_window[-10:]))
+                cup_low   = float(np.min(cup_window))
+                cup_depth_pct = (max(left_rim, right_rim) - cup_low) / max(left_rim, right_rim) * 100
+                rim_diff_pct  = abs(left_rim - right_rim) / max(left_rim, right_rim) * 100
+                # Handle (last 5-15 bars): shallow pullback from right rim
+                handle_window = closes[-15:]
+                handle_high   = float(np.max(handle_window))
+                handle_low    = float(np.min(handle_window))
+                handle_depth_pct = (handle_high - handle_low) / handle_high * 100
+                cup_ok = (12 <= cup_depth_pct <= 33 and rim_diff_pct < 5)
+                handle_ok = (2 <= handle_depth_pct <= 12
+                             and handle_high <= right_rim * 1.02
+                             and closes[-1] > ema20)
+                if cup_ok and handle_ok:
+                    return 92, "CUP_HANDLE"
+            except Exception:
+                pass
+
+        # ─── Pattern 6 (NEW): VCP contraction count (real Minervini) ─
+        # Split recent ~60 bars into 3 windows, measure each window's high-low
+        # range as pct of window mid. Each successive window range should be
+        # smaller (contracting). 3 successive contractions = classic VCP.
+        if n >= 60:
+            try:
+                w1 = closes[-60:-40]; h1 = highs[-60:-40]; l1 = lows[-60:-40]
+                w2 = closes[-40:-20]; h2 = highs[-40:-20]; l2 = lows[-40:-20]
+                w3 = closes[-20:];    h3 = highs[-20:];    l3 = lows[-20:]
+                r1 = (float(np.max(h1)) - float(np.min(l1))) / float(np.mean(w1)) * 100
+                r2 = (float(np.max(h2)) - float(np.min(l2))) / float(np.mean(w2)) * 100
+                r3 = (float(np.max(h3)) - float(np.min(l3))) / float(np.mean(w3)) * 100
+                # Each range strictly smaller + still above EMA20 + final range tight
+                if r1 > r2 > r3 and r3 < 8.0 and closes[-1] > ema20:
+                    return 88, "VCP_CONTRACTION"
+            except Exception:
+                pass
+
+        # ─── Pattern 7 (NEW): Flat Base ──────────────────────────────
+        # CANSLIM/O'Neil: 5+ weeks sideways in a 10-15% range.
+        # 5 weeks daily ≈ 25 bars. Range = (max - min) / mid.
+        if n >= 25:
+            try:
+                base = closes[-25:]
+                bhi  = highs[-25:]
+                blo  = lows[-25:]
+                base_high = float(np.max(bhi))
+                base_low  = float(np.min(blo))
+                base_mid  = (base_high + base_low) / 2.0
+                base_range_pct = (base_high - base_low) / base_mid * 100
+                # Must also be above EMA20 (trending base, not falling knife)
+                # and not in a pattern already better handled above.
+                if base_range_pct < 15.0 and closes[-1] > ema20:
+                    # Distinguish from TIGHT_CONSOLIDATION which is 3-bar; this
+                    # is 25-bar. Award higher score for longer/wider base only
+                    # when the range is 8-15% (proper flat base). Below 8% is
+                    # picked up by TIGHT_CONSOLIDATION anyway.
+                    if 8.0 <= base_range_pct < 15.0:
+                        return 85, "FLAT_BASE"
+            except Exception:
+                pass
+
+        # ─── Original 3 patterns (unchanged) ─────────────────────────
         # Pattern 1: Inside bar (yesterday's entire range inside 2 days ago)
         inside_bar = (highs[-2] < highs[-3] and lows[-2] > lows[-3]
                       and closes[-1] > ema20)   # still in uptrend
@@ -6850,9 +6967,44 @@ def compute_all_factors(symbol: str, df,
         result["macro_alignment"] = max(0, min(100, 60 + macro_adj * 2))
 
         # ── Price Action Pattern ──
-        pa_score, pa_pattern = price_action_score(closes, highs, lows, ema20, atr14)
+        # Phase 3b (2026-07-05): pass volumes for Pocket Pivot detection.
+        pa_score, pa_pattern = price_action_score(closes, highs, lows, ema20, atr14, volumes)
         result["price_pattern"]   = pa_pattern
         result["weekly_trend_ok"] = weekly_ok
+
+        # ── Fix #1 (Phase 3b): Extension check — block chase trades ──
+        # Reference: O'Neil "no more than 5% above pivot"; ChartMill "current
+        # prices not too far from short-term MAs"; Minervini "avoid extended".
+        # Formula: pct above 50-DMA. > 25% = extended (bad entry, chase risk).
+        # This does NOT hard-block the stock — it demotes it via a score penalty.
+        # Also emitted as `extension_pct` so downstream gates / logs can act.
+        _extension_pct = 0.0
+        _extended = False
+        try:
+            if ema50 and ema50 > 0:
+                _extension_pct = (entry / ema50 - 1.0) * 100
+                _extended = _extension_pct > 25.0
+        except Exception:
+            _extension_pct = 0.0
+        result["extension_pct"] = round(_extension_pct, 1)
+        result["is_extended"]   = _extended
+
+        # ── Fix #2 (Phase 3b): Near-52W-high bonus ──
+        # CANSLIM "L=Leader"; ChartMill "Strong Stocks near New High" screener.
+        # Stocks within 15% of 52W-high are typically breakout leaders.
+        # Emit as `near_52w_pct` (0-100 score) usable in TQ formula.
+        _n52_pct = 0.0
+        try:
+            if high_52w and high_52w > 0:
+                _dist_pct = (high_52w - entry) / high_52w * 100  # 0 = at high, 20 = 20% below
+                if _dist_pct <= 3.0:      _n52_pct = 95   # essentially at high — breakout candidate
+                elif _dist_pct <= 8.0:    _n52_pct = 85   # very close
+                elif _dist_pct <= 15.0:   _n52_pct = 70   # near enough (CANSLIM L)
+                elif _dist_pct <= 25.0:   _n52_pct = 55   # moderate
+                else:                     _n52_pct = 40   # far from 52W high
+        except Exception:
+            _n52_pct = 50.0
+        result["near_52w_score"] = round(_n52_pct, 1)
 
         # ── Trade Quality Score — Phase 3a N3 / Option B+VC (2026-07-05) ──
         # EVOLUTION:
@@ -6940,13 +7092,39 @@ def compute_all_factors(symbol: str, df,
         except Exception:
             _vc_score = 50.0
         result["volatility_contraction"] = round(_vc_score, 1)
+
+        # Extension penalty (Fix #1). Extended stocks (>25% above 50-DMA) get
+        # a strong TQ haircut so they lose the ranking race. Full formula:
+        #   extension 0-15%  → no penalty (0)
+        #   extension 15-25% → mild penalty (-5)
+        #   extension >25%   → strong penalty (-15) — chase blocker
+        _ext_penalty = 0.0
+        if _extension_pct > 25.0:
+            _ext_penalty = 15.0
+        elif _extension_pct > 15.0:
+            _ext_penalty = 5.0
+
+        # ── Trade Quality Score — Phase 3b (2026-07-05) ──
+        # New: added _n52_pct as a component (Fix #2), penalty from _extension
+        # (Fix #1). Weights rebalanced so sum = 1.00.
+        #   0.24  weekly     — higher-timeframe trend alignment
+        #   0.18  pa         — price-action pattern (7 patterns now vs 3)
+        #   0.16  rr         — R/R trade math
+        #   0.12  volume     — institutional footprint
+        #   0.10  vol_contr  — Minervini VCP proxy
+        #   0.10  n52        — near-52W-high (CANSLIM Leader)  ★ NEW
+        #   0.10  pat_boost  — named-pattern boost / warning
+        # (0.24 + 0.18 + 0.16 + 0.12 + 0.10 + 0.10 + 0.10 = 1.00 ✓)
+        # Final subtract: extension penalty (up to -15 pts direct).
         result["trade_quality_score"] = round(
-            w_score                * 0.28 +   # weekly-frame trend alignment (setup context)
-            pa_score               * 0.20 +   # price-action pattern quality
-            result["risk_reward"]  * 0.18 +   # R/R trade math
-            _vol_component         * 0.14 +   # institutional footprint at entry
-            _vc_score              * 0.10 +   # ★ NEW: Minervini VCP (coiled-spring)
-            _pattern_boost         * 0.10,    # named-pattern boost / warning
+            w_score                * 0.24 +   # weekly-frame trend alignment
+            pa_score               * 0.18 +   # price-action pattern quality (7 patterns)
+            result["risk_reward"]  * 0.16 +   # R/R trade math
+            _vol_component         * 0.12 +   # institutional footprint at entry
+            _vc_score              * 0.10 +   # Minervini VCP proxy
+            _n52_pct               * 0.10 +   # ★ NEW: near-52W-high (CANSLIM L)
+            _pattern_boost         * 0.10     # named-pattern boost / warning
+            - _ext_penalty,                    # ★ NEW: extension chase blocker
             1,
         )
 
