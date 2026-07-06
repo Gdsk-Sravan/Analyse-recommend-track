@@ -691,13 +691,23 @@ REGIME_THRESHOLDS = {
 # Redistributed: trend +0.02, momentum +0.02. If we later get PCR coverage
 # for the full F&O universe (~200 stocks), we can restore this to 0.02–0.04
 # but drive it from a real dynamic-score-per-stock, not a placeholder.
+#
+# Phase G8-E (2026-07-06): audit fix #3 — news_risk weight lowered
+# from 0.08 → 0.05. Rationale: LLM-summarised headline scoring has
+# ~10-15% noise (misread sentiment, stale news, false positive event
+# tags). At 0.08 weight one news call ~= 40% of the ownership_quality
+# fundamental factor's information content, which is out of proportion
+# for a ~50-char summary. The freed 0.03 is redistributed to
+# trend_quality (0.20 → 0.23) — our highest-confidence purely-technical
+# signal computed directly from prices. This tilts the score toward
+# hard-measurable data and away from LLM-inferred sentiment.
 FACTOR_WEIGHTS = {
-    "trend_quality":      0.20,
+    "trend_quality":      0.23,
     "momentum_quality":   0.16,
     "volume_delivery":    0.10,
     "sector_strength":    0.15,
     "rs_vs_nifty":        0.15,
-    "news_risk":          0.08,
+    "news_risk":          0.05,
     "risk_reward":        0.07,
     "ownership_quality":  0.06,
     "options_sentiment":  0.00,
@@ -7458,11 +7468,41 @@ def compute_all_factors(symbol: str, df,
         #   extension 0-15%  → no penalty (0)
         #   extension 15-25% → mild penalty (-5)
         #   extension >25%   → strong penalty (-15) — chase blocker
+        #
+        # Phase G8-E (2026-07-06): audit fix #5 — regime-scaled extension.
+        # In STRONG_BULL / BULL trending environments, extended stocks
+        # (>25% above 50-DMA) frequently continue running — the post-COVID
+        # rally, 2023-24 midcap rally, and 2019 leader trends all show
+        # +25–40% extensions persisting for weeks. A flat -15 there is
+        # too punitive. In SIDEWAYS / HIGH_VOLATILITY / TRANSITION, the
+        # same extension is a much stronger mean-reversion setup and the
+        # full penalty stands. BEAR/STRONG_BEAR: extension is a warning of
+        # a dead-cat bounce — tighten penalty (+50%).
+        # Multipliers are conservative; net effect is a ±25% swing on the
+        # penalty (not the score itself). Full behaviour disabled by env
+        # EXTENSION_REGIME_SCALING=0 to keep the audit-mode option.
         _ext_penalty = 0.0
         if _extension_pct > 25.0:
             _ext_penalty = 15.0
         elif _extension_pct > 15.0:
             _ext_penalty = 5.0
+        try:
+            if os.getenv("EXTENSION_REGIME_SCALING", "1") != "0":
+                _regime_name = (regime_data or {}).get("regime", "SIDEWAYS")
+                _regime_mult = {
+                    "STRONG_BULL":     0.50,   # extended trends persist — halve penalty
+                    "BULL":            0.75,   # trending but not euphoric — mild relief
+                    "SIDEWAYS":        1.00,   # baseline — full penalty (mean revert)
+                    "TRANSITION":      1.00,   # baseline
+                    "HIGH_VOLATILITY": 1.25,   # chop punishes extensions — tighten
+                    "BEAR":            1.50,   # dead-cat bounces — tighten hard
+                    "STRONG_BEAR":     1.50,
+                }.get(_regime_name, 1.00)
+                _ext_penalty = round(_ext_penalty * _regime_mult, 2)
+                result["extension_regime_mult"] = _regime_mult
+        except Exception:
+            pass  # any error → keep flat penalty (safe default)
+        result["extension_penalty"] = _ext_penalty
 
         # ── India refinement (2026-07-05): Expiry-week volume down-weight ──
         # NSE weekly F&O expiry lands every Thursday; monthly expiry is the
