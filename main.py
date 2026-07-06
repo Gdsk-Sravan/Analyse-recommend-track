@@ -6555,6 +6555,109 @@ def compute_portfolio_heat(holdings: list, current_prices: dict,
                 "max_heat_pct": 6.0, "heat_ok": True, "heat_remaining_pct": 6.0}
 
 
+# ─── Phase R4 (2026-07-06): Portfolio risk composite ─────────────────────────
+# Extends heat + sector-cap with three more institutional lenses:
+#   1. Sector HHI (Herfindahl) — measures concentration on a 0..10000 scale.
+#      HHI > 2500 = concentrated; HHI < 1500 = diversified.
+#   2. Stop cluster risk — how many positions have stops within 1 ATR of
+#      current price. A cluster > 3 signals correlated bad day risk.
+#   3. Position size skew — largest position vs mean position size. Skew > 3
+#      means one position dominates and drags portfolio beta.
+# Output is a single dict for logging + audit stamping. Read-only —
+# does not itself gate anything; the pipeline consumes the flags.
+def compute_portfolio_risk_composite(holdings: list,
+                                      current_prices: dict | None = None,
+                                      capital: float = 0.0) -> dict:
+    default = {
+        "sector_hhi": 0, "sector_hhi_flag": "OK",
+        "stop_cluster_count": 0, "stop_cluster_flag": "OK",
+        "position_size_skew": 0.0, "position_size_skew_flag": "OK",
+        "n_positions": 0, "warnings": [],
+    }
+    try:
+        if not holdings:
+            return default
+        current_prices = current_prices or {}
+        n = len(holdings)
+
+        # ── 1. Sector HHI ──────────────────────────────────────────────────
+        sector_counts: dict = {}
+        for h in holdings:
+            sec = str(
+                h.get("sector") or (get_sector(h.get("symbol", "")) if h.get("symbol") else "")
+            ).strip().upper() or "UNKNOWN"
+            sector_counts[sec] = sector_counts.get(sec, 0) + 1
+        # HHI = Σ (share%)^2 · 100 · 100 → 0..10000
+        hhi = 0.0
+        for _sec, _n in sector_counts.items():
+            share = (_n / n) * 100.0
+            hhi += share * share
+        hhi = int(round(hhi))
+        if hhi >= 2500:
+            hhi_flag = "CONCENTRATED"
+        elif hhi >= 1500:
+            hhi_flag = "MODERATE"
+        else:
+            hhi_flag = "OK"
+
+        # ── 2. Stop cluster: positions with stop within 1 ATR of current ──
+        cluster_n = 0
+        for h in holdings:
+            sym = h.get("symbol", "")
+            entry = float(h.get("entry_price", 0) or 0)
+            stop = float(h.get("stop_loss", 0) or 0)
+            atr = float(h.get("atr14", 0) or 0)
+            curr = float(current_prices.get(sym, entry) or entry)
+            if entry > 0 and stop > 0 and atr > 0 and curr > 0:
+                dist_atr = (curr - stop) / atr
+                if dist_atr <= 1.0:
+                    cluster_n += 1
+        if cluster_n >= 4:
+            cluster_flag = "DANGER"
+        elif cluster_n >= 3:
+            cluster_flag = "WARN"
+        else:
+            cluster_flag = "OK"
+
+        # ── 3. Position size skew ──────────────────────────────────────────
+        sizes = []
+        for h in holdings:
+            entry = float(h.get("entry_price", 0) or 0)
+            qty = float(h.get("quantity", 0) or 0)
+            if entry > 0 and qty > 0:
+                sizes.append(entry * qty)
+        skew = 0.0
+        if len(sizes) >= 2:
+            mean_sz = sum(sizes) / len(sizes)
+            if mean_sz > 0:
+                skew = max(sizes) / mean_sz
+        if skew >= 3.0:
+            skew_flag = "SKEWED"
+        elif skew >= 2.0:
+            skew_flag = "MODERATE"
+        else:
+            skew_flag = "OK"
+
+        warnings = []
+        if hhi_flag != "OK":
+            top_sec = max(sector_counts.items(), key=lambda kv: kv[1])
+            warnings.append(f"HHI={hhi} ({hhi_flag}: {top_sec[0]}={top_sec[1]}/{n})")
+        if cluster_flag != "OK":
+            warnings.append(f"STOP_CLUSTER={cluster_n} positions within 1 ATR of stop")
+        if skew_flag != "OK":
+            warnings.append(f"POSITION_SKEW={skew:.2f}x mean")
+
+        return {
+            "sector_hhi": hhi, "sector_hhi_flag": hhi_flag,
+            "stop_cluster_count": cluster_n, "stop_cluster_flag": cluster_flag,
+            "position_size_skew": round(skew, 2), "position_size_skew_flag": skew_flag,
+            "n_positions": n, "warnings": warnings,
+        }
+    except Exception as e:
+        _log(f"[WARN] compute_portfolio_risk_composite failed: {e}")
+        return default
+
+
 # ─── Phase C7 (2026-07-02): Equity-curve kill switch ────────────────────────
 # Rating ≥ 9.5 requires a portfolio-level circuit breaker, not just per-trade
 # stops. Real desks halt new entries after a losing streak or drawdown day —
@@ -13479,6 +13582,22 @@ def _run_pipeline_inner():
     heat = compute_portfolio_heat(holdings, current_prices, PORTFOLIO_CAPITAL)
     _log(f"  Portfolio heat: {heat['heat_pct']:.1f}% / {heat['max_heat_pct']:.0f}% max "
          f"({'OK' if heat['heat_ok'] else 'NEAR LIMIT'})")
+
+    # Phase R4 (2026-07-06): portfolio risk composite (HHI, stop cluster, size skew)
+    try:
+        _prc = compute_portfolio_risk_composite(holdings, current_prices, PORTFOLIO_CAPITAL)
+        if _prc.get("n_positions", 0) > 0:
+            _log(
+                f"  Portfolio risk: HHI={_prc['sector_hhi']} ({_prc['sector_hhi_flag']}), "
+                f"stop_cluster={_prc['stop_cluster_count']} ({_prc['stop_cluster_flag']}), "
+                f"size_skew={_prc['position_size_skew']}x ({_prc['position_size_skew_flag']})"
+            )
+            for _w in _prc.get("warnings", []):
+                _log(f"    ⚠ {_w}")
+        # Stamp composite on heat dict so downstream audit / risk sheet can access
+        heat["risk_composite"] = _prc
+    except Exception as _e:
+        _log(f"  [WARN] portfolio risk composite failed: {_e}")
 
     # Phase 3b #N8 (2026-07-05): apply kill-switch size_multiplier to actual
     # position sizing. Previously the multiplier was only LOGGED — sizes
