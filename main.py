@@ -739,8 +739,15 @@ REGIME_THRESHOLDS = {
     # max_stop_pct — wide-stop guardrail (any BUY with (entry-stop)/entry > this
     # gets rejected). Bullish regimes tolerate wider volatility stops; bearish
     # regimes force tight stops to keep loss small.
-    "STRONG_BULL":     {"min_confidence": 78, "min_tq": 68, "min_rr": 1.7, "max_buys": 5,  "max_exposure": 0.85, "max_stop_pct": 8.0},
-    "BULL":            {"min_confidence": 82, "min_tq": 71, "min_rr": 1.8, "max_buys": 3,  "max_exposure": 0.75, "max_stop_pct": 7.5},
+    # Phase R6 (2026-07-06) — threshold recalibration after live BUY-starvation
+    # analysis. In BULL regime, top-tier real-estate names (LODHA/OBEROI/PHOENIX)
+    # with BQ STRONG + sector 98/100 + Pocket Pivot + 2× volume were scoring
+    # final_confidence ~65-68 (well below prior BULL floor of 82). The 10-factor
+    # composite rarely exceeds 75 on real Indian mid-caps due to fundamental
+    # data gaps + wide-ATR penalties. Lowered BULL to 75 (was 82) and STRONG_BULL
+    # to 72 (was 78). See scripts/backtest_audit_forward.py to validate.
+    "STRONG_BULL":     {"min_confidence": 72, "min_tq": 68, "min_rr": 1.7, "max_buys": 5,  "max_exposure": 0.85, "max_stop_pct": 8.0},
+    "BULL":            {"min_confidence": 75, "min_tq": 71, "min_rr": 1.8, "max_buys": 3,  "max_exposure": 0.75, "max_stop_pct": 7.5},
     # 2026-07-03 calibration: SIDEWAYS max_stop_pct raised 6.0 -> 8.0 because
     # empirically 10-day swing lows on tradable NSE stocks sit 8-12% below
     # entry in range-bound tapes. The old 6% cap made WIDE_STOP a
@@ -8039,8 +8046,40 @@ def compute_all_factors(symbol: str, df,
         # Targets: wider ATR multiples for better R/R (2.5x & 4.5x vs old 2x/4x)
         target1 = round(entry + 2.5 * atr14, 2)
         target2 = round(entry + 4.5 * atr14, 2)
-        # Guarantee minimum 1.5x R/R on T2 even with a wide stop
-        min_t2  = round(entry + risk_amt * 1.5, 2)
+        # Phase R6 (2026-07-06) — STRETCH TARGET for institutional-grade setups
+        # ---------------------------------------------------------------
+        # For wide-ATR breakout leaders (real-estate, capital goods, mid-cap
+        # momentum) the fixed 1.5×risk minimum pins RR gross at ~1.5× even
+        # when 4.5×ATR would give a much larger target. This caused BUY
+        # starvation in BULL runs where LODHA/OBEROI (SA=88, sector=98) failed
+        # the 1.8 RR gate. Solution: lift T2 floor to 2.5×risk when the setup
+        # is institutional-grade AND stop is wide (>6% ATR).
+        # Gate criteria (all required): swing_alpha_score already stamped elsewhere
+        # is not available here — use pre-swing-alpha proxies: RS_20d > 5%,
+        # volume expansion >= 1.5×, and stop distance > 6%.
+        _stop_pct = ((entry - stop) / entry * 100.0) if entry > 0 else 0.0
+        try:
+            _stretch_enabled = os.getenv("STRETCH_TARGET", "1") == "1"
+        except Exception:
+            _stretch_enabled = True
+        # Proxies (already computed in score_stock context, else neutral):
+        _rs_here  = float(result.get("rs_vs_nifty_20d", 0) or 0)
+        _vol_here = float(result.get("volume_expansion_ratio", 0) or 0)
+        _is_stretch = (
+            _stretch_enabled
+            and _stop_pct > 6.0
+            and _rs_here >= 5.0
+            and _vol_here >= 1.5
+        )
+        if _is_stretch:
+            # Guarantee minimum 2.5× R/R on T2 for wide-stop momentum leaders
+            min_t2 = round(entry + risk_amt * 2.5, 2)
+            result.setdefault("_soft_warnings", []).append(
+                f"T2_STRETCHED(2.5×risk floor; stop={_stop_pct:.1f}%, RS={_rs_here:.1f}, vol={_vol_here:.2f}x)"
+            )
+        else:
+            # Standard 1.5×risk floor for narrow-stop / average setups
+            min_t2 = round(entry + risk_amt * 1.5, 2)
         target2 = max(target2, min_t2)
         # Keep T1 between entry and midpoint of T2
         target1 = min(target1, round((entry + target2) / 2, 2))
@@ -9142,10 +9181,43 @@ def run_gates(stock: dict, regime: str, thresholds: dict,
     if tq < thresh["min_tq"]:
         fail_reasons.append(f"TQ_FAIL(got {tq:.1f}, need {thresh['min_tq']})")
 
-    # Gate 8: Risk/Reward (HARD)
+    # Gate 8: Risk/Reward (HARD, with Phase R6 institutional override)
+    # ----------------------------------------------------------------
+    # R6 (2026-07-06): a wide-ATR breakout leader with STRONG business quality
+    # and a top-decile sector may show RR 1.4-1.6 gross because ATR is fat.
+    # Traditional min_rr=1.8 rejects these correctly-set-up trades. The
+    # override accepts min_rr=1.5 when the setup earns it via institutional
+    # signals: BQ verdict STRONG/ACCEPTABLE + sector_composite >= 85 +
+    # swing_alpha_score >= 80 + volume_expansion >= 1.5. This is intentionally
+    # narrow — no other combination unlocks it.
     rr = stock.get("rr_ratio", 0)
-    if rr < thresh["min_rr"]:
-        fail_reasons.append(f"RR_FAIL(got {rr:.2f}, need {thresh['min_rr']})")
+    _rr_needed = thresh["min_rr"]
+    if rr < _rr_needed:
+        # Institutional-grade override: sector-leader + BQ-strong + high SA
+        _bq_v      = str(stock.get("bq_verdict", "") or "").upper()
+        _sec_c     = float(stock.get("sector_composite_score", 0) or 0)
+        _sa_here   = float(stock.get("swing_alpha_score", 0) or 0)
+        _vol_here  = float(stock.get("volume_expansion_ratio", 0) or 0)
+        try:
+            _rr_floor_institutional = float(os.getenv("RR_INSTITUTIONAL_MIN", "1.5"))
+            _rr_override_enabled    = os.getenv("RR_INSTITUTIONAL_OVERRIDE", "1") == "1"
+        except (TypeError, ValueError):
+            _rr_floor_institutional, _rr_override_enabled = 1.5, True
+        _institutional_ok = (
+            _rr_override_enabled
+            and rr >= _rr_floor_institutional
+            and _bq_v in ("STRONG", "ACCEPTABLE")
+            and _sec_c >= 85.0
+            and _sa_here >= 80.0
+            and _vol_here >= 1.5
+        )
+        if _institutional_ok:
+            warnings.append(
+                f"RR_INSTITUTIONAL_OVERRIDE({rr:.2f} ≥ {_rr_floor_institutional:.2f} — "
+                f"BQ={_bq_v}, sector={_sec_c:.0f}, SA={_sa_here:.0f}, vol={_vol_here:.2f}x)"
+            )
+        else:
+            fail_reasons.append(f"RR_FAIL(got {rr:.2f}, need {_rr_needed})")
 
     # Gate 8b: Wide-stop guardrail — 2026-07-03 recalibration
     # ─────────────────────────────────────────────────────────────────────
@@ -13502,8 +13574,17 @@ def _run_pipeline_inner():
                 "symbol":          stock.get("symbol"),
                 "sector":          stock.get("sector"),
                 "decision":        stock.get("decision"),
-                "confidence":      stock.get("confidence"),
-                "trade_quality":   stock.get("trade_quality"),
+                "decision_subtype": stock.get("decision_subtype"),  # R5 audit-only fine tier
+                # Phase R6 (2026-07-06): BUG FIX — previously stamped stock.get("confidence") /
+                # stock.get("trade_quality") which are wrong keys; the pipeline actually
+                # writes final_confidence and trade_quality_score. Old rows were all None
+                # for these fields, making pillar-floor analysis impossible.
+                "final_confidence":    stock.get("final_confidence"),
+                "trade_quality_score": stock.get("trade_quality_score"),
+                "rr_ratio":            stock.get("rr_ratio"),
+                # Legacy field names kept for backward compat with old analyzers
+                "confidence":      stock.get("final_confidence"),
+                "trade_quality":   stock.get("trade_quality_score"),
                 "opportunity":     stock.get("opportunity_score"),
                 "regime":          regime,
                 "fail_reasons":    stock.get("fail_reasons", []),
