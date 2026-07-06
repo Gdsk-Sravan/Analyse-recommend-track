@@ -8530,7 +8530,16 @@ def compute_all_factors(symbol: str, df,
                 result["atr_stop_ratio_score"]    = _atrs
                 result["volume_expansion_ratio"]  = round(_vr, 2)
                 result["volume_expansion_score"]  = _ves
-                result["swing_alpha_score"]       = round((_rs_score + _bf + _atrs + _ves) / 4.0, 1)
+                # Volume-gated weighted composite (Phase R4e). See inner block for rationale.
+                _sas_fb = round(
+                    (_rs_score * 0.30 + _bf * 0.25 + _ves * 0.30 + _atrs * 0.15), 1,
+                )
+                if _ves < 40:
+                    _sas_fb = min(_sas_fb, 60.0)
+                    result.setdefault("_soft_warnings", []).append(
+                        f"SWING_NO_VOLUME(vol={_vr:.2f}x avg, capped SA=60)"
+                    )
+                result["swing_alpha_score"] = _sas_fb
         except Exception:
             # Absolute last resort — stamp neutral 50s so downstream never sees KeyError
             for _k in ("rs_vs_nifty_20d_score", "breakout_freshness_score",
