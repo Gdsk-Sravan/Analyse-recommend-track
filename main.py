@@ -2694,6 +2694,330 @@ def _download_one(symbol: str, period: str = "6mo") -> tuple:
     return symbol, df
 
 
+# ─── Phase G8-C (2026-07-06): Universe pre-filter module ──────────────────
+# Fetches a fundamentally-clean or technically-screened universe from external
+# sources (Screener.in weekly, Chartink daily) and intersects with stocks.txt.
+# Rationale: 2360-symbol full-NSE spray is expensive (10-15 min download) and
+# includes SME/penny/illiquid names that will fail hygiene anyway. Pre-filter
+# lets us start from 500-800 quality names → downstream hygiene → top-100.
+#
+# All external fetches are OPT-IN + gracefully degrade to the full universe
+# on any failure. Never fails the pipeline.
+# ─────────────────────────────────────────────────────────────────────────
+UNIVERSE_CACHE_DIR              = os.getenv("UNIVERSE_CACHE_DIR", "universe_cache")
+SCREENER_UNIVERSE_CACHE_FILE    = os.path.join(UNIVERSE_CACHE_DIR, "screener_universe.json")
+CHARTINK_UNIVERSE_CACHE_FILE    = os.path.join(UNIVERSE_CACHE_DIR, "chartink_universe.json")
+
+# Default Screener.in query URL — fundamentally clean names.
+# Filter: Market cap > 500 Cr, ROE > 15, D/E < 1, Sales growth 3y > 10.
+# Override via env SCREENER_QUERY_URL. Screener "screens" have public URLs
+# that render an HTML table of results; we parse the ticker column.
+_SCREENER_DEFAULT_QUERY_URL = (
+    "https://www.screener.in/screens/357649/"  # "Quality mid+small caps"
+    # Fallback if the user hasn't authored their own screen; this is a
+    # commonly-shared public screen. User should replace with their own.
+)
+
+# Default Chartink scan URL — technical momentum universe.
+# Chartink public scans have a POST endpoint at /screener/process with a
+# CSRF-protected form. We use the free "backtest" endpoint which returns
+# JSON without auth.
+_CHARTINK_DEFAULT_SCAN_URL = "https://chartink.com/screener/process"
+# Popular scan: "Stocks above 200 EMA + volume > 20d avg". Override via
+# env CHARTINK_SCAN_CLAUSE — must be a valid Chartink DSL clause.
+_CHARTINK_DEFAULT_SCAN_CLAUSE = (
+    "( {cash} ( latest close > latest ema( close,200 ) and "
+    "latest volume > latest sma( volume,20 ) and "
+    "latest close > 30 ) )"
+)
+
+
+def _load_universe_cache(cache_file: str, ttl_hours: int) -> "set | None":
+    """Load a cached universe if fresher than ttl_hours. Returns None if stale/missing."""
+    try:
+        if not os.path.exists(cache_file):
+            return None
+        with open(cache_file, "r", encoding="utf-8") as f:
+            payload = json.load(f)
+        cached_at = datetime.datetime.fromisoformat(payload.get("cached_at", "2000-01-01"))
+        age_hours = (ist_now() - cached_at).total_seconds() / 3600
+        if age_hours > ttl_hours:
+            _log(f"  [Universe cache] {os.path.basename(cache_file)} stale ({age_hours:.1f}h > {ttl_hours}h)")
+            return None
+        syms = set(payload.get("symbols", []))
+        if not syms:
+            return None
+        _log(f"  [Universe cache] {os.path.basename(cache_file)} hit — {len(syms)} symbols ({age_hours:.1f}h old)")
+        return syms
+    except Exception as e:
+        _log(f"  [Universe cache] load failed for {cache_file}: {e}")
+        return None
+
+
+def _save_universe_cache(cache_file: str, symbols: "set | list", source: str) -> None:
+    """Persist a universe snapshot with timestamp."""
+    try:
+        os.makedirs(os.path.dirname(cache_file), exist_ok=True)
+        payload = {
+            "cached_at":   ist_now().isoformat(),
+            "source":      source,
+            "count":       len(symbols),
+            "symbols":     sorted(symbols),
+        }
+        with open(cache_file, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2, default=str)
+        _log(f"  [Universe cache] saved {len(symbols)} symbols → {cache_file}")
+    except Exception as e:
+        _log(f"[WARN] universe cache save failed: {e}")
+
+
+def fetch_screener_universe(query_url: "str | None" = None,
+                             ttl_hours: int = 168) -> "set | None":
+    """
+    Fetch a fundamentally-clean universe from a Screener.in public screen.
+
+    Weekly refresh (default TTL=168h). Returns a set of NSE tickers (no .NS
+    suffix) or None on total failure.
+
+    HOW IT WORKS:
+      Screener screens are paginated HTML tables at /screens/<id>/. Each row
+      has a <a href="/company/TICKER/..."> link. We scrape all pages.
+
+    SOURCE HONESTY: Screener rate-limits at ~200 req/day; we only need ~5-10
+    page fetches per week. Cached aggressively.
+
+    Args:
+        query_url: Full URL to a Screener screen. Uses env SCREENER_QUERY_URL
+                   then _SCREENER_DEFAULT_QUERY_URL. Must contain "/screens/".
+        ttl_hours: Cache TTL. Default 168h = 1 week (fundamentals move slowly).
+
+    Returns:
+        Set of ticker strings (uppercase, no .NS suffix), or None on failure.
+    """
+    if not _BS4_OK:
+        _log("[WARN] screener universe: bs4 unavailable")
+        return None
+    query_url = query_url or os.getenv("SCREENER_QUERY_URL") or _SCREENER_DEFAULT_QUERY_URL
+
+    # Cache check
+    cached = _load_universe_cache(SCREENER_UNIVERSE_CACHE_FILE, ttl_hours)
+    if cached is not None:
+        return cached
+
+    _log(f"  [Screener universe] fetching from {query_url}")
+    tickers: set = set()
+    try:
+        # Screener paginates via ?page=N. We try pages 1..10 (max ~2500 rows
+        # at 250/page — far more than any sane screen returns).
+        for page in range(1, 11):
+            page_url = query_url.rstrip("/") + f"/?page={page}"
+            resp = requests.get(page_url, headers=_SCREENER_HEADERS, timeout=15)
+            if resp.status_code == 429:
+                _log(f"  [Screener universe] rate-limited on page {page} — using partial results")
+                break
+            if resp.status_code != 200:
+                _log(f"  [Screener universe] HTTP {resp.status_code} on page {page} — stopping")
+                break
+            soup = BeautifulSoup(resp.text, "html.parser")
+            page_tickers: set = set()
+            for a in soup.find_all("a", href=True):
+                href = a["href"] or ""
+                # Match /company/TICKER/ or /company/TICKER/consolidated/
+                m = re.match(r"^/company/([A-Z0-9&\-]+)/?", href)
+                if m:
+                    tkr = m.group(1).strip().upper()
+                    # Screener uses BSE codes for BSE-only names; those are
+                    # numeric. We only want NSE-listed alphabetic tickers.
+                    if tkr and not tkr.isdigit() and len(tkr) <= 20:
+                        page_tickers.add(tkr)
+            if not page_tickers:
+                break  # empty page → we're past the end
+            new_count = len(page_tickers - tickers)
+            tickers |= page_tickers
+            _log(f"  [Screener universe] page {page}: +{new_count} new (total {len(tickers)})")
+            if new_count == 0:
+                break  # pagination didn't advance
+            time.sleep(1.2)  # be polite between page fetches
+    except Exception as e:
+        _log(f"[WARN] Screener universe fetch failed: {e}")
+        return None
+
+    if len(tickers) < 20:
+        _log(f"  [Screener universe] too few tickers ({len(tickers)}) — treating as failure")
+        return None
+
+    _save_universe_cache(SCREENER_UNIVERSE_CACHE_FILE, tickers, source="screener.in")
+    return tickers
+
+
+def fetch_chartink_universe(scan_clause: "str | None" = None,
+                             ttl_hours: int = 24) -> "set | None":
+    """
+    Fetch a technical-momentum universe from Chartink's free scan endpoint.
+
+    Daily refresh (default TTL=24h). Returns set of NSE tickers or None.
+
+    HOW IT WORKS:
+      Chartink exposes a public POST endpoint /screener/process that accepts
+      a scan clause (their DSL) and returns JSON with matching stocks. No
+      auth required for the free tier. CSRF token is fetched from the scan
+      page first.
+
+    Args:
+        scan_clause: Chartink DSL. Uses env CHARTINK_SCAN_CLAUSE then default.
+        ttl_hours: Cache TTL. Default 24h — technical setups change daily.
+
+    Returns:
+        Set of ticker strings (uppercase, no .NS suffix), or None on failure.
+    """
+    scan_clause = scan_clause or os.getenv("CHARTINK_SCAN_CLAUSE") or _CHARTINK_DEFAULT_SCAN_CLAUSE
+
+    # Cache check
+    cached = _load_universe_cache(CHARTINK_UNIVERSE_CACHE_FILE, ttl_hours)
+    if cached is not None:
+        return cached
+
+    _log(f"  [Chartink universe] fetching scan (clause len={len(scan_clause)})")
+    try:
+        # Step 1: GET the scan page to obtain a CSRF token from meta tag.
+        session = requests.Session()
+        get_headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                          "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml",
+        }
+        r0 = session.get("https://chartink.com/screener/", headers=get_headers, timeout=15)
+        if r0.status_code != 200:
+            _log(f"  [Chartink universe] GET landing failed: HTTP {r0.status_code}")
+            return None
+        # Extract csrf-token from <meta name="csrf-token" content="..."/>
+        csrf_match = re.search(
+            r'<meta\s+name=["\']csrf-token["\']\s+content=["\']([^"\']+)["\']',
+            r0.text
+        )
+        if not csrf_match:
+            _log("  [Chartink universe] no CSRF token found — endpoint may have changed")
+            return None
+        csrf_token = csrf_match.group(1)
+
+        # Step 2: POST the scan clause.
+        post_headers = {
+            **get_headers,
+            "X-CSRF-TOKEN":    csrf_token,
+            "X-Requested-With": "XMLHttpRequest",
+            "Accept":          "application/json",
+            "Referer":         "https://chartink.com/screener/",
+        }
+        resp = session.post(
+            _CHARTINK_DEFAULT_SCAN_URL,
+            data={"scan_clause": scan_clause},
+            headers=post_headers,
+            timeout=25,
+        )
+        if resp.status_code != 200:
+            _log(f"  [Chartink universe] POST failed: HTTP {resp.status_code}")
+            return None
+        payload = resp.json()
+    except Exception as e:
+        _log(f"[WARN] Chartink universe fetch failed: {e}")
+        return None
+
+    tickers: set = set()
+    for row in payload.get("data") or []:
+        # Chartink returns { "nsecode": "RELIANCE", "name": "...", ...}
+        code = (row.get("nsecode") or row.get("symbol") or "").strip().upper()
+        if code:
+            tickers.add(code)
+
+    if len(tickers) < 20:
+        _log(f"  [Chartink universe] too few results ({len(tickers)}) — treating as failure")
+        return None
+
+    _save_universe_cache(CHARTINK_UNIVERSE_CACHE_FILE, tickers, source="chartink.com")
+    _log(f"  [Chartink universe] {len(tickers)} technically-clean symbols fetched")
+    return tickers
+
+
+def build_universe(base_symbols: list) -> list:
+    """
+    Compose the working universe from base stocks.txt + optional external
+    pre-filters. Called once at pipeline start.
+
+    Modes (via env UNIVERSE_MODE):
+      "full"                → base_symbols only (default, matches old behavior)
+      "screener"            → intersect with Screener fundamental universe
+      "chartink"            → intersect with Chartink technical universe
+      "hybrid"              → intersect with (Screener ∪ Chartink)
+      "screener_and_chartink" → intersect with (Screener ∩ Chartink)
+
+    Failure of any external source degrades gracefully to just the base_symbols
+    with a WARNING logged — pipeline is never blocked.
+
+    Returns a list of tickers (with .NS suffix) matching base_symbols format.
+    """
+    mode = (os.getenv("UNIVERSE_MODE", "full") or "full").strip().lower()
+    if mode == "full":
+        _log(f"  [Universe] mode=full → {len(base_symbols)} symbols from stocks.txt")
+        return base_symbols
+
+    # Normalize base symbols to bare tickers for intersection
+    base_map: dict = {}
+    for sym in base_symbols:
+        bare = sym.replace(".NS", "").upper().strip()
+        if bare:
+            base_map[bare] = sym
+
+    # Collect external universes based on mode
+    screener_set: "set | None" = None
+    chartink_set: "set | None" = None
+    if mode in ("screener", "hybrid", "screener_and_chartink"):
+        screener_set = fetch_screener_universe()
+        if screener_set is None:
+            _log("  [Universe] Screener fetch failed — degrading to base universe")
+    if mode in ("chartink", "hybrid", "screener_and_chartink"):
+        chartink_set = fetch_chartink_universe()
+        if chartink_set is None:
+            _log("  [Universe] Chartink fetch failed — degrading to base universe")
+
+    # Compose the "keep" set based on mode
+    keep: "set | None" = None
+    if mode == "screener" and screener_set:
+        keep = screener_set
+    elif mode == "chartink" and chartink_set:
+        keep = chartink_set
+    elif mode == "hybrid":
+        if screener_set and chartink_set:
+            keep = screener_set | chartink_set
+        elif screener_set:
+            keep = screener_set
+        elif chartink_set:
+            keep = chartink_set
+    elif mode == "screener_and_chartink":
+        if screener_set and chartink_set:
+            keep = screener_set & chartink_set
+            if len(keep) < 50:
+                _log(f"  [Universe] Screener ∩ Chartink only {len(keep)} — "
+                     f"falling back to union to avoid over-narrow universe")
+                keep = screener_set | chartink_set
+
+    if not keep:
+        _log(f"  [Universe] no external filter applied → using full base ({len(base_symbols)})")
+        return base_symbols
+
+    # Intersect with base universe
+    filtered = [base_map[t] for t in keep if t in base_map]
+    dropped  = len(base_symbols) - len(filtered)
+    _log(f"  [Universe] mode={mode} · base={len(base_symbols)} · "
+         f"external={len(keep)} · kept={len(filtered)} · dropped={dropped}")
+    # Guard: if external filter is over-narrow (< 100), fall back to base.
+    # We'd rather run the full pipeline than emit 0 BUYs from a tiny universe.
+    if len(filtered) < 100:
+        _log(f"  [Universe] filtered universe too narrow ({len(filtered)} < 100) — "
+             f"reverting to base_symbols for safety")
+        return base_symbols
+    return filtered
+
+
 def filter_and_download(symbols: list, period: str = "6mo",
                         max_workers: int = 12,
                         min_avg_volume: int = 100_000,
@@ -7554,24 +7878,45 @@ def run_gates(stock: dict, regime: str, thresholds: dict,
         _fund_gate_on = int(os.getenv("FUND_DATA_GATE_ENABLED", "1"))
     except (TypeError, ValueError):
         _fund_gate_on = 1
-    if _fund_gate_on:
-        _fsrc = str(stock.get("fundamentals_source", "") or "").upper()
-        _pdata_src = str((promoter_data or {}).get("source", "") or "").upper()
-        _missing_markers = ("NEUTRAL_DEFAULT", "NOT_FETCHED", "SCREENER+YF_RL")
-        # Belt-and-braces: also treat ROE==0 AND D/E==0 AND pledge==0 as a miss
-        # (some cache paths write source="" instead of one of the markers).
-        _roe_missing = float(promoter_data.get("roe", 0) or 0) == 0.0
-        _de_missing  = float(promoter_data.get("de_ratio", 0) or 0) == 0.0
-        _pl_missing  = float(promoter_data.get("promoter_pledge_pct", 0) or 0) == 0.0
-        _all_zero = _roe_missing and _de_missing and _pl_missing
-        _src_missing = (any(m in _fsrc for m in _missing_markers)
-                        or any(m in _pdata_src for m in _missing_markers))
-        if _src_missing or (_all_zero and _fsrc != "" and "SCREENER+YF" not in _fsrc):
+    # 2026-07-06 (Correct fix): Missing fundamentals is handled by the
+    # existing score-redistribution path (compute_base_confidence excludes
+    # the ownership_quality weight if it is None, distributing across
+    # present factors). We DO NOT hard-reject here — that was double
+    # punishment on top-9%-of-universe candidates that already passed
+    # every technical gate.
+    #
+    # HISTORICAL BUG (kept for audit): Phase 4-A added FUND_DATA_MISSING as
+    # a scoreable-fail reason. When Screener.in was rate-limited we saw
+    # 82/100 rejects because of this gate alone, on days like 2026-07-06
+    # when the fetch cap was too tight. Removed 2026-07-06.
+    #
+    # Env override: FUND_DATA_GATE_ENABLED=1 restores the old strict
+    # behavior (default 0 = graceful). Use only for debugging.
+    try:
+        _fund_gate_on = int(os.getenv("FUND_DATA_GATE_ENABLED", "0"))
+    except (TypeError, ValueError):
+        _fund_gate_on = 0
+    # Always emit a WARNING so audit shows data-availability, regardless
+    # of gate mode. Only append to fail_reasons if the strict gate is on.
+    _fsrc = str(stock.get("fundamentals_source", "") or "").upper()
+    _pdata_src = str((promoter_data or {}).get("source", "") or "").upper()
+    _missing_markers = ("NEUTRAL_DEFAULT", "NOT_FETCHED", "SCREENER+YF_RL")
+    # Belt-and-braces: also treat ROE==0 AND D/E==0 AND pledge==0 as a miss
+    # (some cache paths write source="" instead of one of the markers).
+    _roe_missing = float(promoter_data.get("roe", 0) or 0) == 0.0
+    _de_missing  = float(promoter_data.get("de_ratio", 0) or 0) == 0.0
+    _pl_missing  = float(promoter_data.get("promoter_pledge_pct", 0) or 0) == 0.0
+    _all_zero = _roe_missing and _de_missing and _pl_missing
+    _src_missing = (any(m in _fsrc for m in _missing_markers)
+                    or any(m in _pdata_src for m in _missing_markers))
+    if _src_missing or (_all_zero and _fsrc != "" and "SCREENER+YF" not in _fsrc):
+        warnings.append(
+            f"FUND_DATA_MISSING: ROE/D/E/pledge unavailable (src={_fsrc or 'unknown'}) "
+            f"— ownership_quality weight redistributed to present factors"
+        )
+        if _fund_gate_on:
+            # Legacy strict mode (opt-in only). Kept for A/B testing.
             fail_reasons.append(f"FUND_DATA_MISSING(src={_fsrc or _pdata_src or 'unknown'})")
-            warnings.append(
-                f"FUND_DATA_MISSING: ROE/D/E/pledge unavailable (src={_fsrc or 'unknown'}) "
-                f"— demoted to WATCHLIST until real fundamentals return"
-            )
 
     # Gate 4: Liquidity (HARD)
     # Phase 2 #23 (2026-07-05): min turnover configurable via env.
@@ -10559,6 +10904,18 @@ def _create_excel_workbook():
             "Stop Hit", "Remaining Upside%", "Holding Days", "Status"
         ])
 
+        # Rejected sheet (2026-07-06): capture near-miss stocks so we can
+        # backtest after 3 weeks — did the rejects actually go up? Which
+        # gates are over-filtering? Same schema as Recommendations + a
+        # "Primary Reject Reason" column bucketed for easy pivoting.
+        ws_rej = wb.create_sheet("Rejected")
+        ws_rej.append([
+            "Date", "Ticker", "Company", "Opp Score", "Confidence", "TQ",
+            "R/R", "Entry", "Stop", "T1", "T2", "Sector", "Regime",
+            "Pledge%", "ROE", "D/E", "Catalysts", "Fail Reasons",
+            "Primary Reject Reason", "Status"
+        ])
+
         ws3 = wb.create_sheet("Performance Summary")
         ws3.append(["Metric", "Value"])
 
@@ -10578,11 +10935,46 @@ def _create_excel_workbook():
         return None
 
 
+def _classify_reject_reason(fail_reasons: list) -> str:
+    """
+    Bucket a fail_reasons list into ONE primary category for Excel pivot analysis.
+    Priority order matters: check the most-actionable/most-common reasons first.
+    Added 2026-07-06 so we can pivot rejects by root cause after 3 weeks.
+    """
+    if not fail_reasons:
+        return "UNKNOWN"
+    joined = " | ".join(str(f) for f in fail_reasons).upper()
+    # Priority order: data issues first (fixable), then technicals, then macro
+    if "FUND_DATA_MISSING" in joined:  return "FUND_DATA_MISSING"
+    if "PRICE_DATA" in joined or "NO_DATA" in joined: return "PRICE_DATA_MISSING"
+    if "TQ_FAIL" in joined or "TRADE_QUALITY" in joined: return "TQ_TOO_LOW"
+    if "CONF_FAIL" in joined or "CONFIDENCE" in joined:  return "CONFIDENCE_TOO_LOW"
+    if "RR_FAIL" in joined:            return "RR_TOO_LOW"
+    if "LIQUIDITY" in joined or "TURNOVER" in joined: return "LOW_LIQUIDITY"
+    if "PLEDGE" in joined:             return "HIGH_PLEDGE"
+    if "SECTOR_LAGGING" in joined:     return "SECTOR_LAGGING"
+    if "SECTOR_CAP" in joined:         return "SECTOR_CAP"
+    if "EVENT_BLOCK" in joined or "EARNINGS" in joined: return "EVENT_BLOCK"
+    if "HIGH_CORR" in joined:          return "HIGH_CORRELATION"
+    if "INSTITUTIONAL_EXIT" in joined: return "INSTITUTIONAL_EXIT"
+    if "KILL_SWITCH" in joined:        return "KILL_SWITCH"
+    if "REGIME_EXPOSURE" in joined:    return "REGIME_EXPOSURE_CAP"
+    if "PORTFOLIO_FULL" in joined:     return "PORTFOLIO_FULL"
+    if "CIRCUIT" in joined:            return "CIRCUIT_LIMIT"
+    if "BLOCKLIST" in joined:          return "BLOCKLIST"
+    return "OTHER"
+
+
 def save_recommendations_to_excel(buys: list, watchlist: list,
-                                   regime_data: dict, today_str: str) -> None:
+                                   regime_data: dict, today_str: str,
+                                   rejected: list = None) -> None:
     """
     Appends today's recommendations to recommendation_tracker.xlsx.
     Creates file with all sheets if it doesn't exist. Never overwrites existing rows.
+
+    2026-07-06: added `rejected` parameter — writes to "Rejected" sheet so we
+    can backtest after 3 weeks: did the rejects actually go up? Which gate is
+    over-filtering? Backward-compatible: rejected defaults to None (skipped).
     """
     try:
         import openpyxl
@@ -10640,8 +11032,56 @@ def save_recommendations_to_excel(buys: list, watchlist: list,
                 "ACTIVE",
             ])
 
+        # Rejected sheet: append today's rejects for 3-week retrospective
+        # analysis. Falls through silently if the sheet doesn't exist yet
+        # (older workbook created before this feature was added).
+        rejected_written = 0
+        if rejected:
+            try:
+                # Ensure the Rejected sheet exists in older workbooks
+                if "Rejected" not in wb.sheetnames:
+                    ws_rej = wb.create_sheet("Rejected")
+                    ws_rej.append([
+                        "Date", "Ticker", "Company", "Opp Score", "Confidence", "TQ",
+                        "R/R", "Entry", "Stop", "T1", "T2", "Sector", "Regime",
+                        "Pledge%", "ROE", "D/E", "Catalysts", "Fail Reasons",
+                        "Primary Reject Reason", "Status"
+                    ])
+                ws_rej = wb["Rejected"]
+                for stock in rejected:
+                    _sym = stock.get("symbol", "")
+                    _fr  = stock.get("fail_reasons", []) or []
+                    ws_rej.append([
+                        today_str,
+                        _sym,
+                        _sym.replace(".NS", ""),
+                        stock.get("opportunity_score", 0),
+                        stock.get("final_confidence", 0),
+                        stock.get("trade_quality_score", 0),
+                        stock.get("rr_ratio", stock.get("rr", 0)),
+                        stock.get("entry", 0),
+                        stock.get("stop", 0),
+                        stock.get("target1", 0),
+                        stock.get("target2", 0),
+                        get_sector(_sym),
+                        regime_data.get("regime", ""),
+                        stock.get("promoter_pledge_pct", 0),
+                        stock.get("roe", 0),
+                        stock.get("de_ratio", 0),
+                        ", ".join(stock.get("catalysts", []) or []),
+                        ", ".join(_fr),
+                        _classify_reject_reason(_fr),
+                        "REJECTED",
+                    ])
+                    rejected_written += 1
+            except Exception as _rej_exc:
+                _log(f"[WARN] Could not write Rejected sheet: {_rej_exc}")
+
         wb.save(TRACKER_XLSX)
-        _log(f"[INFO] Saved {len(all_stocks)} recommendations to {TRACKER_XLSX}")
+        if rejected_written:
+            _log(f"[INFO] Saved {len(all_stocks)} recommendations + {rejected_written} rejects to {TRACKER_XLSX}")
+        else:
+            _log(f"[INFO] Saved {len(all_stocks)} recommendations to {TRACKER_XLSX}")
 
     except Exception as e:
         _log(f"[WARN] Excel save failed: {e}")
@@ -10809,6 +11249,15 @@ def _run_pipeline_inner():
     # ── 4. Load symbols ──
     _log("[4/17] Loading symbol universe...")
     symbols = load_symbols("stocks.txt")
+
+    # ── 4a. Phase G8-C (2026-07-06): optional external universe pre-filter ──
+    # Env: UNIVERSE_MODE = full | screener | chartink | hybrid | screener_and_chartink
+    # Weekly Screener fundamental universe + daily Chartink technical universe.
+    # Safe: any external fetch failure falls back to full base universe.
+    try:
+        symbols = build_universe(symbols)
+    except Exception as _uni_exc:
+        _log(f"[WARN] build_universe failed ({_uni_exc}) — using base symbols")
 
     # ── 5. Parallel price download + liquidity filter ──
     _log("[5/17] Downloading prices (parallel)...")
@@ -11002,10 +11451,30 @@ def _run_pipeline_inner():
             stock["news_risk"] = max(0, 100 - int(penalty * 2))
 
     # ── 9. Promoter data + fundamentals — sequential with 24h cache (no rate limiting) ──
-    # FIX: widen from 20 -> 30 so 3-of-5 BUYs no longer come back with ROE=0.
-    # BUY-priority ordering is done inside fetch_all_fundamentals_cached().
-    _log("[9/17] Fetching promoter/fundamentals for top 30 (BUY-priority + cached)...")
-    top_40 = fetch_all_fundamentals_cached(top_40, max_stocks=30)
+    # 2026-07-06 (Correct fix): Fetch fundamentals for ALL top_40 stocks (the
+    # qualifying set is already ~100 = top 9% of universe). With a 24h cache,
+    # only NEW candidates need fresh HTTP calls (~15-20/day typically). This
+    # kills the systematic FUND_DATA_MISSING problem at its source instead of
+    # working around it in downstream gates.
+    #
+    # History:
+    # - Phase 1: max_stocks=20 (chose top-20 for fundamentals)
+    # - Phase 2 (2026-07-05): widened to 30 to reduce ROE=0 BUYs
+    # - 2026-07-06 morning: bumped 30->50 (still leaving 50%+ unfetched)
+    # - 2026-07-06 now: fetch ALL. Missing-data is handled gracefully by the
+    #   existing score-redistribution path (ownership_quality=None excludes
+    #   the 6% weight, redistributes to present factors). NO hard reject.
+    #
+    # Env override: FUNDAMENTALS_FETCH_LIMIT=<n> caps for testing/emergency.
+    # Default: fetch all top_40 (typically ~100 stocks).
+    try:
+        _fund_limit_env = os.getenv("FUNDAMENTALS_FETCH_LIMIT")
+        _fund_limit = int(_fund_limit_env) if _fund_limit_env else len(top_40)
+    except (TypeError, ValueError):
+        _fund_limit = len(top_40)
+    _fund_limit = max(1, _fund_limit)  # safety: never 0
+    _log(f"[9/17] Fetching promoter/fundamentals for top {_fund_limit} (BUY-priority + cached)...")
+    top_40 = fetch_all_fundamentals_cached(top_40, max_stocks=_fund_limit)
 
     # ── 10. Options PCR for top 20 (parallel) ──
     _log("[10/17] Options PCR for top 20 (parallel)...")
@@ -11169,6 +11638,66 @@ def _run_pipeline_inner():
     _dates_found = sum(1 for d in results_dates_map.values() if d)
     _log(f"  Earnings dates: {_dates_found}/{len(top_40)} stocks have upcoming earnings")
 
+    # 2026-07-06: Data completeness health-check for the top-N qualifying set.
+    # Rationale: the qualifying set is top ~9% of the universe. Every one of
+    # these deserves merit-based evaluation, not data-lottery rejection.
+    # This block is PURELY DIAGNOSTIC — it never rejects. It ensures that:
+    #   1. Missing data is VISIBLE in the log (so we notice source outages).
+    #   2. The gate stage uses score-redistribution for missing factors,
+    #      never data-availability rejection.
+    # Any stock reaching a gate with any data field missing is a WARNING,
+    # never a REJECTED. The 12 non-fundamentals factors are all derived from
+    # price/volume data which is guaranteed present (a stock with no price
+    # data never enters `tradable` in the first place).
+    _dq_full         = 0   # all 4 primary data channels present
+    _dq_fund_missing = 0   # fundamentals missing
+    _dq_deliv_missing = 0  # delivery data missing
+    _dq_news_missing = 0   # news headlines missing
+    _dq_earn_unknown = 0   # earnings dates unknown (safe: treated as no-event)
+    for _stk in top_40:
+        _sym = _stk["symbol"].replace(".NS", "")
+        _fs  = str(_stk.get("fundamentals_source", "") or "").upper()
+        _ds  = str(_stk.get("delivery_source", "") or "").lower()
+        _ns  = str(_stk.get("news_source", "") or "").upper()
+        _fund_ok  = _fs and _fs not in ("NEUTRAL_DEFAULT", "NOT_FETCHED", "SCREENER+YF_RL", "")
+        _deliv_ok = _ds == "nselib"
+        _news_ok  = _ns and not _ns.startswith("NO_HEADLINES") and _ns != "RULE_BASED_MONITOR_ONLY"
+        _earn_ok  = bool(results_dates_map.get(_sym))
+        if _fund_ok and _deliv_ok:
+            _dq_full += 1
+        if not _fund_ok:  _dq_fund_missing += 1
+        if not _deliv_ok: _dq_deliv_missing += 1
+        if not _news_ok:  _dq_news_missing += 1
+        if not _earn_ok:  _dq_earn_unknown += 1
+    _tot = len(top_40)
+    _log(
+        f"  [Data QA] Complete: {_dq_full}/{_tot} | "
+        f"Fund-missing: {_dq_fund_missing} | "
+        f"Deliv-missing: {_dq_deliv_missing} | "
+        f"News-missing: {_dq_news_missing} | "
+        f"Earnings-unknown: {_dq_earn_unknown}"
+    )
+    _log(
+        f"  [Data QA] All {_tot} candidates will be evaluated on MERIT. "
+        f"Missing-data factors use score-redistribution (never rejection)."
+    )
+    # Loud alarm if fundamentals coverage is catastrophically low —
+    # signals a Screener/Trendlyne/yfinance outage that should be investigated
+    # (but does NOT abort the run: we still trade on the 12 other factors).
+    if _tot > 0 and _dq_fund_missing * 100 // _tot >= 50:
+        _log(
+            f"  [ALERT] >{_dq_fund_missing * 100 // _tot}% of top-{_tot} "
+            f"are missing fundamentals \u2014 Screener/Trendlyne/yfinance may all "
+            f"be rate-limited or blocked. Trading continues on technical merit. "
+            f"Check network / manually curl screener.in / check yfinance."
+        )
+    if _tot > 0 and _dq_deliv_missing * 100 // _tot >= 50:
+        _log(
+            f"  [ALERT] >{_dq_deliv_missing * 100 // _tot}% of top-{_tot} "
+            f"are missing delivery% \u2014 nselib may be down or NSE bhav copy "
+            f"unavailable. Trading continues \u2014 delivery is a bonus signal, not gate."
+        )
+
     # Phase C5 (rating ≥ 9.0): pre-load confidence history so classify_watchlist
     # can compute trajectory (RISING / FADING / FLAT) at classification time.
     _conf_history_for_wl = load_confidence_history()
@@ -11199,6 +11728,33 @@ def _run_pipeline_inner():
             rejected.append(stock)
 
     _log(f"  Gate results: {len(buys)} BUY | {len(watchlist_stocks)} WATCHLIST | {len(rejected)} REJECTED")
+
+    # FIX 3 (2026-07-06): reject-reason breakdown — immediate visibility into
+    # WHY stocks were rejected (data missing vs bad stock vs low score). Uses
+    # the same _classify_reject_reason() helper that populates the Excel
+    # "Rejected" sheet, so the log summary matches the pivot analysis.
+    if rejected:
+        _reason_counts: dict = {}
+        for _rs in rejected:
+            _bucket = _classify_reject_reason(_rs.get("fail_reasons", []) or [])
+            _reason_counts[_bucket] = _reason_counts.get(_bucket, 0) + 1
+        # Sort desc by count, show top 6
+        _sorted_reasons = sorted(_reason_counts.items(), key=lambda kv: -kv[1])
+        _total_rej = len(rejected)
+        _breakdown = " | ".join(
+            f"{name}: {cnt} ({cnt * 100 // max(_total_rej, 1)}%)"
+            for name, cnt in _sorted_reasons[:6]
+        )
+        _log(f"  Reject breakdown: {_breakdown}")
+        # 2026-07-06 correct fix: FUND_DATA_MISSING is no longer a rejection
+        # reason (handled by score redistribution). If it EVER appears in the
+        # breakdown, the strict legacy gate got re-enabled — warn loudly.
+        if _reason_counts.get("FUND_DATA_MISSING", 0) > 0:
+            _log(
+                f"  [WARN] FUND_DATA_MISSING appeared in {_reason_counts['FUND_DATA_MISSING']} "
+                f"rejects — legacy strict gate is ENABLED via FUND_DATA_GATE_ENABLED=1. "
+                f"Recommended: unset it so score-redistribution handles missing data gracefully."
+            )
 
     # Sort all lists by opportunity score (ENHANCEMENT 1)
     for stock in buys + watchlist_stocks:
@@ -11642,7 +12198,8 @@ def _run_pipeline_inner():
     save_recommendations_to_excel(
         buys, watchlist_stocks,
         {"regime": regime, "score": regime_data.get("score", 0)},
-        today_str_pipe
+        today_str_pipe,
+        rejected=rejected,   # 2026-07-06: also persist rejects for 3-week retrospective
     )
 
     # ── 17b. Phase 1 #54 (2026-07-05): flush price-fetch failures ─────────
