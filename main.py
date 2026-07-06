@@ -454,14 +454,15 @@ if TRADING_MODE == "swing":
     # Events — HARD gate for swing (gap risk = career risk)
     _set_default("EARNINGS_BLACKOUT_DAYS", "5")
     _set_default("NEWS_SEVERITY_MAX", "2")
-    # LLM validator — advise only, never veto (setup wins in swing)
-    _set_default("LLM_VALIDATOR", "1")
+    # LLM validator — R5 PRUNE (2026-07-06): audit of 480 rows across 3 days
+    #   showed 0/480 verdicts ever populated. Default OFF; opt in via env.
+    _set_default("LLM_VALIDATOR", "0")
     _set_default("LLM_VALIDATOR_MODE", "advise")
     # Pledge — warning, not dealbreaker (swing exits before it matters)
     _set_default("PLEDGE_SEVERITY", "warning")   # vs "dealbreaker" in position
     # Confidence bar — normal
     _set_default("FUND_MISSING_CONF_CAP", "80")
-    print(f"[TRADING_MODE=swing] Preset applied: MIN_ROE=10, MAX_DE=1.5, BQ_GATE=overlay, LLM=advise, PLEDGE=warning")
+    print(f"[TRADING_MODE=swing] Preset applied: MIN_ROE=10, MAX_DE=1.5, BQ_GATE=overlay, LLM=off(R5), PLEDGE=warning")
 
 elif TRADING_MODE == "position":
     # Fundamentals — strict
@@ -488,11 +489,11 @@ elif TRADING_MODE == "custom":
 else:
     print(f"[TRADING_MODE={TRADING_MODE}] Unknown mode — treating as 'swing'")
     TRADING_MODE = "swing"
-    # re-run preset with swing defaults
+    # re-run preset with swing defaults (R5 PRUNE: LLM off by default)
     for k, v in [("MIN_ROE","10"),("MAX_DE","1.5"),("BUSINESS_QUALITY_GATE","0"),
                  ("SECTOR_STRICT_GATE","1"),("SECTOR_RANK_CUTOFF","6"),
                  ("EARNINGS_BLACKOUT_DAYS","5"),("NEWS_SEVERITY_MAX","2"),
-                 ("LLM_VALIDATOR","1"),("LLM_VALIDATOR_MODE","advise"),
+                 ("LLM_VALIDATOR","0"),("LLM_VALIDATOR_MODE","advise"),
                  ("PLEDGE_SEVERITY","warning"),("FUND_MISSING_CONF_CAP","80")]:
         _set_default(k, v)
 
@@ -932,10 +933,11 @@ def _update_ownership_quality(stock: dict) -> None:
         #   FII+DII > 20%  = decent institutional presence   (+4)
         #   FII+DII < 5%   = retail-only / illiquid           (-5)
         #   FII% > 15% alone = foreign institutional interest (+2 bonus)
-        # Kill-switch via FII_DII_OVERLAY=0 for A/B testing.
+        # R5 PRUNE (2026-07-06): audit of 480 rows showed 0/480 populated
+        # (data source not wired). Default OFF; opt in via FII_DII_OVERLAY=1.
         fii_dii_bonus = 0
         fii_dii_reasons = []
-        if os.getenv("FII_DII_OVERLAY", "1") != "0":
+        if os.getenv("FII_DII_OVERLAY", "0") == "1":
             try:
                 fii_pct = float(stock.get("fii_pct", 0) or 0)
                 dii_pct = float(stock.get("dii_pct", 0) or 0)
@@ -9639,6 +9641,24 @@ def run_gates(stock: dict, regime: str, thresholds: dict,
         "rr": _rr_final,
     }
 
+    # ═══════════════════════════════════════════════════════════════════════
+    # Phase R5 Prune (2026-07-06) — 9-tier taxonomy collapse → 4 canonical tiers
+    # ═══════════════════════════════════════════════════════════════════════
+    # Audit of 480 rows across 3 days: BUY_CONTRARIAN / BUY_TURNAROUND / AVOID
+    # never fired in production (0 rows). STRONG_BUY is kept as a legitimate
+    # institutional aspiration tier. To reduce cognitive/API surface without
+    # losing signal, we preserve the fine-grain label as audit metadata
+    # (`decision_subtype`) but return one of {STRONG_BUY, BUY, WATCHLIST, REJECTED}.
+    # Downstream code that already handles these labels (line ~13252) still
+    # works because the collapse maps into the same canonical bucket.
+    stock["decision_subtype"] = decision  # audit-only: keep original fine label
+    _tier_collapse_map = {
+        "BUY_CONTRARIAN": "BUY",
+        "BUY_TURNAROUND": "BUY",
+        "AVOID":          "REJECTED",
+    }
+    decision = _tier_collapse_map.get(decision, decision)
+
     return {"decision": decision, "fail_reasons": fail_reasons, "warnings": warnings}
 
 
@@ -13054,10 +13074,17 @@ def _run_pipeline_inner():
         )
     top_40.sort(key=lambda x: (-x["final_confidence"], x["symbol"]))
 
-    # ── 11b. Opportunity scores (ENHANCEMENT 1) ──
+    # ── 11b. Opportunity score (kept for audit compat; NOT used for ranking) ──
+    # R5 PRUNE (2026-07-06): 480-row audit showed 20/20 top-20 overlap between
+    # opportunity_score and final_confidence — the re-sort was a no-op. Ranking
+    # now uses final_confidence desc, swing_alpha_score desc as tiebreaker.
     for stock in top_40:
         stock["opportunity_score"] = compute_opportunity_score(stock)
-    top_40.sort(key=lambda x: (-x["opportunity_score"], x["symbol"]))
+    top_40.sort(key=lambda x: (
+        -float(x.get("final_confidence", 0) or 0),
+        -float(x.get("swing_alpha_score", 0) or 0),
+        x["symbol"],
+    ))
 
     # ── 12. Portfolio monitoring ──
     _log("[12/17] Monitoring portfolio...")
