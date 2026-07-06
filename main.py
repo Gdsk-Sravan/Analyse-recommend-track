@@ -11400,10 +11400,62 @@ def _run_pipeline_inner():
     #     already caps at 30, so this is automatic),
     #   * they DO appear in daily_snapshots for post-hoc analysis.
     # Ranks 1-50 keep the full-pipeline behavior (unchanged).
+    #
+    # Phase G8-D (2026-07-06): adaptive score-band cutoff — the exact rank-N
+    # cliff was arbitrary and caused near-miss stocks at rank 101 (often
+    # 0.1-0.5 pts behind rank 100) to be silently discarded. Institutional
+    # portfolio construction models cut at "the score cliff", not a fixed
+    # rank. We now:
+    #   1. Take the top _TOP_N by base_confidence as the anchor set.
+    #   2. Then include every stock in `scored` whose base_confidence is
+    #      within TOP_N_BAND_POINTS of the rank-N score.
+    #   3. Cap the total at TOP_N_HARD_CAP so a flat-distribution day can't
+    #      balloon the candidate list to 300+.
+    #
+    # Env vars:
+    #   TOP_N_CANDIDATES  (default 100) — anchor rank cutoff
+    #   TOP_N_BAND_POINTS (default 1.0) — score-cliff tolerance, 0 disables
+    #   TOP_N_HARD_CAP    (default 120) — safety ceiling
     _TOP_N = int(os.getenv("TOP_N_CANDIDATES", "100"))
     _FULL_LLM_TOP_N = int(os.getenv("FULL_LLM_TOP_N", "50"))
+    try:
+        _TOP_N_BAND = float(os.getenv("TOP_N_BAND_POINTS", "1.0"))
+    except (TypeError, ValueError):
+        _TOP_N_BAND = 1.0
+    try:
+        _TOP_N_HARD_CAP = int(os.getenv("TOP_N_HARD_CAP", "120"))
+    except (TypeError, ValueError):
+        _TOP_N_HARD_CAP = 120
+    # Hard cap must be >= _TOP_N (never shrink below the base cutoff)
+    _TOP_N_HARD_CAP = max(_TOP_N_HARD_CAP, _TOP_N)
+
+    # Anchor: strict top-N
     top_40 = scored[:_TOP_N]
-    _log(f"  Top {len(top_40)}: best base conf {top_40[0]['base_confidence']:.1f} ({top_40[0]['symbol']}) — LLM for top {min(_FULL_LLM_TOP_N, len(top_40))}, monitor-only for rest")
+    # Adaptive band: include any stock scored[i>=_TOP_N] whose base_confidence
+    # is within _TOP_N_BAND of the anchor's tail (rank-N stock).
+    _band_added = 0
+    if _TOP_N_BAND > 0 and len(scored) > _TOP_N:
+        _tail_conf = float(top_40[-1]["base_confidence"])
+        _cliff = _tail_conf - _TOP_N_BAND
+        for _cand in scored[_TOP_N:]:
+            if len(top_40) >= _TOP_N_HARD_CAP:
+                break
+            _cconf = float(_cand.get("base_confidence", 0) or 0)
+            if _cconf >= _cliff:
+                top_40.append(_cand)
+                _band_added += 1
+            else:
+                # scored is sorted desc — first below-cliff means done
+                break
+    if _band_added > 0:
+        _log(f"  Top {len(top_40)}: best base conf {top_40[0]['base_confidence']:.1f} "
+             f"({top_40[0]['symbol']}) · anchor={_TOP_N} + band={_band_added} "
+             f"(within {_TOP_N_BAND:.1f}pts of rank-{_TOP_N}={top_40[_TOP_N-1]['base_confidence']:.1f}) "
+             f"· cap={_TOP_N_HARD_CAP} · LLM for top {min(_FULL_LLM_TOP_N, len(top_40))}")
+    else:
+        _log(f"  Top {len(top_40)}: best base conf {top_40[0]['base_confidence']:.1f} "
+             f"({top_40[0]['symbol']}) — LLM for top {min(_FULL_LLM_TOP_N, len(top_40))}, "
+             f"monitor-only for rest")
 
     # ── 8. News + AI risk for top N ──
     # Phase 1 #55 (2026-07-05): split behavior — top-N uses full LLM
