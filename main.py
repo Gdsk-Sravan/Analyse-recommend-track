@@ -422,6 +422,81 @@ if FRESH_START:
     print("[FRESH_START] Enabled — old tracker/audit/memory state will be ignored this run")
 
 # ═════════════════════════════════════════════════════════════════════════════
+# Phase R4 (2026-07-06): TRADING MODE PRESETS
+# ─────────────────────────────────────────────────────────────────────────────
+# TRADING_MODE=swing    (default) — 2–10 day swing trading:
+#   Softer fundamentals (BQ is overlay, not gate). Sector rotation + technical
+#   setup + RR are the primary edges. Pledge = warning, not veto. LLM validator
+#   advise-only. Optimized to surface 3–8 BUYs per day in a bullish regime.
+# TRADING_MODE=position — 4–12 week position trading (previous default):
+#   Strict fundamentals HARD gates. High-quality only. Pledge = NO_GO.
+#   LLM validator veto mode. Expects 0–3 BUYs per day.
+# TRADING_MODE=custom   — no preset applied, all env vars honored as-is.
+#
+# The preset ONLY fills variables the user has NOT already set explicitly, so
+# any env var set on the command line or in .env still wins.
+# ═════════════════════════════════════════════════════════════════════════════
+TRADING_MODE = os.getenv("TRADING_MODE", "swing").lower().strip()
+
+def _set_default(key, value):
+    """Set env var only if not already set (empty string counts as unset)."""
+    if not os.environ.get(key):
+        os.environ[key] = str(value)
+
+if TRADING_MODE == "swing":
+    # Fundamentals — relaxed (swing doesn't need 15% ROE for 5-day hold)
+    _set_default("MIN_ROE", "10")           # was 12/15
+    _set_default("MAX_DE", "1.5")           # was 1.0
+    _set_default("BUSINESS_QUALITY_GATE", "0")  # BQ becomes overlay, not gate
+    # Sector — still strict, this IS the swing edge
+    _set_default("SECTOR_STRICT_GATE", "1")
+    _set_default("SECTOR_RANK_CUTOFF", "6")     # allow slightly weaker sectors
+    # Events — HARD gate for swing (gap risk = career risk)
+    _set_default("EARNINGS_BLACKOUT_DAYS", "5")
+    _set_default("NEWS_SEVERITY_MAX", "2")
+    # LLM validator — advise only, never veto (setup wins in swing)
+    _set_default("LLM_VALIDATOR", "1")
+    _set_default("LLM_VALIDATOR_MODE", "advise")
+    # Pledge — warning, not dealbreaker (swing exits before it matters)
+    _set_default("PLEDGE_SEVERITY", "warning")   # vs "dealbreaker" in position
+    # Confidence bar — normal
+    _set_default("FUND_MISSING_CONF_CAP", "80")
+    print(f"[TRADING_MODE=swing] Preset applied: MIN_ROE=10, MAX_DE=1.5, BQ_GATE=overlay, LLM=advise, PLEDGE=warning")
+
+elif TRADING_MODE == "position":
+    # Fundamentals — strict
+    _set_default("MIN_ROE", "15")
+    _set_default("MAX_DE", "1.0")
+    _set_default("BUSINESS_QUALITY_GATE", "1")
+    # Sector — strict
+    _set_default("SECTOR_STRICT_GATE", "1")
+    _set_default("SECTOR_RANK_CUTOFF", "4")
+    # Events — HARD
+    _set_default("EARNINGS_BLACKOUT_DAYS", "5")
+    _set_default("NEWS_SEVERITY_MAX", "2")
+    # LLM validator — veto mode
+    _set_default("LLM_VALIDATOR", "1")
+    _set_default("LLM_VALIDATOR_MODE", "veto")
+    # Pledge — dealbreaker
+    _set_default("PLEDGE_SEVERITY", "dealbreaker")
+    _set_default("FUND_MISSING_CONF_CAP", "75")
+    print(f"[TRADING_MODE=position] Preset applied: MIN_ROE=15, MAX_DE=1.0, BQ_GATE=hard, LLM=veto, PLEDGE=dealbreaker")
+
+elif TRADING_MODE == "custom":
+    print(f"[TRADING_MODE=custom] No preset applied; all env vars honored as-is")
+
+else:
+    print(f"[TRADING_MODE={TRADING_MODE}] Unknown mode — treating as 'swing'")
+    TRADING_MODE = "swing"
+    # re-run preset with swing defaults
+    for k, v in [("MIN_ROE","10"),("MAX_DE","1.5"),("BUSINESS_QUALITY_GATE","0"),
+                 ("SECTOR_STRICT_GATE","1"),("SECTOR_RANK_CUTOFF","6"),
+                 ("EARNINGS_BLACKOUT_DAYS","5"),("NEWS_SEVERITY_MAX","2"),
+                 ("LLM_VALIDATOR","1"),("LLM_VALIDATOR_MODE","advise"),
+                 ("PLEDGE_SEVERITY","warning"),("FUND_MISSING_CONF_CAP","80")]:
+        _set_default(k, v)
+
+# ═════════════════════════════════════════════════════════════════════════════
 # Phase E1 (2026-07-02): PROFESSIONAL EXIT STACK — 5-layer system
 # ═════════════════════════════════════════════════════════════════════════════
 # All exit enhancements are ADDITIVE and ENV-GATED. Defaults preserve the
@@ -848,6 +923,41 @@ def _update_ownership_quality(stock: dict) -> None:
         elif de > 1.0:  score -= 5
         elif de < 0.5:  score += 10
 
+        # ── Phase R3 (2026-07-06): Per-stock FII / DII shareholding overlay ──
+        # High institutional participation (FII+DII) is a strong quality
+        # signal — smart money has already done fundamental diligence and
+        # is holding the stock. Applied conservatively (±10 max) so it
+        # complements but doesn't dominate ROE/pledge/D/E.
+        #   FII+DII > 30%  = strong institutional backing (+8)
+        #   FII+DII > 20%  = decent institutional presence   (+4)
+        #   FII+DII < 5%   = retail-only / illiquid           (-5)
+        #   FII% > 15% alone = foreign institutional interest (+2 bonus)
+        # Kill-switch via FII_DII_OVERLAY=0 for A/B testing.
+        fii_dii_bonus = 0
+        fii_dii_reasons = []
+        if os.getenv("FII_DII_OVERLAY", "1") != "0":
+            try:
+                fii_pct = float(stock.get("fii_pct", 0) or 0)
+                dii_pct = float(stock.get("dii_pct", 0) or 0)
+                inst_total = fii_pct + dii_pct
+                if inst_total > 30:
+                    fii_dii_bonus += 8
+                    fii_dii_reasons.append(f"INST_STRONG(+8 FII+DII={inst_total:.1f}%)")
+                elif inst_total > 20:
+                    fii_dii_bonus += 4
+                    fii_dii_reasons.append(f"INST_PRESENT(+4 FII+DII={inst_total:.1f}%)")
+                elif 0 < inst_total < 5:
+                    # 0 is treated as "unknown", not "confirmed low"
+                    fii_dii_bonus -= 5
+                    fii_dii_reasons.append(f"INST_ABSENT(-5 FII+DII={inst_total:.1f}%)")
+                if fii_pct > 15:
+                    fii_dii_bonus += 2
+                    fii_dii_reasons.append(f"FII_HIGH(+2 FII={fii_pct:.1f}%)")
+                fii_dii_bonus = max(-8, min(10, fii_dii_bonus))
+                score += fii_dii_bonus
+            except (TypeError, ValueError):
+                pass
+
         # ── Phase G7-A: Delivery% bonus/penalty (only if real nselib data) ──
         deliv_src = str(stock.get("delivery_source", "") or "").lower()
         deliv_bonus = 0
@@ -894,6 +1004,10 @@ def _update_ownership_quality(stock: dict) -> None:
         stock["ownership_deliv_bonus"] = deliv_bonus
         if deliv_reasons:
             stock["ownership_deliv_reasons"] = deliv_reasons
+        # Phase R3 (2026-07-06): stamp FII/DII overlay contribution on stock
+        stock["ownership_fii_bonus"] = fii_dii_bonus
+        if fii_dii_reasons:
+            stock["ownership_fii_reasons"] = fii_dii_reasons
         # Keep factor_scores in sync
         if "factor_scores" in stock:
             stock["factor_scores"]["ownership_quality"] = stock["ownership_quality"]
@@ -2202,6 +2316,135 @@ def ai_buy_thesis(
     return _rule_based_thesis(symbol, sector, rr, conf_trend, catalyst, sector_status)
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# Phase R3 (2026-07-06) — LLM Buy Thesis Validator
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Purpose: red-team second-opinion pass on every BUY / STRONG_BUY / BUY_CONTRARIAN
+# / BUY_TURNAROUND signal AFTER all deterministic gates. The pipeline gates
+# check individual facts (ROE, D/E, sector rank, technical setup) but cannot
+# spot pattern-level red flags like:
+#   • "Great ROE but from one-off other-income line"
+#   • "Momentum + strong sector but earnings expected in 3 days (blackout)"
+#   • "STRONG_BUY criteria met but stock is in a hyped sector at extremes"
+#   • "BQ score is high but the DE/ROCE pair suggests financialisation, not ops"
+# The validator returns a structured JSON verdict (GO / CAUTION / NO_GO) and
+# the pipeline uses it either as advisory (default) or as a veto (opt-in).
+#
+# Env vars:
+#   LLM_VALIDATOR=1             enable (default 0 — opt-in until proven stable)
+#   LLM_VALIDATOR_MODE=advise   "advise" (add warning only) or "veto" (demote NO_GO to WATCHLIST)
+#   LLM_VALIDATOR_MAX=5         max stocks validated per run (cost / latency cap)
+# ═══════════════════════════════════════════════════════════════════════════
+
+def ai_validate_buy_thesis(
+    symbol: str, sector: str, decision: str,
+    confidence: float, tq: float, rr: float,
+    bq_score: float, bq_verdict: str, bq_flags: list,
+    sector_composite: float, sector_verdict: str,
+    roe: float, de_ratio: float, pledge_pct: float,
+    fii_pct: float, dii_pct: float,
+    fail_reasons: list, warnings: list, soft_warnings: list,
+    regime: str, catalysts: list,
+) -> dict:
+    """
+    Red-team second opinion on a BUY-tier stock. Returns:
+       {
+         "verdict": "GO" | "CAUTION" | "NO_GO",
+         "reason":  str,   # one-line rationale
+         "red_flags": list[str],
+         "source":  "llm" | "rule_based" | "unavailable"
+       }
+    Never raises. On any error returns a permissive default (source=unavailable).
+    """
+    fallback = {"verdict": "GO", "reason": "validator unavailable", "red_flags": [], "source": "unavailable"}
+    try:
+        # Rule-based sanity checks (also acts as fallback if AI unavailable)
+        rule_flags = []
+        rule_verdict = "GO"
+        if bq_verdict in ("DECLINING", "WEAK"):
+            rule_flags.append(f"BQ_VERDICT_{bq_verdict}")
+            rule_verdict = "CAUTION"
+        if de_ratio > 2.0 and sector not in ("BANKING", "FINANCE", "INSURANCE", "NBFC"):
+            rule_flags.append(f"HIGH_LEVERAGE(DE={de_ratio:.2f})")
+            rule_verdict = "CAUTION"
+        # Pledge severity is regime-configurable (Phase R4). Swing mode treats
+        # it as a warning (CAUTION); position mode treats it as a dealbreaker
+        # (NO_GO). Default matches historical behavior (dealbreaker).
+        _pledge_sev = os.getenv("PLEDGE_SEVERITY", "dealbreaker").lower()
+        if pledge_pct > 20:
+            rule_flags.append(f"HIGH_PLEDGE({pledge_pct:.0f}%)")
+            if _pledge_sev == "warning":
+                # swing mode: only downgrade to CAUTION if we were still GO
+                if rule_verdict == "GO":
+                    rule_verdict = "CAUTION"
+            else:
+                rule_verdict = "NO_GO"
+        if bq_score < 45 and decision == "STRONG_BUY":
+            rule_flags.append(f"STRONG_BUY_WITH_WEAK_BQ({bq_score:.0f})")
+            rule_verdict = "CAUTION"
+        # If decision is STRONG_BUY but BQ_verdict weak — contradiction
+        if decision == "STRONG_BUY" and bq_verdict not in ("STRONG", "ACCEPTABLE"):
+            rule_flags.append("STRONG_BUY_BQ_MISMATCH")
+            rule_verdict = "CAUTION"
+
+        # Compact prompt (target < 1000 chars so full response fits in max_tokens=140)
+        _wf = ", ".join([str(f) for f in (warnings or [])[:3]]) or "none"
+        _sw = ", ".join([str(s) for s in (soft_warnings or [])[:3]]) or "none"
+        _cat = ", ".join(catalysts[:3]) if catalysts else "none"
+        _flags = ", ".join(bq_flags[:6]) if bq_flags else "none"
+
+        prompt = (
+            "You are a strict institutional risk manager reviewing a proposed BUY.\n"
+            f"Stock: {symbol} · Sector: {sector} · Regime: {regime}\n"
+            f"Decision: {decision} · Confidence: {confidence:.0f} · TQ: {tq:.0f} · RR: {rr:.2f}x\n"
+            f"Business Quality: BQ={bq_score:.0f} verdict={bq_verdict} flags=[{_flags}]\n"
+            f"Sector composite: {sector_composite:.0f} verdict={sector_verdict}\n"
+            f"Fundamentals: ROE={roe:.1f}% DE={de_ratio:.2f} Pledge={pledge_pct:.0f}% FII={fii_pct:.1f}% DII={dii_pct:.1f}%\n"
+            f"Catalysts: {_cat}\n"
+            f"Warnings: {_wf}\n"
+            f"Soft warnings: {_sw}\n\n"
+            "Return ONLY a JSON object with EXACTLY these keys (no markdown, no extra text):\n"
+            '{"verdict":"GO"|"CAUTION"|"NO_GO","reason":"<max 20 words>","red_flags":["FLAG1","FLAG2"]}\n\n'
+            "Rules for verdict:\n"
+            "- GO if fundamentals + technicals + sector are all consistent with a normal BUY\n"
+            "- CAUTION if there is one meaningful contradiction (e.g. STRONG_BUY but BQ weak, or high DE)\n"
+            "- NO_GO if there are ≥2 red flags OR any single dealbreaker (pledge>20%, decision inconsistent with BQ verdict, sector momentum negative)\n"
+            "Cite SPECIFIC numbers from the data above in the reason field."
+        )
+        raw = _call_ai(prompt, max_tokens=140)
+        if not raw:
+            # Fall back to rule-based verdict
+            return {"verdict": rule_verdict, "reason": "rule-based validator (LLM unavailable)",
+                    "red_flags": rule_flags, "source": "rule_based"}
+
+        parsed = _parse_ai_json(raw)
+        if not parsed or "verdict" not in parsed:
+            return {"verdict": rule_verdict, "reason": "LLM output unparseable",
+                    "red_flags": rule_flags, "source": "rule_based"}
+
+        v = str(parsed.get("verdict", "GO")).upper()
+        if v not in ("GO", "CAUTION", "NO_GO"):
+            v = "GO"
+        reason = str(parsed.get("reason", ""))[:200]
+        red_flags = parsed.get("red_flags", []) or []
+        if not isinstance(red_flags, list):
+            red_flags = [str(red_flags)]
+        red_flags = [str(f)[:60] for f in red_flags][:5]
+        # Merge in rule-based flags so we don't lose deterministic checks
+        for rf in rule_flags:
+            if rf not in red_flags:
+                red_flags.append(rf)
+        # If rule-based said NO_GO (pledge>20% is a dealbreaker), always upgrade
+        if rule_verdict == "NO_GO":
+            v = "NO_GO"
+        return {"verdict": v, "reason": reason, "red_flags": red_flags, "source": "llm"}
+    except Exception as e:
+        try: _log(f"[WARN] ai_validate_buy_thesis error for {symbol}: {e}")
+        except Exception: pass
+        return fallback
+
+
 def _rule_based_near_miss_insight(
     symbol: str, conf_gap: float, conf_only: bool,
     rr_fail: bool, tq_fail: bool, conf_trend: str, days_watching: int,
@@ -2377,7 +2620,8 @@ def run_all_ai_calls(
     """
     from concurrent.futures import ThreadPoolExecutor
 
-    results = {"daily_summary": "", "buy_theses": {}, "near_miss_insights": {}}
+    results = {"daily_summary": "", "buy_theses": {}, "near_miss_insights": {},
+               "buy_validations": {}}
     near_miss    = [w for w in watchlist if w.get("tier") == "NEAR_MISS"]
     top_nm       = near_miss[0] if near_miss else {}
     upcoming_ev  = events[0]["name"] if events else ""
@@ -2443,6 +2687,41 @@ def run_all_ai_calls(
             # the remainder receive the deterministic rule-based fallback so
             # every Near Miss card in Telegram has an insight line.
             NM_AI_CAP = 15
+            # ── Phase R3 (2026-07-06) — LLM buy thesis validator ──
+            # Opt-in; only when LLM_VALIDATOR=1. Runs in parallel with the
+            # thesis+insight calls so no additional latency (all use the same
+            # ThreadPoolExecutor with max_workers=8).
+            if os.getenv("LLM_VALIDATOR", "0") == "1":
+                try:
+                    _val_max = int(os.getenv("LLM_VALIDATOR_MAX", "5"))
+                except (TypeError, ValueError):
+                    _val_max = 5
+                for stock in buys[:_val_max]:
+                    sym = stock["symbol"]
+                    futures[f"validate_{sym}"] = executor.submit(
+                        ai_validate_buy_thesis,
+                        symbol           = sym,
+                        sector           = stock.get("sector", "OTHERS"),
+                        decision         = stock.get("decision", "BUY"),
+                        confidence       = float(stock.get("final_confidence", 0) or 0),
+                        tq               = float(stock.get("trade_quality_score", 0) or 0),
+                        rr               = float(stock.get("rr_ratio", 0) or 0),
+                        bq_score         = float(stock.get("bq_score", 0) or 0),
+                        bq_verdict       = str(stock.get("bq_verdict", "UNKNOWN")),
+                        bq_flags         = stock.get("bq_flags", []) or [],
+                        sector_composite = float(stock.get("sector_composite_score", 50) or 50),
+                        sector_verdict   = str(stock.get("sector_verdict", "NEUTRAL")),
+                        roe              = float(stock.get("roe", 0) or 0),
+                        de_ratio         = float(stock.get("de_ratio", 0) or 0),
+                        pledge_pct       = float(stock.get("promoter_pledge_pct", 0) or 0),
+                        fii_pct          = float(stock.get("fii_pct", 0) or 0),
+                        dii_pct          = float(stock.get("dii_pct", 0) or 0),
+                        fail_reasons     = stock.get("fail_reasons", []) or [],
+                        warnings         = stock.get("warnings", []) or [],
+                        soft_warnings    = stock.get("_soft_warnings", []) or [],
+                        regime           = regime,
+                        catalysts        = stock.get("catalysts", []) or [],
+                    )
             for w in near_miss[:NM_AI_CAP]:
                 sym = w["symbol"]
                 futures[f"nm_{sym}"] = executor.submit(
@@ -2499,6 +2778,9 @@ def run_all_ai_calls(
                         results["buy_theses"][key[4:]] = text or ""
                     elif key.startswith("nm_"):
                         results["near_miss_insights"][key[3:]] = text or ""
+                    elif key.startswith("validate_"):
+                        # Phase R3 — LLM validator result (dict, not str)
+                        results.setdefault("buy_validations", {})[key[len("validate_"):]] = text or {}
                 except Exception as e:
                     _log(f"[WARN] AI call {key} timed out or failed: {e}")
     except Exception as e:
@@ -2508,7 +2790,8 @@ def run_all_ai_calls(
         f"[INFO] AI calls complete: "
         f"summary={'OK' if results['daily_summary'] else 'FALLBACK'} | "
         f"buy theses={len(results['buy_theses'])} | "
-        f"near miss insights={len(results['near_miss_insights'])}"
+        f"near miss insights={len(results['near_miss_insights'])} | "
+        f"validations={len(results.get('buy_validations', {}))}"
     )
     return results
 
@@ -3506,6 +3789,21 @@ def _parse_screener_html(soup) -> dict:
     .name/.value spans AND inline text like "ROE38.2%".
     D/E and Pledge no longer on free page - return 0 so caller can use
     yfinance (D/E) and pledge blocklist as fallbacks.
+
+    PHASE R1 (2026-07-06): additionally extracts the "Quarterly Results"
+    table (sales / net profit / EPS across last 4-8 quarters) so we can
+    derive institutional quality signals:
+      • quarterly_sales:  list[float]  — most recent LAST
+      • quarterly_profit: list[float]  — most recent LAST
+      • quarterly_eps:    list[float]  — most recent LAST
+      • sales_yoy_pct:    float        — latest Q vs same Q year-ago
+      • profit_yoy_pct:   float        — latest Q vs same Q year-ago
+      • sales_trend_3q:   "DECLINING" | "GROWING" | "MIXED"
+      • profit_trend_3q:  "DECLINING" | "GROWING" | "MIXED"
+
+    All new fields are OPTIONAL — absent when screener response doesn't
+    include the Quarterly Results section (rare, but possible for newly
+    listed stocks or partial page loads).
     """
     import re as _re
     data: dict = {}
@@ -3578,6 +3876,87 @@ def _parse_screener_html(soup) -> dict:
                 data["public_pct"] = last_val
         if "promoter_holding_pct" in data:
             break
+
+    # ------------------------------------------------------------------
+    # Phase R1 (2026-07-06): Quarterly Results table
+    # Screener publishes a table where rows are line items (Sales, Net Profit,
+    # EPS, OPM %, etc.) and columns are quarter-end dates (Jun 2024, Sep 2024,
+    # Dec 2024, Mar 2025, Jun 2025 …). We only extract the top-3 rows we need
+    # for institutional quality assessment: Sales, Net Profit, EPS. If any
+    # extraction fails, we simply skip — never raise; the caller treats the
+    # absence as "quarterly data unavailable" and downgrades confidence.
+    # ------------------------------------------------------------------
+    try:
+        _q_section = soup.find(id="quarters") or soup.find("section", {"id": "quarters"})
+        _q_table = None
+        if _q_section:
+            _q_table = _q_section.find("table")
+        # Fallback: any table whose header row has 3+ quarter columns
+        if _q_table is None:
+            for _t in soup.find_all("table"):
+                _hdr = [td.get_text(strip=True) for td in _t.find_all("tr")[0].find_all(["td", "th"])] if _t.find_all("tr") else []
+                _q_cols = sum(1 for h in _hdr if _re.search(r"(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s*20\d\d", h or ""))
+                if _q_cols >= 3 and any("sales" in c.get_text(strip=True).lower() or "revenue" in c.get_text(strip=True).lower() for r in _t.find_all("tr") for c in r.find_all(["td", "th"])[:1]):
+                    _q_table = _t
+                    break
+        if _q_table is not None:
+            for row in _q_table.find_all("tr"):
+                cells = [td.get_text(strip=True) for td in row.find_all(["td", "th"])]
+                if len(cells) < 4:
+                    continue
+                lbl = cells[0].lower()
+                # Parse row values (skip cell 0 which is the label)
+                vals: list[float] = []
+                for c in cells[1:]:
+                    v = _num(c)
+                    if v is not None:
+                        vals.append(v)
+                if len(vals) < 3:
+                    continue
+                # Detect which line item this row represents
+                if ("sales" in lbl or "revenue" in lbl) and "growth" not in lbl and "operating" not in lbl:
+                    data["quarterly_sales"] = vals[-8:]  # keep last 8 quarters max
+                elif ("net profit" in lbl or "net income" in lbl) and "growth" not in lbl:
+                    data["quarterly_profit"] = vals[-8:]
+                elif ("eps in" in lbl or lbl.strip() == "eps" or "eps (" in lbl):
+                    data["quarterly_eps"] = vals[-8:]
+                elif "opm" in lbl or "operating profit margin" in lbl:
+                    data["quarterly_opm"] = vals[-8:]
+        # Derive trend labels + YoY deltas
+        def _trend_label(series: list[float], min_len: int = 3) -> str:
+            if not series or len(series) < min_len:
+                return "UNKNOWN"
+            tail = series[-min_len:]
+            deltas = [tail[i] - tail[i-1] for i in range(1, len(tail))]
+            neg = sum(1 for d in deltas if d < 0)
+            pos = sum(1 for d in deltas if d > 0)
+            if neg == len(deltas):
+                return "DECLINING"
+            if pos == len(deltas):
+                return "GROWING"
+            return "MIXED"
+        _qs = data.get("quarterly_sales", [])
+        _qp = data.get("quarterly_profit", [])
+        _qe = data.get("quarterly_eps", [])
+        _qo = data.get("quarterly_opm", [])
+        if _qs:
+            data["sales_trend_3q"] = _trend_label(_qs, 3)
+            # YoY: latest vs same quarter 4 quarters ago
+            if len(_qs) >= 5 and _qs[-5] != 0:
+                data["sales_yoy_pct"] = round((_qs[-1] - _qs[-5]) / abs(_qs[-5]) * 100, 1)
+        if _qp:
+            data["profit_trend_3q"] = _trend_label(_qp, 3)
+            if len(_qp) >= 5 and _qp[-5] != 0:
+                data["profit_yoy_pct"] = round((_qp[-1] - _qp[-5]) / abs(_qp[-5]) * 100, 1)
+        if _qe:
+            data["eps_trend_3q"] = _trend_label(_qe, 3)
+            if len(_qe) >= 5 and _qe[-5] != 0:
+                data["eps_yoy_pct"] = round((_qe[-1] - _qe[-5]) / abs(_qe[-5]) * 100, 1)
+        if _qo:
+            data["opm_trend_3q"] = _trend_label(_qo, 3)
+    except Exception:
+        # Parsing failure is non-fatal — quarterly fields simply absent
+        pass
 
     return data
 
@@ -5419,6 +5798,14 @@ def compute_nifty_state(nifty_df) -> dict:
 
         dist_52w_high = round((high_52w - last) / high_52w * 100, 1) if high_52w > 0 else 0.0
 
+        # Phase R4 (2026-07-06): Nifty 20d return — used per-stock for RS
+        # (relative strength) computation in the swing-alpha overlay.
+        try:
+            _nifty_20_ago = float(closes[-21]) if len(closes) >= 21 else float(closes[0])
+            nifty_ret_20d = (last / _nifty_20_ago - 1) * 100 if _nifty_20_ago > 0 else 0.0
+        except Exception:
+            nifty_ret_20d = 0.0
+
         return {
             "close":         round(last, 1),
             "ema20":         round(ema20, 1),
@@ -5434,6 +5821,7 @@ def compute_nifty_state(nifty_df) -> dict:
             "ema_bear":      ema_bear,
             "structure":     structure,
             "dist_52w_high_pct": dist_52w_high,
+            "ret_20d":       round(nifty_ret_20d, 2),   # ★ NEW R4: for per-stock RS
         }
     except Exception as e:
         _log(f"[WARN] compute_nifty_state failed: {e}")
@@ -5443,6 +5831,7 @@ def compute_nifty_state(nifty_df) -> dict:
             "above_ema20": False, "above_ema50": False, "above_ema200": False,
             "ema_bear": True, "structure": "🔴 Data unavailable",
             "dist_52w_high_pct": 0,
+            "ret_20d": 0.0,   # ★ NEW R4
         }
 
 
@@ -7008,9 +7397,300 @@ def estimate_gap_risk_pct(closes, highs, lows) -> dict:
         return {"avg_gap_pct": 0.0, "max_gap_pct": 0.0, "p90_gap_pct": 0.0}
 
 
+def compute_business_quality_score(promoter_data: dict) -> dict:
+    """
+    Phase R2 (2026-07-06): Institutional Business Quality Score (0-100).
+
+    Composite score built from quarterly + ratio fundamentals. Missing
+    inputs reduce the score's confidence (returned as `bq_data_completeness`)
+    rather than being silently zero-filled. This lets downstream ranking:
+
+      • Reward strong business quality above and beyond technicals
+      • Distinguish "high conf on strong biz" from "high conf on unknown biz"
+      • Populate a first-class field for the 9-tier taxonomy (STRONG BUY,
+        BUY, WATCHLIST, TURNAROUND, CONTRARIAN, AVOID)
+
+    Weights (institutional-lite; keeps out volatile items like FCF that
+    aren't reliably parseable from screener's free HTML):
+      Sales trend YoY:  25%   (institutional quality benchmark)
+      Profit trend YoY: 25%
+      ROE:              15%
+      D/E (inverted):   10%   (financials excepted)
+      ROCE:             10%
+      Promoter holding:  8%
+      Pledge (inverted): 5%
+      Sales 3Q trend:    1%   (already used above)
+      Profit 3Q trend:   1%
+
+    Returns:
+      {
+        "bq_score": 0-100 float,
+        "bq_data_completeness": 0-100 float,  # % of inputs that were real
+        "bq_flags": ["ROE_STRONG", "SALES_YOY_POSITIVE", ...],
+        "bq_verdict": "STRONG" | "ACCEPTABLE" | "WEAK" | "DECLINING" | "UNKNOWN",
+      }
+    """
+    pd_ = promoter_data or {}
+    score = 0.0
+    max_possible = 0.0
+    flags: list[str] = []
+
+    # Detect financial sector for D/E leniency (we can't see sector from
+    # promoter_data alone; caller can override via _is_financial arg
+    # in future — for now, apply blanket rule)
+
+    # 1. Sales YoY (25 pts)
+    sales_yoy = pd_.get("sales_yoy_pct")
+    if isinstance(sales_yoy, (int, float)):
+        max_possible += 25
+        if sales_yoy >= 20:
+            score += 25
+            flags.append("SALES_YOY_STRONG")
+        elif sales_yoy >= 10:
+            score += 18
+            flags.append("SALES_YOY_GOOD")
+        elif sales_yoy >= 0:
+            score += 10
+            flags.append("SALES_YOY_FLAT")
+        elif sales_yoy >= -10:
+            score += 4
+            flags.append("SALES_YOY_WEAK")
+        else:
+            score += 0
+            flags.append("SALES_YOY_DECLINING")
+
+    # 2. Profit YoY (25 pts)
+    profit_yoy = pd_.get("profit_yoy_pct")
+    if isinstance(profit_yoy, (int, float)):
+        max_possible += 25
+        if profit_yoy >= 25:
+            score += 25
+            flags.append("PROFIT_YOY_STRONG")
+        elif profit_yoy >= 10:
+            score += 18
+            flags.append("PROFIT_YOY_GOOD")
+        elif profit_yoy >= 0:
+            score += 10
+            flags.append("PROFIT_YOY_FLAT")
+        elif profit_yoy >= -15:
+            score += 4
+            flags.append("PROFIT_YOY_WEAK")
+        else:
+            score += 0
+            flags.append("PROFIT_YOY_DECLINING")
+
+    # 3. ROE (15 pts)
+    roe = pd_.get("roe")
+    if isinstance(roe, (int, float)) and roe != 0:
+        max_possible += 15
+        if roe >= 20:
+            score += 15
+            flags.append("ROE_EXCELLENT")
+        elif roe >= 15:
+            score += 12
+            flags.append("ROE_STRONG")
+        elif roe >= 12:
+            score += 8
+            flags.append("ROE_ACCEPTABLE")
+        elif roe >= 8:
+            score += 4
+            flags.append("ROE_WEAK")
+        else:
+            score += 0
+            flags.append("ROE_POOR")
+
+    # 4. D/E inverted (10 pts) — lower is better, higher penalized
+    de = pd_.get("de_ratio")
+    if isinstance(de, (int, float)) and de >= 0:
+        max_possible += 10
+        if de <= 0.3:
+            score += 10
+            flags.append("DE_EXCELLENT")
+        elif de <= 0.8:
+            score += 7
+            flags.append("DE_GOOD")
+        elif de <= 1.5:
+            score += 4
+            flags.append("DE_ACCEPTABLE")
+        else:
+            score += 0
+            flags.append("DE_HIGH")
+
+    # 5. ROCE (10 pts)
+    roce = pd_.get("roce")
+    if isinstance(roce, (int, float)) and roce != 0:
+        max_possible += 10
+        if roce >= 20:
+            score += 10
+            flags.append("ROCE_EXCELLENT")
+        elif roce >= 15:
+            score += 8
+            flags.append("ROCE_STRONG")
+        elif roce >= 10:
+            score += 5
+            flags.append("ROCE_ACCEPTABLE")
+        else:
+            score += 1
+            flags.append("ROCE_WEAK")
+
+    # 6. Promoter holding (8 pts) — higher = skin in the game
+    prom = pd_.get("promoter_holding_pct")
+    if isinstance(prom, (int, float)) and prom > 0:
+        max_possible += 8
+        if prom >= 50:
+            score += 8
+            flags.append("PROMOTER_HIGH")
+        elif prom >= 35:
+            score += 5
+        elif prom >= 20:
+            score += 3
+        else:
+            score += 1
+            flags.append("PROMOTER_LOW")
+
+    # 7. Pledge inverted (5 pts)
+    pledge = pd_.get("promoter_pledge_pct")
+    if isinstance(pledge, (int, float)):
+        max_possible += 5
+        if pledge <= 0.5:
+            score += 5
+        elif pledge <= 5:
+            score += 3
+        elif pledge <= 20:
+            score += 1
+        else:
+            score += 0
+            flags.append("PLEDGE_HIGH")
+
+    # 8. Sales 3Q trend (1 pt bonus)
+    st = str(pd_.get("sales_trend_3q", "") or "").upper()
+    if st in ("GROWING", "DECLINING", "MIXED"):
+        max_possible += 1
+        if st == "GROWING":
+            score += 1
+        elif st == "MIXED":
+            score += 0.5
+
+    # 9. Profit 3Q trend (1 pt bonus)
+    pt = str(pd_.get("profit_trend_3q", "") or "").upper()
+    if pt in ("GROWING", "DECLINING", "MIXED"):
+        max_possible += 1
+        if pt == "GROWING":
+            score += 1
+        elif pt == "MIXED":
+            score += 0.5
+
+    # Normalize to 0-100 based on actual data available
+    if max_possible == 0:
+        bq_score = 0.0
+        completeness = 0.0
+        verdict = "UNKNOWN"
+    else:
+        bq_score = round((score / max_possible) * 100.0, 1)
+        # Completeness = fraction of the "full 100pt" universe we could evaluate
+        completeness = round((max_possible / 100.0) * 100.0, 1)
+        # Verdict — combine score AND critical flags
+        _declining = any("DECLINING" in f for f in flags)
+        if _declining and bq_score < 50:
+            verdict = "DECLINING"
+        elif bq_score >= 75:
+            verdict = "STRONG"
+        elif bq_score >= 55:
+            verdict = "ACCEPTABLE"
+        elif bq_score >= 40:
+            verdict = "WEAK"
+        else:
+            verdict = "DECLINING"
+
+    return {
+        "bq_score":              bq_score,
+        "bq_data_completeness":  completeness,
+        "bq_flags":              flags,
+        "bq_verdict":            verdict,
+    }
+
+
+def compute_sector_composite_score(sector: str, sector_rotation: dict) -> dict:
+    """
+    Phase R2 (2026-07-06): Sector Composite Score (0-100).
+
+    Combines rank, momentum, status, and rotation velocity into a single
+    institutional sector-quality gauge. Used to:
+      • Give the 9-tier taxonomy a proper sector strength input
+      • Discriminate "top-6 with strong momentum" from "top-6 fading"
+      • Support CONTRARIAN detection with objective thresholds
+
+    Returns dict with keys:
+      sector_composite_score: 0-100
+      sector_verdict: "LEADING" | "STRONG" | "NEUTRAL" | "WEAK" | "LAGGING"
+    """
+    if not sector or not isinstance(sector_rotation, dict):
+        return {"sector_composite_score": 50.0, "sector_verdict": "UNKNOWN"}
+
+    data = sector_rotation.get(sector, {})
+    if not isinstance(data, dict):
+        return {"sector_composite_score": 50.0, "sector_verdict": "UNKNOWN"}
+
+    status = str(data.get("status", "NEUTRAL")).upper()
+    velocity = str(data.get("rotation_velocity", "UNKNOWN")).upper()
+    rank = data.get("rank_5d")
+    ret5d = data.get("ret5d")
+    ret20d = data.get("ret20d")
+
+    score = 50.0
+
+    # 1. Status contribution (±25)
+    status_adj = {
+        "LEADING": +25, "NEUTRAL": 0, "WEAKENING": -12, "LAGGING": -25,
+    }.get(status, 0)
+    score += status_adj
+
+    # 2. Rank contribution (±15) — normalized to sector count
+    if isinstance(rank, (int, float)) and rank > 0:
+        n_sectors = max(len(sector_rotation), 1)
+        # Convert rank to percentile: rank 1 = 100th %ile, rank N = 0th
+        percentile = 1.0 - ((rank - 1) / max(n_sectors - 1, 1))
+        rank_adj = (percentile - 0.5) * 30  # ±15
+        score += rank_adj
+
+    # 3. Momentum contribution (±10)
+    if isinstance(ret20d, (int, float)):
+        if ret20d >= 5:
+            score += 10
+        elif ret20d >= 2:
+            score += 5
+        elif ret20d >= 0:
+            score += 0
+        elif ret20d >= -3:
+            score -= 5
+        else:
+            score -= 10
+
+    # 4. Velocity contribution (±5)
+    vel_adj = {"ROTATING_IN": +5, "STABLE": 0, "ROTATING_OUT": -5, "UNKNOWN": 0}.get(velocity, 0)
+    score += vel_adj
+
+    score = max(0.0, min(100.0, score))
+
+    # Verdict
+    if score >= 75:
+        verdict = "LEADING"
+    elif score >= 60:
+        verdict = "STRONG"
+    elif score >= 40:
+        verdict = "NEUTRAL"
+    elif score >= 25:
+        verdict = "WEAK"
+    else:
+        verdict = "LAGGING"
+
+    return {"sector_composite_score": round(score, 1), "sector_verdict": verdict}
+
+
 def compute_all_factors(symbol: str, df,
                          sector: str, regime_data: dict,
-                         sector_rotation: dict = None) -> dict:
+                         sector_rotation: dict = None,
+                         nifty_state: dict = None) -> dict:
     result = _default_stock_result(symbol, sector)
     try:
         closes  = df["Close"].squeeze().values.astype(float)
@@ -7152,6 +7832,14 @@ def compute_all_factors(symbol: str, df,
         result["sector_velocity"]      = _srot.get("rotation_velocity", "UNKNOWN")
         result["sector_rank_5d"]       = _srot.get("rank_5d")
         result["sector_rank_delta_5d"] = _srot.get("rank_delta_5d")
+        # Phase R2 (2026-07-06): institutional sector composite (0-100)
+        try:
+            _sc = compute_sector_composite_score(sector, sector_rotation or {})
+            result["sector_composite_score"] = _sc.get("sector_composite_score", 50.0)
+            result["sector_verdict"]         = _sc.get("sector_verdict", "UNKNOWN")
+        except Exception:
+            result["sector_composite_score"] = 50.0
+            result["sector_verdict"]         = "UNKNOWN"
         if sector_rotation and not rotation_hit:
             # Surface as a soft warning + downgrade status so BUY thesis / logs
             # know we defaulted to neutral instead of a real rotation read.
@@ -7557,6 +8245,96 @@ def compute_all_factors(symbol: str, df,
             1,
         )
 
+        # ═══════════════════════════════════════════════════════════════════
+        # Phase R4 (2026-07-06): SWING-ALPHA OVERLAY (4 signals)
+        # ─────────────────────────────────────────────────────────────────
+        # Four swing-trading-specific edges that our previous scoring
+        # under-weighted. Each is scored 0-100 (neutral 50), stamped on
+        # result, and a composite `swing_alpha_score` produced as their
+        # equal-weight mean. TQ score is nudged +5 for TQ<80 stocks whose
+        # swing_alpha_score >= 65, giving fresh breakouts a real edge.
+        # ─────────────────────────────────────────────────────────────────
+        #  1. rs_vs_nifty_20d — per-stock 20d return minus Nifty 20d return
+        #  2. breakout_freshness — days since last 20-day high (0 = today)
+        #  3. atr_stop_ratio — ATR14 / price (tight = ≤3%; loose = >6%)
+        #  4. volume_expansion — today_vol / avg_vol_20
+        # ═══════════════════════════════════════════════════════════════════
+        try:
+            # ── R4-1: Relative Strength vs Nifty (20d) ──
+            _nifty_20 = float((nifty_state or {}).get("ret_20d", 0.0) or 0.0)
+            _stk_20 = ret21d  # our 21d return proxy (~20d)
+            _rs_diff = _stk_20 - _nifty_20  # percentage points of outperformance
+            # Score: -10pp → 0; 0pp → 50; +10pp → 100; capped
+            _rs_score = 50 + (_rs_diff * 5)
+            _rs_score = max(0, min(100, _rs_score))
+            result["rs_vs_nifty_20d"]        = round(_rs_diff, 2)
+            result["rs_vs_nifty_20d_score"]  = round(_rs_score, 1)
+
+            # ── R4-2: Breakout freshness (days since last 20-day high) ──
+            # Look back at last 20 sessions of highs; find the most recent
+            # bar where high >= max(high[-20:]).
+            _look20 = highs[-20:] if len(highs) >= 20 else highs
+            _max_20 = float(np.max(_look20)) if len(_look20) else float(last)
+            _days_since_hi = 0
+            for i in range(len(_look20) - 1, -1, -1):
+                if float(_look20[i]) >= _max_20 * 0.999:  # tolerance
+                    _days_since_hi = len(_look20) - 1 - i
+                    break
+            # Score: 0-2 days (fresh) = 90; 3-5 = 70; 6-10 = 50; 11-15 = 30; >15 = 15
+            if _days_since_hi <= 2:      _bf_score = 90
+            elif _days_since_hi <= 5:    _bf_score = 70
+            elif _days_since_hi <= 10:   _bf_score = 50
+            elif _days_since_hi <= 15:   _bf_score = 30
+            else:                        _bf_score = 15
+            result["breakout_freshness_days"]  = _days_since_hi
+            result["breakout_freshness_score"] = _bf_score
+
+            # ── R4-3: ATR stop ratio (ATR14 / price, %) ──
+            # Tight stops favored for swing (defined risk, better RR).
+            _atr_pct = (atr14 / last * 100) if last > 0 else 0.0
+            # Score: ≤2% (tight) = 90; ≤3% = 75; ≤5% = 55; ≤7% = 40; >7% = 20
+            if _atr_pct <= 2.0:     _atr_score = 90
+            elif _atr_pct <= 3.0:   _atr_score = 75
+            elif _atr_pct <= 5.0:   _atr_score = 55
+            elif _atr_pct <= 7.0:   _atr_score = 40
+            else:                    _atr_score = 20
+            result["atr_stop_ratio_pct"]   = round(_atr_pct, 2)
+            result["atr_stop_ratio_score"] = _atr_score
+
+            # ── R4-4: Volume expansion (today vs 20d avg) ──
+            # Real breakouts trade on >1.5x average volume.
+            _vol_exp = float(vol_ratio) if vol_ratio else 1.0
+            # Score: ≥2.0x = 90; ≥1.5x = 75; ≥1.2x = 60; ≥0.9x = 45; <0.9x = 25
+            if _vol_exp >= 2.0:      _ve_score = 90
+            elif _vol_exp >= 1.5:    _ve_score = 75
+            elif _vol_exp >= 1.2:    _ve_score = 60
+            elif _vol_exp >= 0.9:    _ve_score = 45
+            else:                     _ve_score = 25
+            result["volume_expansion_ratio"] = round(_vol_exp, 2)
+            result["volume_expansion_score"] = _ve_score
+
+            # ── R4-composite: swing_alpha_score = equal-weight mean of 4 ──
+            _sas = round((_rs_score + _bf_score + _atr_score + _ve_score) / 4.0, 1)
+            result["swing_alpha_score"] = _sas
+
+            # ── TQ nudge: reward setups the pre-R4 scoring under-weighted ──
+            # If swing_alpha_score is high (>=65) and TQ<80, add up to +5.
+            # Only active in swing trading mode.
+            if os.environ.get("TRADING_MODE", "swing").lower() == "swing":
+                _tq_pre = result.get("trade_quality_score", 0)
+                if _sas >= 65 and _tq_pre < 80:
+                    _bonus = min(5, (_sas - 65) / 7)  # 65→0, 100→5
+                    result["trade_quality_score"] = round(_tq_pre + _bonus, 1)
+                    result.setdefault("_swing_alpha_bonus", _bonus)
+        except Exception as _e_r4:
+            # Never fail scoring due to overlay computation
+            result["swing_alpha_score"]       = 50.0
+            result["rs_vs_nifty_20d_score"]   = 50.0
+            result["breakout_freshness_score"] = 50.0
+            result["atr_stop_ratio_score"]    = 50.0
+            result["volume_expansion_score"]  = 50.0
+            result.setdefault("_soft_warnings", []).append(f"SWING_ALPHA_ERR({type(_e_r4).__name__})")
+
         # ── Liquidity & price stats ──
         result["avg_volume"]      = round(avg_vol_20, 0)
         result["avg_value_lakhs"] = round(avg_val_lakhs, 1)
@@ -7602,6 +8380,60 @@ def compute_all_factors(symbol: str, df,
 
     except Exception as e:
         _log(f"[WARN] compute_all_factors failed for {symbol}: {e}")
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # Phase R4 (2026-07-06): SWING-ALPHA OVERLAY — outer fallback wrapper.
+    # If the inner try above failed and the swing-alpha overlay didn't run,
+    # this block computes the same 4 signals from the raw df directly so
+    # every row still gets the fields (even during partial-data failures).
+    # ═══════════════════════════════════════════════════════════════════════
+    if "swing_alpha_score" not in result:
+        try:
+            _c = df["Close"].squeeze().values.astype(float)
+            _h = df["High"].squeeze().values.astype(float)
+            _v = df["Volume"].squeeze().values.astype(float)
+            if len(_c) >= 22:
+                _last = float(_c[-1])
+                # RS
+                _stk_20 = (_last / float(_c[-21]) - 1) * 100 if _c[-21] > 0 else 0
+                _nfty_20 = float((nifty_state or {}).get("ret_20d", 0.0) or 0.0)
+                _rs_diff = _stk_20 - _nfty_20
+                _rs_score = max(0, min(100, 50 + _rs_diff * 5))
+                # Breakout freshness
+                _look = _h[-20:]
+                _mx = float(np.max(_look))
+                _days = 0
+                for i in range(len(_look) - 1, -1, -1):
+                    if float(_look[i]) >= _mx * 0.999:
+                        _days = len(_look) - 1 - i
+                        break
+                _bf = 90 if _days <= 2 else 70 if _days <= 5 else 50 if _days <= 10 else 30 if _days <= 15 else 15
+                # ATR ratio
+                _hi = df["High"].squeeze().values.astype(float)
+                _lo = df["Low"].squeeze().values.astype(float)
+                _tr = np.maximum(_hi[1:] - _lo[1:], np.maximum(np.abs(_hi[1:] - _c[:-1]), np.abs(_lo[1:] - _c[:-1])))
+                _atr = float(pd.Series(_tr).rolling(14).mean().iloc[-1])
+                _atr_pct = _atr / _last * 100 if _last > 0 else 0
+                _atrs = 90 if _atr_pct <= 2 else 75 if _atr_pct <= 3 else 55 if _atr_pct <= 5 else 40 if _atr_pct <= 7 else 20
+                # Volume expansion
+                _avg_v = float(pd.Series(_v).rolling(20).mean().iloc[-1])
+                _vr = float(_v[-1]) / _avg_v if _avg_v > 0 else 1.0
+                _ves = 90 if _vr >= 2.0 else 75 if _vr >= 1.5 else 60 if _vr >= 1.2 else 45 if _vr >= 0.9 else 25
+                result["rs_vs_nifty_20d"]         = round(_rs_diff, 2)
+                result["rs_vs_nifty_20d_score"]   = round(_rs_score, 1)
+                result["breakout_freshness_days"] = _days
+                result["breakout_freshness_score"] = _bf
+                result["atr_stop_ratio_pct"]      = round(_atr_pct, 2)
+                result["atr_stop_ratio_score"]    = _atrs
+                result["volume_expansion_ratio"]  = round(_vr, 2)
+                result["volume_expansion_score"]  = _ves
+                result["swing_alpha_score"]       = round((_rs_score + _bf + _atrs + _ves) / 4.0, 1)
+        except Exception:
+            # Absolute last resort — stamp neutral 50s so downstream never sees KeyError
+            for _k in ("rs_vs_nifty_20d_score", "breakout_freshness_score",
+                       "atr_stop_ratio_score", "volume_expansion_score",
+                       "swing_alpha_score"):
+                result.setdefault(_k, 50.0)
 
     return result
 
@@ -7821,11 +8653,36 @@ def run_gates(stock: dict, regime: str, thresholds: dict,
               portfolio: dict, bulk_deals: dict, promoter_data: dict,
               results_dates: list = None, upcoming_events: list = None,
               returns_cache: dict = None, holdings: list = None) -> dict:
-    """14-gate decision system."""
+    """15-gate decision system + Phase R1/R2 institutional validation layer.
+
+    Phase R1 (2026-07-06) added:
+      Gate 3e — BUSINESS_QUALITY_DECLINE (sales+profit both 3Q down)
+      Gate 3f — ROE_TOO_LOW (< MIN_ROE)
+      Gate 3g — DE_TOO_HIGH (> MAX_DE, financials excepted)
+      Gate 3h — NEWS_SEVERITY_HIGH (LLM severity > NEWS_SEVERITY_MAX)
+      Gate 9b — SECTOR_RANK_TOO_LOW (rank > SECTOR_RANK_CUTOFF)
+      Gate 9c — SECTOR_MOMENTUM_NEG (sector 20d return < 0)
+      + Missing-data confidence cap, three-pillar floor, taxonomy expansion
+
+    Phase R2 (2026-07-06) added:
+      • compute_business_quality_score() attached to stock as bq_score/verdict
+      • compute_sector_composite_score() attached as sector_composite_score
+      • 9-tier taxonomy: STRONG_BUY / BUY / BUY_CONTRARIAN / BUY_TURNAROUND
+                         WATCHLIST / DEVELOPING / MONITOR / AVOID / REJECTED
+    """
     decision = "BUY"
     fail_reasons = []
     warnings = []
     thresh = thresholds[regime]
+
+    # Phase R2 (2026-07-06): compute BQ + sector composite EARLY so downstream
+    # logic + taxonomy can use them. Stamped onto `stock` for downstream
+    # renderers, CSV rows, and audit rows.
+    _bq_result = compute_business_quality_score(promoter_data or {})
+    stock["bq_score"]             = _bq_result["bq_score"]
+    stock["bq_data_completeness"] = _bq_result["bq_data_completeness"]
+    stock["bq_verdict"]           = _bq_result["bq_verdict"]
+    stock["bq_flags"]             = _bq_result["bq_flags"]
 
     # Gate 1: Data Quality (HARD)
     if not stock.get("entry") or not stock.get("stop") or not stock.get("target1"):
@@ -7957,6 +8814,142 @@ def run_gates(stock: dict, regime: str, thresholds: dict,
         if _fund_gate_on:
             # Legacy strict mode (opt-in only). Kept for A/B testing.
             fail_reasons.append(f"FUND_DATA_MISSING(src={_fsrc or _pdata_src or 'unknown'})")
+
+    # ─────────────────────────────────────────────────────────────────────
+    # Phase R1 (2026-07-06): INSTITUTIONAL VALIDATION LAYER — Business gates
+    # ─────────────────────────────────────────────────────────────────────
+    # Design principle: a technically strong chart must NEVER override a
+    # deteriorating business. The three business-quality gates below
+    # implement Layer 1 of the institutional validation redesign.
+    # Each has an env kill-switch so the entire layer can be A/B-tested.
+    #
+    # Data source: promoter_data dict enriched by _parse_screener_html().
+    # When quarterly fields are absent (screener rate-limited / new listing)
+    # the gates abstain — they never punish based on missing data alone
+    # (that's what FUND_DATA_MISSING above already flags).
+
+    # Gate 3e — BUSINESS_QUALITY_DECLINE (HARD when data present).
+    # Reject when BOTH sales AND profit have been declining for the last
+    # 3 quarters in a row. This catches the "chart-strong but earnings-
+    # deteriorating" trap that surfaced on 2026-07-06 (JTLIND surfaced as
+    # BUY despite weak sector + sub-8% ROE).
+    #
+    # Turnaround escape hatch: if the latest quarter profit YoY is > +20%
+    # AND sales YoY > 0, treat as a turnaround-in-progress and demote to
+    # WATCHLIST (soft fail) rather than hard reject. Institutional funds
+    # do buy turnarounds — but never blindly, and only after early proof.
+    #
+    # Env: BUSINESS_QUALITY_GATE=1 (default on). Set 0 to disable.
+    try:
+        _bq_gate_on = int(os.getenv("BUSINESS_QUALITY_GATE", "1"))
+    except (TypeError, ValueError):
+        _bq_gate_on = 1
+    _sales_trend  = str(promoter_data.get("sales_trend_3q",  "") or "").upper()
+    _profit_trend = str(promoter_data.get("profit_trend_3q", "") or "").upper()
+    _sales_yoy    = promoter_data.get("sales_yoy_pct")
+    _profit_yoy   = promoter_data.get("profit_yoy_pct")
+    _has_quarterly = _sales_trend in ("DECLINING", "GROWING", "MIXED") and \
+                     _profit_trend in ("DECLINING", "GROWING", "MIXED")
+    if _bq_gate_on and _has_quarterly:
+        if _sales_trend == "DECLINING" and _profit_trend == "DECLINING":
+            # Turnaround check
+            _is_turnaround = (
+                _profit_yoy is not None and _profit_yoy > 20.0
+                and _sales_yoy is not None and _sales_yoy > 0.0
+            )
+            if _is_turnaround:
+                # Soft fail — reaches WATCHLIST as an early turnaround.
+                fail_reasons.append(
+                    f"BQ_TURNAROUND_EARLY(sales3q↓ profit3q↓ but profit_yoy=+{_profit_yoy:.1f}%)"
+                )
+                warnings.append(
+                    f"POTENTIAL_TURNAROUND: sales/profit both down 3Q but latest Q shows recovery "
+                    f"(sales YoY {_sales_yoy:+.1f}%, profit YoY {_profit_yoy:+.1f}%)"
+                )
+            else:
+                # HARD reject — declining business, no recovery signal.
+                return {
+                    "decision": "REJECTED",
+                    "fail_reasons": [
+                        f"BUSINESS_QUALITY_DECLINE(sales3q↓ profit3q↓ "
+                        f"sales_yoy={_sales_yoy if _sales_yoy is not None else 'N/A'}% "
+                        f"profit_yoy={_profit_yoy if _profit_yoy is not None else 'N/A'}%)"
+                    ],
+                    "warnings": [],
+                }
+        elif _sales_trend == "DECLINING" or _profit_trend == "DECLINING":
+            # One of the two declining is a warning, not a fail.
+            warnings.append(
+                f"BQ_MIXED_TREND(sales_3q={_sales_trend}, profit_3q={_profit_trend})"
+            )
+
+    # Gate 3f — ROE_TOO_LOW (HARD when data present).
+    # Institutional benchmark: ROE ≥ 15% is "high quality"; 12-15% is
+    # "acceptable"; < 12% is "sub-institutional". We use 12% as the floor
+    # so we don't reject stocks that are borderline but improving.
+    #
+    # Env: MIN_ROE (default 12). Set to 0 to disable entirely.
+    try:
+        _min_roe = float(os.getenv("MIN_ROE", "12"))
+    except (TypeError, ValueError):
+        _min_roe = 12.0
+    _roe_val = float(promoter_data.get("roe", 0) or 0)
+    # Only gate when we actually have real ROE data (roe > 0 AND fund_source
+    # signals real fetch). Zero ROE = "unknown" not "loss-making".
+    _roe_real = _roe_val > 0 and not _src_missing and not _all_zero
+    if _min_roe > 0 and _roe_real and _roe_val < _min_roe:
+        return {
+            "decision":     "REJECTED",
+            "fail_reasons": [f"ROE_TOO_LOW({_roe_val:.1f}%<{_min_roe:.0f}%)"],
+            "warnings":     [],
+        }
+
+    # Gate 3g — DE_TOO_HIGH (HARD when data present, financials excepted).
+    # Banks / NBFCs / insurance carry D/E > 5 by nature — gating them at
+    # 1.5 would kill the entire financial sector. We skip this gate for
+    # sectors flagged as financial.
+    #
+    # Env: MAX_DE (default 1.5). Set to 0 to disable.
+    try:
+        _max_de = float(os.getenv("MAX_DE", "1.5"))
+    except (TypeError, ValueError):
+        _max_de = 1.5
+    _de_val = float(promoter_data.get("de_ratio", 0) or 0)
+    _sec_upper = str(stock.get("sector", "") or "").upper()
+    _financial_sectors = ("BANKING", "FINANCE", "INSURANCE", "NBFC", "FINANCIAL")
+    _is_financial = any(fs in _sec_upper for fs in _financial_sectors)
+    _de_real = _de_val > 0 and not _src_missing and not _all_zero
+    if _max_de > 0 and _de_real and not _is_financial and _de_val > _max_de:
+        return {
+            "decision":     "REJECTED",
+            "fail_reasons": [f"DE_TOO_HIGH({_de_val:.2f}>{_max_de:.2f})"],
+            "warnings":     [],
+        }
+
+    # ─────────────────────────────────────────────────────────────────────
+    # Phase R1 (2026-07-06): INSTITUTIONAL VALIDATION LAYER — Event gates
+    # ─────────────────────────────────────────────────────────────────────
+
+    # Gate 3h — NEWS_SEVERITY_HIGH (HARD).
+    # If the LLM news classifier flagged any recent news at severity ≥
+    # NEWS_SEVERITY_MAX (default 2 on a 0-3 scale where 3 = fraud/SEBI
+    # action / criminal charges / auditor resignation) we hard-reject.
+    # This is separate from the existing BLACK_SWAN gate (penalty ≥ 999).
+    #
+    # Env: NEWS_SEVERITY_MAX (default 2, meaning severity 3+ rejects).
+    #      Set to 99 to disable.
+    try:
+        _news_sev_max = int(os.getenv("NEWS_SEVERITY_MAX", "2"))
+    except (TypeError, ValueError):
+        _news_sev_max = 2
+    _news_sev = int(stock.get("news_severity", 0) or 0)
+    if _news_sev_max < 99 and _news_sev > _news_sev_max:
+        _news_cat = str(stock.get("news_category", "") or "")
+        return {
+            "decision":     "REJECTED",
+            "fail_reasons": [f"NEWS_SEVERITY_HIGH(sev={_news_sev},cat={_news_cat or 'UNKNOWN'})"],
+            "warnings":     [],
+        }
 
     # Gate 4: Liquidity (HARD)
     # Phase 2 #23 (2026-07-05): min turnover configurable via env.
@@ -8113,6 +9106,79 @@ def run_gates(stock: dict, regime: str, thresholds: dict,
     if sector_velocity == "ROTATING_OUT" and sector_status != "LAGGING":
         warnings.append("SECTOR_ROTATING_OUT")
 
+    # ─────────────────────────────────────────────────────────────────────
+    # Phase R1 (2026-07-06): INSTITUTIONAL VALIDATION LAYER — Sector strict
+    # ─────────────────────────────────────────────────────────────────────
+    # Layer 2 rule: "A good company inside a weak sector is usually a poor
+    # swing trade." We enforce sector rank + momentum with a contrarian
+    # bypass when confidence + trade quality are exceptionally high.
+    #
+    # These gates are SOFT (watchlist-eligible) rather than hard-reject —
+    # a strong stock in a weak sector becomes a CONTRARIAN candidate, not
+    # rejected outright. This preserves the option to trade rotation.
+    #
+    # Env kill-switch: SECTOR_STRICT_GATE=1 (default on).
+
+    # Gate 9b — SECTOR_RANK_TOO_LOW.
+    # Rank sectors by 5-day return; require rank ≤ SECTOR_RANK_CUTOFF (top 6).
+    # Contrarian bypass: if final_confidence ≥ SECTOR_CONTRARIAN_CONF_BAR
+    # (default 88) AND trade_quality_score ≥ 75, allow through as warning.
+    try:
+        _sec_strict_on = int(os.getenv("SECTOR_STRICT_GATE", "1"))
+    except (TypeError, ValueError):
+        _sec_strict_on = 1
+    try:
+        _sec_rank_cut = int(os.getenv("SECTOR_RANK_CUTOFF", "6"))
+    except (TypeError, ValueError):
+        _sec_rank_cut = 6
+    try:
+        _contra_conf_bar = float(os.getenv("SECTOR_CONTRARIAN_CONF_BAR", "88"))
+    except (TypeError, ValueError):
+        _contra_conf_bar = 88.0
+
+    _sec_rank = stock.get("sector_rank_5d")
+    _sec_ret20d = stock.get("sector_ret20d")
+    if _sec_ret20d is None:
+        # score_stock persists sector metrics in the ranks dict via
+        # sector_rotation_score. Read from result-embedded fields.
+        _sec_ret20d = stock.get("sector_5d_return")  # fallback name
+    _conf_now = float(stock.get("final_confidence", 0) or 0)
+    _tq_now = float(stock.get("trade_quality_score", 0) or 0)
+    _contrarian_ok = (_conf_now >= _contra_conf_bar and _tq_now >= 75.0)
+
+    if _sec_strict_on and isinstance(_sec_rank, (int, float)) and _sec_rank > _sec_rank_cut:
+        if _contrarian_ok:
+            warnings.append(
+                f"CONTRARIAN_SECTOR_RANK({int(_sec_rank)}>top{_sec_rank_cut} "
+                f"— allowed: conf {_conf_now:.1f}≥{_contra_conf_bar:.0f}, TQ {_tq_now:.1f}≥75)"
+            )
+        else:
+            fail_reasons.append(
+                f"SECTOR_RANK_TOO_LOW(rank={int(_sec_rank)}>top{_sec_rank_cut})"
+            )
+            warnings.append(
+                f"SECTOR_RANK_WEAK: sector ranked #{int(_sec_rank)} — "
+                f"needs top-{_sec_rank_cut} unless conf≥{_contra_conf_bar:.0f}"
+            )
+
+    # Gate 9c — SECTOR_MOMENTUM_NEGATIVE.
+    # Even if rank is decent, a sector with 21-day return < 0 is bleeding.
+    # Same contrarian bypass applies.
+    try:
+        _sec_ret20d_val = float(_sec_ret20d) if _sec_ret20d is not None else None
+    except (TypeError, ValueError):
+        _sec_ret20d_val = None
+    if _sec_strict_on and _sec_ret20d_val is not None and _sec_ret20d_val < 0:
+        if _contrarian_ok:
+            warnings.append(
+                f"CONTRARIAN_SECTOR_MOMENTUM(ret20d={_sec_ret20d_val:+.1f}% "
+                f"— allowed: conf/TQ high)"
+            )
+        else:
+            fail_reasons.append(
+                f"SECTOR_MOMENTUM_NEG(ret20d={_sec_ret20d_val:+.1f}%)"
+            )
+
     # Gate 10: High Pledge Warning (SOFT)
     if 20 < pledge <= 40:
         warnings.append(f"PLEDGE_WARNING_{pledge:.0f}PCT")
@@ -8249,6 +9315,9 @@ def run_gates(stock: dict, regime: str, thresholds: dict,
             or "KILL_SWITCH" in f
             or "REGIME_EXPOSURE_CAP" in f   # Phase 3a #40 — regime exposure cap
             or "FUND_DATA_MISSING" in f    # Phase 4-A — fundamentals unavailable
+            or "SECTOR_RANK_TOO_LOW" in f  # Phase R1 — sector rank gate
+            or "SECTOR_MOMENTUM_NEG" in f  # Phase R1 — sector momentum gate
+            or "BQ_TURNAROUND_EARLY" in f  # Phase R1 — turnaround escape hatch
             for f in scoreable_fails
         )
         # Phase C6 (2026-07-02): make the "score-based fail" whitelist EXPLICIT
@@ -8271,6 +9340,192 @@ def run_gates(stock: dict, regime: str, thresholds: dict,
             decision = "WATCHLIST"
         else:
             decision = "REJECTED"
+
+    # ─────────────────────────────────────────────────────────────────────
+    # Phase R1 (2026-07-06): TAXONOMY EXPANSION + INSTITUTIONAL VALIDATOR
+    # ─────────────────────────────────────────────────────────────────────
+    # After the main BUY/WATCHLIST/REJECTED decision, we apply two extra
+    # institutional checks:
+    #
+    # 1. "Missing-data confidence cap": if fund_source signals we couldn't
+    #    verify quality, we cannot grant top-tier confidence. Downgrade a
+    #    BUY to WATCHLIST when confidence exceeds FUND_MISSING_CONF_CAP but
+    #    we don't actually have real fundamentals to support it.
+    #
+    # 2. "Institutional trader test" (F1): a BUY must have all 3 pillars
+    #    ≥ 70. Confidence, TQ, and R/R form the technical pillar. If any
+    #    is < 70 → downgrade. This catches "hollow high-conf" trades where
+    #    a great chart score masks weak TQ.
+    #
+    # 3. "Contrarian tag": if the BUY survived a contrarian-sector bypass,
+    #    label it CONTRARIAN so downstream renderer & tracker treat it as
+    #    reduced-size / tighter-stop trade.
+    #
+    # 4. "AVOID tier" for stocks that failed hard fundamentals but weren't
+    #    already REJECTED (edge case: turnaround escape hatch dropped them
+    #    into WATCHLIST — they belong in AVOID until they show >2Q recovery).
+    #
+    # These are non-invasive: they only DOWNGRADE, never upgrade.
+    # ────────────────────────────────────────────────────────────────────
+
+    # (1) Missing-data confidence cap
+    try:
+        _fmcap = float(os.getenv("FUND_MISSING_CONF_CAP", "80"))
+    except (TypeError, ValueError):
+        _fmcap = 80.0
+    _fund_missing = any("FUND_DATA_MISSING" in w for w in warnings)
+    if decision == "BUY" and _fund_missing and _fmcap > 0:
+        _conf_check = float(stock.get("final_confidence", 0) or 0)
+        if _conf_check > _fmcap:
+            decision = "WATCHLIST"
+            warnings.append(
+                f"FUND_MISSING_CAP: conf {_conf_check:.1f} exceeds cap {_fmcap:.0f} "
+                f"but fundamentals unverified → demoted to WATCHLIST"
+            )
+
+    # (2) Institutional trader test — three-pillar 70-floor
+    try:
+        _pillar_floor = float(os.getenv("PILLAR_MIN_FLOOR", "70"))
+    except (TypeError, ValueError):
+        _pillar_floor = 70.0
+    if decision == "BUY" and _pillar_floor > 0:
+        _conf_p = float(stock.get("final_confidence", 0) or 0)
+        _tq_p = float(stock.get("trade_quality_score", 0) or 0)
+        _rr_p = float(stock.get("rr_ratio", 0) or 0)
+        # R/R uses its own scale; convert to 0-100-ish by treating 2.0x as 100
+        # (min institutional). Below 1.4x = 70.
+        _rr_score = min(100.0, max(0.0, (_rr_p / 2.0) * 100.0))
+        _weakest_pillar = min(_conf_p, _tq_p, _rr_score)
+        if _weakest_pillar < _pillar_floor:
+            decision = "WATCHLIST"
+            warnings.append(
+                f"PILLAR_FLOOR_FAIL: weakest pillar {_weakest_pillar:.1f} < {_pillar_floor:.0f} "
+                f"(conf={_conf_p:.1f}, TQ={_tq_p:.1f}, R/R_norm={_rr_score:.1f})"
+            )
+
+    # (3) Contrarian tag — applies to BUY and also promotes WATCHLIST when
+    #     the ONLY soft fails are sector-related AND the contrarian bypass
+    #     warnings were emitted (conf >= 88 AND TQ >= 75). This is the key
+    #     insight: a stock in a weak sector with strong stock-specific stats
+    #     is a contrarian trade, not a reject.
+    _is_contra = any("CONTRARIAN_SECTOR" in w for w in warnings)
+    if decision == "BUY" and _is_contra:
+        # Keep as BUY but stamp category so renderer/tracker treats specially
+        decision = "BUY_CONTRARIAN"
+    elif decision == "WATCHLIST" and _is_contra:
+        # WATCHLIST because of sector-only soft fails, but contrarian bypass
+        # earned it — promote to BUY_CONTRARIAN. Only when ALL hard fails are
+        # sector-related (SECTOR_LAGGING, SECTOR_RANK_TOO_LOW, SECTOR_MOMENTUM_NEG).
+        _sector_only_fails = fail_reasons and all(
+            ("SECTOR_LAGGING" in f
+             or "SECTOR_RANK_TOO_LOW" in f
+             or "SECTOR_MOMENTUM_NEG" in f)
+            for f in fail_reasons
+        )
+        if _sector_only_fails:
+            decision = "BUY_CONTRARIAN"
+            warnings.append(
+                "CONTRARIAN_PROMOTION: sector-only soft fails "
+                "overridden by contrarian bypass (conf+TQ high enough)"
+            )
+
+    # (4) AVOID tier — hard-quality fails that slipped into WATCHLIST
+    #     via the turnaround escape hatch but do NOT show YoY recovery.
+    if decision == "WATCHLIST":
+        _has_avoid_flag = any(
+            "BQ_TURNAROUND_EARLY" in f or "PILLAR_FLOOR_FAIL" in w
+            for f in fail_reasons for w in warnings if False  # placeholder — keep clean
+        )
+        # Simpler rule: promote a stock to AVOID only when it has BQ decline
+        # AND a low ROE AND low confidence combined (multi-signal quality problem)
+        _bq_trigger = any("BQ_TURNAROUND_EARLY" in f for f in fail_reasons)
+        _low_roe = _roe_real and _roe_val < 10.0
+        _low_conf = float(stock.get("final_confidence", 0) or 0) < 75.0
+        if _bq_trigger and (_low_roe or _low_conf):
+            decision = "AVOID"
+            warnings.append(
+                f"AVOID_TIER: business declining + weak backing "
+                f"(ROE={_roe_val:.1f}%, conf={float(stock.get('final_confidence', 0) or 0):.1f})"
+            )
+
+    # ----- Phase R2 9-Tier Taxonomy Expansion (2026-07-06) -----
+    # After all R1 gates + demotions, refine the coarse decisions further.
+    # NOTE: existing WATCHLIST tiers (DEVELOPING / MONITOR / NEAR_MISS_*)
+    # are set separately by classify_watchlist(); the *decision* tier here
+    # is a broader category. We use distinct decision-tier labels to avoid
+    # ambiguity: STRONG_BUY, BUY, BUY_CONTRARIAN, BUY_TURNAROUND,
+    # WATCHLIST (broad — classify_watchlist assigns sub-tier), AVOID, REJECTED.
+    _bq_score = float(stock.get("bq_score", 0) or 0)
+    _bq_completeness = float(stock.get("bq_data_completeness", 0) or 0)
+    _bq_verdict = str(stock.get("bq_verdict", "UNKNOWN"))
+    _sector_composite = float(stock.get("sector_composite_score", 50) or 50)
+    _conf_final = float(stock.get("final_confidence", 0) or 0)
+    _tq_final = float(stock.get("trade_quality_score", 0) or 0)
+    _rr_final = float(stock.get("rr_ratio", 0) or 0)
+
+    # (5) STRONG_BUY tier — institutional gold standard, all three pillars top-tier
+    #     Only reachable from BUY (not from BUY_CONTRARIAN — contrarian trades
+    #     by definition have weak sector so cannot be top-tier institutional).
+    #     Phase R3 (2026-07-06): also require institutional micro-liquidity
+    #     (≥ ₹5 Cr/day turnover by default). Small caps that pass all fundamental
+    #     gates but can't absorb institutional-size orders should remain BUY,
+    #     not STRONG_BUY.
+    try:
+        _sb_conf = float(os.getenv("STRONG_BUY_MIN_CONF", "90"))
+        _sb_tq = float(os.getenv("STRONG_BUY_MIN_TQ", "80"))
+        _sb_bq = float(os.getenv("STRONG_BUY_MIN_BQ", "70"))
+        _sb_sec = float(os.getenv("STRONG_BUY_MIN_SECTOR", "60"))
+        _sb_rr = float(os.getenv("STRONG_BUY_MIN_RR", "2.0"))
+        _sb_liq = float(os.getenv("STRONG_BUY_MIN_TURNOVER_LAKHS", "500"))  # ₹5Cr default
+    except (TypeError, ValueError):
+        _sb_conf, _sb_tq, _sb_bq, _sb_sec, _sb_rr, _sb_liq = 90.0, 80.0, 70.0, 60.0, 2.0, 500.0
+    _turnover = float(stock.get("avg_value_lakhs", 0) or 0)
+    if (decision == "BUY"
+            and _conf_final >= _sb_conf
+            and _tq_final >= _sb_tq
+            and _bq_score >= _sb_bq
+            and _bq_completeness >= 50  # need real data to earn STRONG_BUY
+            and _sector_composite >= _sb_sec
+            and _rr_final >= _sb_rr
+            and _turnover >= _sb_liq  # Phase R3 — institutional liquidity
+            and _bq_verdict in ("STRONG", "ACCEPTABLE")):
+        decision = "STRONG_BUY"
+        warnings.append(
+            f"STRONG_BUY_TIER: institutional-grade — conf={_conf_final:.0f}/TQ={_tq_final:.0f}/"
+            f"BQ={_bq_score:.0f}/sector={_sector_composite:.0f}/liq=₹{_turnover/100:.1f}Cr"
+        )
+
+    # (6) BUY_TURNAROUND — was WATCHLIST due to turnaround escape hatch,
+    #     but has HIGH confidence + strong momentum recovery. Formalizes the
+    #     3Q-declining-but-YoY-recovering pattern into its own tier.
+    if decision == "WATCHLIST":
+        _has_turnaround = any("BQ_TURNAROUND_EARLY" in f for f in fail_reasons)
+        try:
+            _to_conf = float(os.getenv("TURNAROUND_MIN_CONF", "80"))
+        except (TypeError, ValueError):
+            _to_conf = 80.0
+        if (_has_turnaround
+                and _conf_final >= _to_conf
+                and _tq_final >= 70
+                and _rr_final >= 2.0):
+            decision = "BUY_TURNAROUND"
+
+    # (7) DEVELOPING and MONITOR are RESERVED for classify_watchlist() sub-tiers.
+    #     We do NOT re-classify decision tier here; classify_watchlist runs
+    #     downstream when decision == "WATCHLIST" and handles those sub-tiers.
+    #     The bq_score / sector_composite fields are stamped on `stock` above,
+    #     so classify_watchlist can also read them if desired.
+
+    # Persist the taxonomy inputs so downstream code / audit CSV can inspect them
+    stock["taxonomy_inputs"] = {
+        "bq_score": _bq_score,
+        "bq_completeness": _bq_completeness,
+        "bq_verdict": _bq_verdict,
+        "sector_composite": _sector_composite,
+        "conf": _conf_final,
+        "tq": _tq_final,
+        "rr": _rr_final,
+    }
 
     return {"decision": decision, "fail_reasons": fail_reasons, "warnings": warnings}
 
@@ -10980,13 +12235,26 @@ def _classify_reject_reason(fail_reasons: list) -> str:
     Bucket a fail_reasons list into ONE primary category for Excel pivot analysis.
     Priority order matters: check the most-actionable/most-common reasons first.
     Added 2026-07-06 so we can pivot rejects by root cause after 3 weeks.
+
+    Phase R3 (2026-07-06): institutional gate buckets (ROE/DE/BQ_DECLINE/
+    SECTOR_RANK/NEWS_SEVERITY) added before technical fails so that a stock
+    failing both ROE_TOO_LOW and TQ_FAIL is bucketed as "ROE_TOO_LOW" — the
+    root institutional reason, not a downstream technical symptom.
     """
     if not fail_reasons:
         return "UNKNOWN"
     joined = " | ".join(str(f) for f in fail_reasons).upper()
-    # Priority order: data issues first (fixable), then technicals, then macro
+    # Priority order: data issues first (fixable), then institutional-quality
+    # (root cause), then technicals (symptoms), then macro/portfolio.
     if "FUND_DATA_MISSING" in joined:  return "FUND_DATA_MISSING"
     if "PRICE_DATA" in joined or "NO_DATA" in joined: return "PRICE_DATA_MISSING"
+    # ── Phase R1/R3 institutional-quality buckets (root cause) ──
+    if "BUSINESS_QUALITY_DECLINE" in joined: return "BUSINESS_QUALITY_DECLINE"
+    if "ROE_TOO_LOW" in joined:        return "ROE_TOO_LOW"
+    if "DE_TOO_HIGH" in joined:        return "DE_TOO_HIGH"
+    if "NEWS_SEVERITY" in joined:      return "NEWS_SEVERITY_HIGH"
+    if "SECTOR_RANK_TOO_LOW" in joined or "SECTOR_MOMENTUM_NEG" in joined: return "SECTOR_RANK_TOO_LOW"
+    # ── Technical fails (symptoms, less actionable) ──
     if "TQ_FAIL" in joined or "TRADE_QUALITY" in joined: return "TQ_TOO_LOW"
     if "CONF_FAIL" in joined or "CONFIDENCE" in joined:  return "CONFIDENCE_TOO_LOW"
     if "RR_FAIL" in joined:            return "RR_TOO_LOW"
@@ -11003,6 +12271,58 @@ def _classify_reject_reason(fail_reasons: list) -> str:
     if "CIRCUIT" in joined:            return "CIRCUIT_LIMIT"
     if "BLOCKLIST" in joined:          return "BLOCKLIST"
     return "OTHER"
+
+
+def _classify_reject_tier(stock: dict) -> str:
+    """
+    Phase R3 (2026-07-06) — institutional-grade reject tier for the
+    decision_audit + Excel pivot. Returned string is stamped on
+    stock["reject_tier"] so post-mortem analytics can slice rejects by:
+
+      • AVOID_QUALITY  — multi-signal quality problem (bq_verdict in
+                         {DECLINING, WEAK} AND at least one hard-quality
+                         gate failed). Worst kind of reject.
+      • LOW_QUALITY_ROE — ROE_TOO_LOW gate fired (but bq_verdict not weak)
+      • LOW_QUALITY_DE  — DE_TOO_HIGH (leverage)
+      • BUSINESS_DECLINE — BUSINESS_QUALITY_DECLINE fired (sales+profit ↓)
+      • NEWS_RISK       — NEWS_SEVERITY_HIGH fired
+      • SECTOR_WEAK     — SECTOR_RANK_TOO_LOW or SECTOR_MOMENTUM_NEG
+      • FUND_MISSING    — data fetch failed
+      • LOW_SCORE       — pure score-only reject (TQ/CONF/RR fail)
+      • OTHER_TECH      — liquidity/pledge/circuit/etc.
+      • None            — no fails (shouldn't happen for a REJECTED stock)
+
+    This tier is orthogonal to `decision` and `_classify_reject_reason()`.
+    It exists specifically to segment rejects by *institutional root cause*
+    so that after N weeks of data, we can answer "did the AVOID_QUALITY
+    rejects underperform LOW_SCORE rejects?" — a direct measure of the
+    R1/R2 quality gates' predictive value.
+    """
+    fails = stock.get("fail_reasons", []) or []
+    if not fails:
+        return None
+    joined = " | ".join(str(f) for f in fails).upper()
+    bq_verdict = str(stock.get("bq_verdict", "") or "").upper()
+
+    # Multi-signal quality problem — the worst kind of reject
+    if bq_verdict in ("DECLINING", "WEAK") and (
+        "ROE_TOO_LOW" in joined
+        or "DE_TOO_HIGH" in joined
+        or "BUSINESS_QUALITY_DECLINE" in joined
+    ):
+        return "AVOID_QUALITY"
+    # Single-signal quality issues
+    if "BUSINESS_QUALITY_DECLINE" in joined: return "BUSINESS_DECLINE"
+    if "ROE_TOO_LOW" in joined:              return "LOW_QUALITY_ROE"
+    if "DE_TOO_HIGH" in joined:              return "LOW_QUALITY_DE"
+    if "NEWS_SEVERITY" in joined:            return "NEWS_RISK"
+    if "SECTOR_RANK_TOO_LOW" in joined or "SECTOR_MOMENTUM_NEG" in joined:
+        return "SECTOR_WEAK"
+    if "FUND_DATA_MISSING" in joined:        return "FUND_MISSING"
+    # Pure score/technical rejects
+    if any(k in joined for k in ("TQ_FAIL", "CONF_FAIL", "RR_FAIL")):
+        return "LOW_SCORE"
+    return "OTHER_TECH"
 
 
 def save_recommendations_to_excel(buys: list, watchlist: list,
@@ -11416,7 +12736,7 @@ def _run_pipeline_inner():
     scored = []
     for symbol, df in tradable.items():
         sector       = get_sector(symbol)
-        scores       = compute_all_factors(symbol, df, sector, regime_data, sector_rotation)
+        scores       = compute_all_factors(symbol, df, sector, regime_data, sector_rotation, nifty_state)
         base_conf    = compute_base_confidence(scores)
         # NOTE: **scores must come BEFORE base_confidence so our computed value wins
         # (scores dict contains base_confidence: 0.0 as a default placeholder)
@@ -11809,17 +13129,68 @@ def _run_pipeline_inner():
         stock["fail_reasons"] = gate_result["fail_reasons"]
         stock["warnings"]     = gate_result["warnings"]
 
-        if gate_result["decision"] == "BUY":
+        # Phase R1/R2 (2026-07-06): normalize new tier labels for routing.
+        # `STRONG_BUY`, `BUY`, `BUY_CONTRARIAN`, `BUY_TURNAROUND` all route
+        # to buys[] but keep their tag on stock["decision"] so the renderer
+        # / tracker can prioritize STRONG_BUY at the top and mark contrarian /
+        # turnaround trades appropriately.
+        # `AVOID` is a hard-quality reject — routes to rejected[] so it
+        # never appears in watchlist promotion candidates.
+        _dec = gate_result["decision"]
+        if _dec in ("BUY", "STRONG_BUY", "BUY_CONTRARIAN", "BUY_TURNAROUND"):
             buys.append(stock)
-        elif gate_result["decision"] == "WATCHLIST":
+        elif _dec == "WATCHLIST":
             wl = classify_watchlist(stock, regime, effective_thresholds,
                                      conf_history=_conf_history_for_wl)
             stock.update(wl)
             watchlist_stocks.append(stock)
+        elif _dec == "AVOID":
+            # Institutional AVOID (turnaround escape + weak backing) — the
+            # narrow demotion from the WATCHLIST path. Distinguished from
+            # AVOID_QUALITY (broad reject-tier bucket) via the specific tag.
+            stock["reject_tier"] = "AVOID_TURNAROUND"
+            rejected.append(stock)
         else:
+            # Phase R3 (2026-07-06): stamp institutional reject tier on every
+            # REJECTED stock so decision_audit + Excel pivot can slice rejects
+            # by root cause (AVOID_QUALITY / LOW_QUALITY_ROE / BUSINESS_DECLINE
+            # / SECTOR_WEAK / LOW_SCORE / OTHER_TECH). Enables backtest queries
+            # like "did AVOID_QUALITY rejects underperform LOW_SCORE rejects?"
+            stock["reject_tier"] = _classify_reject_tier(stock)
             rejected.append(stock)
 
     _log(f"  Gate results: {len(buys)} BUY | {len(watchlist_stocks)} WATCHLIST | {len(rejected)} REJECTED")
+
+    # Phase R3 (2026-07-06): institutional taxonomy breakdown for BUY tier.
+    # Shows how the 4 buy sub-tiers distribute — high-quality signal for post-mortem.
+    if buys:
+        _tier_counts: dict = {}
+        for _b in buys:
+            _tier_counts[_b.get("decision", "BUY")] = _tier_counts.get(_b.get("decision", "BUY"), 0) + 1
+        _tier_line = " | ".join(f"{k}: {v}" for k, v in sorted(_tier_counts.items()))
+        _log(f"  BUY breakdown: {_tier_line}")
+        # Also log avg BQ score + sector composite of BUYs (institutional health)
+        _bq_scores = [float(b.get("bq_score", 0) or 0) for b in buys]
+        _sec_scores = [float(b.get("sector_composite_score", 0) or 0) for b in buys]
+        if _bq_scores:
+            _log(
+                f"  BUY quality: avg BQ={sum(_bq_scores)/len(_bq_scores):.1f} "
+                f"| avg sector_composite={sum(_sec_scores)/len(_sec_scores):.1f}"
+            )
+    # Count AVOID sub-tier separately
+    _avoid_count = sum(1 for r in rejected if r.get("reject_tier") == "AVOID_TURNAROUND")
+    if _avoid_count > 0:
+        _log(f"  AVOID_TURNAROUND: {_avoid_count} stocks (turnaround escape + weak backing)")
+
+    # Phase R3 (2026-07-06): institutional reject-tier breakdown (new)
+    _tier_hist: dict = {}
+    for _r in rejected:
+        _rt = _r.get("reject_tier") or "unclassified"
+        _tier_hist[_rt] = _tier_hist.get(_rt, 0) + 1
+    if _tier_hist:
+        _sorted_tiers = sorted(_tier_hist.items(), key=lambda kv: -kv[1])
+        _tier_line = " | ".join(f"{k}: {v}" for k, v in _sorted_tiers)
+        _log(f"  Reject-tier (institutional): {_tier_line}")
 
     # FIX 3 (2026-07-06): reject-reason breakdown — immediate visibility into
     # WHY stocks were rejected (data missing vs bad stock vs low score). Uses
@@ -12020,9 +13391,36 @@ def _run_pipeline_inner():
                 },
                 "ownership_deliv_bonus":   stock.get("ownership_deliv_bonus"),
                 "ownership_deliv_reasons": stock.get("ownership_deliv_reasons", []),
+                # Phase R3 (2026-07-06): per-stock FII/DII overlay
+                "ownership_fii_bonus":     stock.get("ownership_fii_bonus"),
+                "ownership_fii_reasons":   stock.get("ownership_fii_reasons", []),
+                "fii_pct":                 stock.get("fii_pct"),
+                "dii_pct":                 stock.get("dii_pct"),
                 "market_cap_cr":   stock.get("market_cap_cr"),
                 "avg_val_lakhs":   stock.get("avg_value_lakhs"),
                 "soft_warnings":   stock.get("_soft_warnings", []),
+                # Phase R1+R2 (2026-07-06): institutional composite scores + taxonomy
+                "bq_score":              stock.get("bq_score"),
+                "bq_data_completeness":  stock.get("bq_data_completeness"),
+                "bq_verdict":            stock.get("bq_verdict"),
+                "bq_flags":              stock.get("bq_flags", []),
+                "sector_composite_score": stock.get("sector_composite_score"),
+                "sector_verdict":        stock.get("sector_verdict"),
+                "taxonomy_inputs":       stock.get("taxonomy_inputs"),
+                "reject_tier":           stock.get("reject_tier"),  # "AVOID_TURNAROUND" or R3 bucket
+                # Phase R3 (2026-07-06): LLM validator output (present only when LLM_VALIDATOR=1)
+                "llm_validator_verdict":   stock.get("llm_validator_verdict"),
+                "llm_validator_reason":    stock.get("llm_validator_reason"),
+                "llm_validator_red_flags": stock.get("llm_validator_red_flags"),
+                "llm_validator_source":    stock.get("llm_validator_source"),
+                # Phase R4 (2026-07-06): Swing-alpha overlay (4 signals)
+                "swing_alpha_score":       stock.get("swing_alpha_score"),
+                "rs_vs_nifty_20d":         stock.get("rs_vs_nifty_20d"),
+                "breakout_freshness_days": stock.get("breakout_freshness_days"),
+                "atr_stop_ratio_pct":      stock.get("atr_stop_ratio_pct"),
+                "volume_expansion_ratio":  stock.get("volume_expansion_ratio"),
+                "swing_alpha_bonus":       stock.get("_swing_alpha_bonus"),
+                "trading_mode":            os.environ.get("TRADING_MODE", "swing"),
                 # ── macro / auxiliary context (unchanged from before) ──
                 "macro_quality":   macro.get("data_quality", "NORMAL"),
                 "macro_bad":       macro.get("bad_fields", []),
@@ -12205,6 +13603,56 @@ def _run_pipeline_inner():
         gate_memory      = gate_memory,
         events           = upcoming_events,
     )
+
+    # ── 15b. Phase R3 (2026-07-06) — LLM Buy Thesis Validator wiring ──
+    # If LLM_VALIDATOR=1 the validator has already run in parallel with the
+    # thesis generation. Now apply its verdicts:
+    #   • Stamp validator output on each BUY stock (verdict / reason / red_flags)
+    #   • If LLM_VALIDATOR_MODE=veto AND verdict==NO_GO → demote BUY→WATCHLIST
+    #     with LLM_VETO warning, so the stock stays visible but doesn't trigger
+    #     a live trade.
+    #   • Log the aggregate GO/CAUTION/NO_GO histogram for post-mortem.
+    _validations = ai_results.get("buy_validations", {}) or {}
+    if _validations:
+        _mode = os.getenv("LLM_VALIDATOR_MODE", "advise").lower()
+        _hist = {"GO": 0, "CAUTION": 0, "NO_GO": 0}
+        _demoted = []
+        for _b in list(buys):
+            _val = _validations.get(_b.get("symbol"))
+            if not _val:
+                continue
+            _v = _val.get("verdict", "GO")
+            _hist[_v] = _hist.get(_v, 0) + 1
+            # Stamp on the stock so the audit + Telegram both see it
+            _b["llm_validator_verdict"] = _v
+            _b["llm_validator_reason"] = _val.get("reason", "")
+            _b["llm_validator_red_flags"] = _val.get("red_flags", [])
+            _b["llm_validator_source"] = _val.get("source", "unavailable")
+            if _v == "NO_GO" and _mode == "veto":
+                # Demote BUY → WATCHLIST (advisory demotion — the stock stays
+                # visible in the watchlist for observation but does NOT
+                # trigger a live trade). We don't re-run classify_watchlist
+                # here (that would require re-plumbing thresholds/conf_history
+                # into this scope); the audit + Telegram consumers already
+                # accept a bare "WATCHLIST" without a sub-tier.
+                _b.setdefault("warnings", []).append(
+                    f"LLM_VETO: {_val.get('reason', 'validator NO_GO')}"
+                )
+                _b["decision"] = "WATCHLIST"
+                _b["watchlist_tier"] = _b.get("watchlist_tier") or "LLM_VETOED"
+                _demoted.append(_b.get("symbol"))
+                watchlist_stocks.append(_b)
+                buys.remove(_b)
+            elif _v == "CAUTION":
+                _b.setdefault("warnings", []).append(
+                    f"LLM_CAUTION: {_val.get('reason', 'validator CAUTION')}"
+                )
+        _log(
+            f"  LLM validator: GO={_hist.get('GO',0)} · CAUTION={_hist.get('CAUTION',0)} · "
+            f"NO_GO={_hist.get('NO_GO',0)} · mode={_mode}"
+        )
+        if _demoted:
+            _log(f"  LLM_VETO demoted {len(_demoted)} BUY → WATCHLIST: {_demoted}")
 
     message = format_telegram_message(
         regime_data      = regime_data,
