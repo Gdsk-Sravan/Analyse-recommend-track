@@ -61,6 +61,39 @@ SLIPPAGE_ENTRY_PCT = float(os.getenv("BT_SLIPPAGE_ENTRY_PCT", "0.15")) / 100.0
 SLIPPAGE_STOP_PCT  = float(os.getenv("BT_SLIPPAGE_STOP_PCT",  "0.20")) / 100.0
 SLIPPAGE_TARGET_PCT = float(os.getenv("BT_SLIPPAGE_TARGET_PCT", "0.00")) / 100.0
 
+# ─── Phase I (2026-07-07): live-filter simulation ────────────────────────────
+# main.py applies three data-driven filters that this backtest historically
+# ignored (it scored every bar with conf>=40 regardless of setup/regime). When
+# SIMULATE_LIVE_FILTERS=true, we replicate the live filters here so the
+# backtest reflects what the LIVE scanner would have actually traded.
+#
+#   1. BREAKOUT bonus         : +12 conf | MOMENTUM +5 | PULLBACK/REVERSAL -5
+#   2. Regime hard-block      : skip WEAK / SIDEWAYS unless setup=BREAKOUT
+#   3. Min-confidence floor   : reject bars below MIN_CONFIDENCE_LIVE (default 70)
+#
+# Toggle via env: SIMULATE_LIVE_FILTERS=true (default false = legacy behaviour)
+SIMULATE_LIVE_FILTERS = os.getenv("SIMULATE_LIVE_FILTERS", "false").lower() in ("1", "true", "yes")
+MIN_CONFIDENCE_LIVE   = int(os.getenv("MIN_CONFIDENCE_LIVE", "70"))
+BREAKOUT_BONUS        = int(os.getenv("BREAKOUT_BONUS", "12"))
+MOMENTUM_BONUS        = int(os.getenv("MOMENTUM_BONUS", "5"))
+PULLBACK_PENALTY      = int(os.getenv("PULLBACK_PENALTY", "-5"))
+REVERSAL_PENALTY      = int(os.getenv("REVERSAL_PENALTY", "-5"))
+
+_SETUP_ADJ = {
+    "BREAKOUT": BREAKOUT_BONUS,
+    "MOMENTUM": MOMENTUM_BONUS,
+    "PULLBACK": PULLBACK_PENALTY,
+    "REVERSAL": REVERSAL_PENALTY,
+    "OTHER":    0,
+}
+_REGIME_BLOCK = {"WEAK", "SIDEWAYS"}
+
+if SIMULATE_LIVE_FILTERS:
+    print(f"[PhaseI] SIMULATE_LIVE_FILTERS enabled | min_conf={MIN_CONFIDENCE_LIVE} "
+          f"| BREAKOUT+{BREAKOUT_BONUS} MOMENTUM+{MOMENTUM_BONUS} "
+          f"PULLBACK{PULLBACK_PENALTY} REVERSAL{REVERSAL_PENALTY} "
+          f"| block regimes={_REGIME_BLOCK} (unless BREAKOUT)")
+
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
 def _ema(series: np.ndarray, span: int) -> np.ndarray:
@@ -345,11 +378,23 @@ def _process_symbol(symbol: str, period: str = "2y") -> list:
             conf = _confidence_at(i, closes, highs, lows, volumes)
             if conf < 40:
                 continue
+            setup  = _classify_setup_at(i, closes, highs, lows)
+            regime = _classify_regime_at(i, closes)
+
+            # ─── Phase I: mirror main.py's live filters ──────────────────
+            if SIMULATE_LIVE_FILTERS:
+                # 1. setup-type confidence adjustment
+                conf = max(0.0, min(100.0, conf + _SETUP_ADJ.get(setup, 0)))
+                # 2. regime hard-block (skip WEAK/SIDEWAYS unless BREAKOUT)
+                if regime in _REGIME_BLOCK and setup != "BREAKOUT":
+                    continue
+                # 3. min-confidence floor (mirrors live REGIME_THRESHOLDS)
+                if conf < MIN_CONFIDENCE_LIVE:
+                    continue
+
             outcome, r_mult, exit_bars = _simulate_trade(
                 i, closes, highs, lows, atr14_arr, ema20_arr
             )
-            setup  = _classify_setup_at(i, closes, highs, lows)
-            regime = _classify_regime_at(i, closes)
             rows.append({
                 "symbol":     symbol,
                 "date":       str(dates[i])[:10],
