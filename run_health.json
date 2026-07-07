@@ -1,0 +1,44 @@
+{
+  "fresh_start_history": [
+    {
+      "date": "2026-07-07",
+      "run_ts": "2026-07-07T12:06:17Z",
+      "workflow": "tracker"
+    }
+  ],
+  "jobs": {
+    "evening": {
+      "buys": 0,
+      "exit_status": "ok",
+      "fresh_start": false,
+      "last_run_utc": "2026-07-07T16:18:03Z",
+      "last_success_utc": "2026-07-07T16:18:03Z",
+      "mode": "manual",
+      "regime": "SIDEWAYS",
+      "shorts": 0,
+      "tradable": 120,
+      "watchlist": 2
+    },
+    "research": {
+      "exit_status": "ok",
+      "fresh_start": false,
+      "last_run_utc": "2026-07-05T12:34:07Z",
+      "last_success_utc": "2026-07-05T12:34:07Z",
+      "mode": "scheduled"
+    },
+    "tracker": {
+      "exit_status": "ok",
+      "fresh_start": false,
+      "last_run_utc": "2026-07-07T12:37:10Z",
+      "last_success_utc": "2026-07-07T12:37:10Z",
+      "mode": "scheduled"
+    },
+    "weekly": {
+      "exit_status": "ok",
+      "fresh_start": false,
+      "last_run_utc": "2026-07-05T12:34:56Z",
+      "last_success_utc": "2026-07-05T12:34:56Z",
+      "mode": "scheduled"
+    }
+  }
+}
