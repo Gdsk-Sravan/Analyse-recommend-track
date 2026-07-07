@@ -7,6 +7,18 @@
     }
   ],
   "jobs": {
+    "evening": {
+      "buys": 0,
+      "exit_status": "ok",
+      "fresh_start": false,
+      "last_run_utc": "2026-07-07T16:18:03Z",
+      "last_success_utc": "2026-07-07T16:18:03Z",
+      "mode": "manual",
+      "regime": "SIDEWAYS",
+      "shorts": 0,
+      "tradable": 120,
+      "watchlist": 2
+    },
     "research": {
       "exit_status": "ok",
       "fresh_start": false,
