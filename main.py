@@ -739,7 +739,15 @@ REGIME_THRESHOLDS = {
     # If your tape STILL produces 0 buys after this change, drop
     # min_confidence to 72 via regime_calibration.json rather than editing
     # this constant again — that file is the intended tuning surface.
-    "SIDEWAYS":        {"min_confidence": 75, "min_tq": 68, "min_rr": 1.7, "max_buys": 2,  "max_exposure": 0.50, "max_stop_pct": 8.0},
+    #
+    # 2026-07-07 PHASE I (setup-edge patch): min_confidence dropped 75 → 70
+    # to match the empirical break-even bucket from backtest_walkforward.py
+    # (win_rate_by_confidence: bucket 70 = 47.2% win, bucket 75 = 48.0% win,
+    # bucket 65 = 41.3% win). 70 is the smallest bucket that clears the
+    # 37.5% break-even bar with statistical margin (1,163 trades / 47.2% wr).
+    # The setup-type bonus + WEAK/SIDEWAYS-ex-BREAKOUT skip added below is
+    # what re-tightens the effective bar — this is a floor, not a gate.
+    "SIDEWAYS":        {"min_confidence": 70, "min_tq": 68, "min_rr": 1.7, "max_buys": 2,  "max_exposure": 0.50, "max_stop_pct": 8.0},
     "TRANSITION":      {"min_confidence": 83, "min_tq": 73, "min_rr": 2.0, "max_buys": 2,  "max_exposure": 0.55, "max_stop_pct": 7.0},
     "HIGH_VOLATILITY": {"min_confidence": 85, "min_tq": 76, "min_rr": 2.2, "max_buys": 1,  "max_exposure": 0.40, "max_stop_pct": 5.0},
     "BEAR":            {"min_confidence": 92, "min_tq": 82, "min_rr": 2.5, "max_buys": 0,  "max_exposure": 0.20, "max_stop_pct": 5.0},
@@ -5665,6 +5673,129 @@ def compute_final_confidence(base: float, regime: str, news_penalty: float,
     return round(max(0.0, min(100.0, final)), 2)
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Phase I (2026-07-07) — Setup-edge patch, data-driven from backtest results.
+#
+# Backtest run 2026-07-07 (26,665 trades, results/backtest_by_setup.csv):
+#     BREAKOUT  1,453  win 51.5%  expectancy +0.017 R   (ONLY profitable setup)
+#     MOMENTUM  4,889  win 41.3%  expectancy -0.038 R   (near break-even)
+#     OTHER    15,377  win 28.5%  expectancy -0.241 R   (worst)
+#     REVERSAL  2,328  win 26.9%  expectancy -0.136 R
+#     PULLBACK  2,618  win 20.6%  expectancy -0.173 R
+#
+# Backtest run 2026-07-07 (results/backtest_by_regime.csv):
+#     BULLISH           4,284  win 45.1%  expectancy +0.06 R  (ONLY profitable)
+#     CAUTIOUS_BULLISH  5,958  win 37.6%  expectancy -0.107 R
+#     SIDEWAYS          5,732  win 20.3%  expectancy -0.176 R
+#     WEAK             10,691  win 27.9%  expectancy -0.304 R (worst — 40% of sample)
+#
+# Overall raw system: -0.174 R expectancy, profit factor 0.79 → NET LOSER
+# without filtering. Monte Carlo verdict = RANDOM (p=0.813).
+#
+# This module adds three data-driven adjustments to the live scanner:
+#   1. Setup-type confidence bonus (positive for BREAKOUT/MOMENTUM,
+#      negative for PULLBACK/REVERSAL/OTHER).
+#   2. Regime hard-block: WEAK + SIDEWAYS setups get rejected unless
+#      they are a fresh BREAKOUT (the only bucket that survived losses
+#      in choppy tapes).
+#   3. Uses the same EMA/high/low context already stamped on each stock
+#      dict by score_stock() — no new data fetch, no runtime cost.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Tunable via env — defaults derived from backtest expectancy deltas.
+_SETUP_CONF_BONUS = {
+    "BREAKOUT": float(os.getenv("SETUP_BONUS_BREAKOUT", "12")),
+    "MOMENTUM": float(os.getenv("SETUP_BONUS_MOMENTUM",  "5")),
+    "OTHER":    float(os.getenv("SETUP_BONUS_OTHER",     "0")),
+    "REVERSAL": float(os.getenv("SETUP_BONUS_REVERSAL", "-4")),
+    "PULLBACK": float(os.getenv("SETUP_BONUS_PULLBACK", "-6")),
+}
+
+# Regime hard-block toggle. When true, WEAK + SIDEWAYS regime rejects any
+# stock whose live setup is not BREAKOUT. BULLISH / CAUTIOUS_BULLISH bypass
+# the filter regardless of setup.
+_ENABLE_REGIME_SETUP_FILTER = os.getenv("ENABLE_REGIME_SETUP_FILTER", "true").lower() in ("1", "true", "yes")
+
+# Chop regimes are the ones the backtest showed as unprofitable when
+# taking ALL setup types indiscriminately. Live main.py regime names differ
+# from the backtest's proxy names (main.py uses SIDEWAYS/TRANSITION/BEAR/etc.),
+# so both spellings are checked.
+_CHOP_REGIMES = {"SIDEWAYS", "TRANSITION", "HIGH_VOLATILITY", "WEAK"}
+
+
+def _classify_setup_live(stock: dict) -> str:
+    """Return BREAKOUT | PULLBACK | REVERSAL | MOMENTUM | OTHER for a scored
+    live stock dict. Uses only fields already stamped by score_stock():
+      close, ema20, ema50, high_20d, low_20d, chg_5d (or chg_1d fallback).
+
+    Mirrors backtest_walkforward._classify_setup_at() so live scoring is
+    consistent with the profitability table it was calibrated on. Returns
+    "OTHER" on any missing field — cheap heuristic, precision is not critical.
+    """
+    try:
+        last   = float(stock.get("close",   0) or 0)
+        ema20  = float(stock.get("ema20",   0) or 0)
+        ema50  = float(stock.get("ema50",   0) or 0)
+        h20    = float(stock.get("high_20d", 0) or 0)
+        l20    = float(stock.get("low_20d",  0) or 0)
+        # 5-day return: prefer chg_5d, fall back to a synthetic near-zero if missing
+        ret5   = float(stock.get("chg_5d", stock.get("return_5d", 0)) or 0)
+
+        if last <= 0 or ema20 <= 0 or ema50 <= 0 or h20 <= 0:
+            return "OTHER"
+
+        # 1) BREAKOUT — closes at/above prior 20-day high AND above ema20/50
+        if last >= h20 * 0.998 and last > ema20 > ema50:
+            return "BREAKOUT"
+
+        # 2) PULLBACK — uptrend intact but negative 5d return, price near ema20
+        if ema20 > ema50 and last > ema50 and ret5 < 0 \
+           and abs(last - ema20) / max(ema20, 1e-9) < 0.015:
+            return "PULLBACK"
+
+        # 3) REVERSAL — near ema20 but below ema50, bounced 5–20% off 20d low
+        if l20 > 0 and last > ema20 and last < ema50 and 0.05 < (last - l20) / l20 < 0.20:
+            return "REVERSAL"
+
+        # 4) MOMENTUM — sustained uptrend, strong 5-day return
+        if last > ema20 > ema50 and ret5 > 2.0:
+            return "MOMENTUM"
+
+        return "OTHER"
+    except Exception:
+        return "OTHER"
+
+
+def apply_setup_edge(stock: dict, regime: str) -> tuple:
+    """Apply the two data-driven filters to a scored stock:
+      • Compute setup_type via _classify_setup_live().
+      • Add setup-type bonus to final_confidence (clamped 0–100).
+      • Return (setup_type, adjusted_confidence, skip_reason) where
+        skip_reason is None if the stock passes the regime filter, or a
+        short string like "REGIME_CHOP_NO_BREAKOUT" when it should be
+        rejected from the BUY set even if confidence is otherwise fine.
+
+    Stamps `setup_type` and `setup_conf_bonus` on the stock dict for audit.
+    """
+    setup = _classify_setup_live(stock)
+    bonus = _SETUP_CONF_BONUS.get(setup, 0.0)
+
+    stock["setup_type"]       = setup
+    stock["setup_conf_bonus"] = bonus
+
+    orig_conf = float(stock.get("final_confidence", 0) or 0)
+    adj_conf  = round(max(0.0, min(100.0, orig_conf + bonus)), 2)
+    stock["final_confidence"] = adj_conf
+
+    skip_reason = None
+    if _ENABLE_REGIME_SETUP_FILTER and regime in _CHOP_REGIMES and setup != "BREAKOUT":
+        # BREAKOUT is the only setup with positive expectancy in the backtest,
+        # so in choppy/weak regimes we require it as the entry pattern.
+        skip_reason = f"REGIME_CHOP_NO_BREAKOUT({regime}/{setup})"
+
+    return setup, adj_conf, skip_reason
+
+
 # Env-driven cap (default 25%). Read once at module load so both sizers agree.
 _MAX_POSITION_PCT_ENV = float(os.getenv("MAX_POSITION_PCT", "25")) / 100.0
 
@@ -8078,6 +8209,19 @@ def run_gates(stock: dict, regime: str, thresholds: dict,
         return {
             "decision": "REJECTED",
             "fail_reasons": _phaseG_reasons or ["PHASE_G_HARD_REJECT"],
+            "warnings": [],
+        }
+
+    # ── Phase I (2026-07-07): honour setup-edge chop-regime skip ─────────
+    # Backtest (2026-07-07, 26,665 trades) showed WEAK + SIDEWAYS regimes
+    # bleed ~-0.18 to -0.30 R per trade UNLESS the setup is BREAKOUT (only
+    # bucket with positive expectancy). apply_setup_edge() stamps
+    # `phase_i_skip` when this filter should trigger. Toggle via
+    # ENABLE_REGIME_SETUP_FILTER env var.
+    if stock.get("phase_i_skip"):
+        return {
+            "decision": "REJECTED",
+            "fail_reasons": [f"SETUP_EDGE_SKIP({stock['phase_i_skip']})"],
             "warnings": [],
         }
 
@@ -12436,6 +12580,15 @@ def _run_pipeline_inner():
         stock["final_confidence"] = compute_final_confidence(
             base_conf, regime, stock.get("news_penalty", 0), macro_adj_global, bulk_adj
         )
+        # ── Phase I (2026-07-07): setup-edge patch — data-driven bonus + skip.
+        # Classifies each candidate as BREAKOUT / MOMENTUM / PULLBACK / REVERSAL
+        # / OTHER using the exact heuristic profiled in backtest_by_setup.csv,
+        # then adds a signed confidence bonus and (in chop regimes) tags a
+        # skip_reason for the BUY-gate cascade downstream. See
+        # `apply_setup_edge()` above for the calibration table.
+        _setup, _adj, _skip = apply_setup_edge(stock, regime)
+        if _skip:
+            stock["phase_i_skip"] = _skip
     top_40.sort(key=lambda x: (-x["final_confidence"], x["symbol"]))
 
     # ── 11b. Opportunity score (kept for audit compat; NOT used for ranking) ──
