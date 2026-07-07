@@ -254,14 +254,14 @@
   },
   "ONMOBILE": {
     "data": {
-      "delivery_pct_today": 18.72,
-      "delivery_pct_20d_avg": 47.06,
-      "delivery_ratio": 0.398,
-      "delivery_signal": "DISTRIBUTION",
+      "delivery_pct_today": 52.17,
+      "delivery_pct_20d_avg": 47.66,
+      "delivery_ratio": 1.095,
+      "delivery_signal": "NEUTRAL",
       "series_days": 29,
       "source": "nselib"
     },
-    "cached_at": "2026-07-06T00:42:40.156610+05:30"
+    "cached_at": "2026-07-07T23:31:02.927983+05:30"
   },
   "SONACOMS": {
     "data": {
@@ -1112,14 +1112,14 @@
   },
   "REDINGTON": {
     "data": {
-      "delivery_pct_today": 39.52,
-      "delivery_pct_20d_avg": 35.19,
-      "delivery_ratio": 1.123,
-      "delivery_signal": "NEUTRAL",
-      "series_days": 29,
+      "delivery_pct_today": 41.96,
+      "delivery_pct_20d_avg": 35.31,
+      "delivery_ratio": 1.188,
+      "delivery_signal": "ACCUM",
+      "series_days": 30,
       "source": "nselib"
     },
-    "cached_at": "2026-07-06T09:37:51.190066+05:30"
+    "cached_at": "2026-07-07T23:31:04.955740+05:30"
   },
   "INDSWFTLAB": {
     "data": {
@@ -2440,5 +2440,16 @@
       "source": "nselib"
     },
     "cached_at": "2026-07-07T21:15:47.739686+05:30"
+  },
+  "EUROPRATIK": {
+    "data": {
+      "delivery_pct_today": 32.83,
+      "delivery_pct_20d_avg": 29.13,
+      "delivery_ratio": 1.127,
+      "delivery_signal": "NEUTRAL",
+      "series_days": 30,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-07T23:31:03.968154+05:30"
   }
 }

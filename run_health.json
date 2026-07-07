@@ -1,0 +1,23 @@
+{
+  "fresh_start_history": [
+    {
+      "date": "2026-07-07",
+      "run_ts": "2026-07-07T17:45:00Z",
+      "workflow": "evening"
+    }
+  ],
+  "jobs": {
+    "evening": {
+      "buys": 0,
+      "exit_status": "ok",
+      "fresh_start": true,
+      "last_run_utc": "2026-07-07T18:05:16Z",
+      "last_success_utc": "2026-07-07T18:05:16Z",
+      "mode": "scheduled",
+      "regime": "SIDEWAYS",
+      "shorts": 0,
+      "tradable": 120,
+      "watchlist": 0
+    }
+  }
+}
