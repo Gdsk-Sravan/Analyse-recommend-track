@@ -898,10 +898,25 @@ def _update_ownership_quality(stock: dict) -> None:
         if pledge > 30:   score -= 20
         elif pledge > 15: score -= 10
         elif pledge < 5:  score += 10
-        # D/E component
+        # D/E component (tiered)
         if de > 2.0:    score -= 10
         elif de > 1.0:  score -= 5
         elif de < 0.5:  score += 10
+
+        # Issue 3 fix: gradient penalty on top of tiers. As DE approaches
+        # MAX_DE (default 1.5), apply up to -6 extra so DE=1.4 (near-limit)
+        # is visibly worse than DE=0.6 (safe). Financials exempted (banks
+        # naturally run 5-10x). Scaled by (de / max_de) capped at 1.0.
+        try:
+            _max_de_ownership = float(os.getenv("MAX_DE", "1.5") or 1.5)
+        except (TypeError, ValueError):
+            _max_de_ownership = 1.5
+        _sec_up = str(stock.get("sector", "") or "").upper()
+        _is_fin = any(fs in _sec_up for fs in
+                      ("BANKING", "FINANCE", "INSURANCE", "NBFC", "FINANCIAL"))
+        if not _is_fin and _max_de_ownership > 0 and de > 0:
+            _de_ratio = min(1.0, de / _max_de_ownership)
+            score -= round(6.0 * _de_ratio, 1)  # up to -6 at DE == MAX_DE
 
         # ── Phase R3 (2026-07-06): Per-stock FII / DII shareholding overlay ──
         # High institutional participation (FII+DII) is a strong quality
@@ -1864,6 +1879,13 @@ def save_csv(data: list, base_filename: str) -> None:
 CLOUD_AI_ENDPOINT = os.getenv("CLOUD_AI_ENDPOINT", "")
 CLOUD_AI_KEY      = os.getenv("CLOUD_AI_KEY", "")
 
+# Stage C kill-switch: when "false"/"0"/"no", the three narrative functions
+# (ai_daily_summary, ai_buy_thesis, ai_near_miss_insight) skip the Groq call
+# entirely and return their rule-based fallback text. Lets operators run the
+# pipeline in a deterministic, LLM-free mode for A/B comparison or when Groq
+# is unavailable. Default: enabled (preserves current behavior).
+ENABLE_AI_NARRATIVES = os.getenv("ENABLE_AI_NARRATIVES", "true").strip().lower() not in ("false", "0", "no", "off", "")
+
 _GROQ_KEYS_RAW = [
     os.getenv("GROQ_API_KEY_1", ""),
     os.getenv("GROQ_API_KEY_2", ""),
@@ -1879,13 +1901,22 @@ GROQ_KEYS = [k.strip() for k in _GROQ_KEYS_RAW if k.strip()]
 _groq_key_cycle = itertools.cycle(GROQ_KEYS) if GROQ_KEYS else iter([])
 _groq_key_failures: dict = {}
 
-NEGATIVE_KEYWORDS = [
-    "fraud","scam","sebi ban","ed raid","cbi","fir","arrested","bankrupt",
-    "insolvency","liquidation","default","npa","downgrade","plant shut",
-    "factory closed","promoter sell","pledged shares sold","regulatory action",
-    "show cause","penalty","fine imposed","loss widened","revenue decline",
-    "auditor resigned","qualified opinion","going concern","debt restructure",
-]
+# Weighted severity (1=mild, 10=existential). Sum >15 = HIGH_RISK,
+# 5-15 = MODERATE. Replaces the flat list so a single "auditor resigned"
+# outweighs three "revenue decline" mentions. Iteration order preserved.
+NEGATIVE_KEYWORDS_SEVERITY = {
+    "fraud": 10, "scam": 10, "sebi ban": 10, "ed raid": 10,
+    "cbi": 9, "fir": 9, "arrested": 10, "bankrupt": 10,
+    "insolvency": 9, "liquidation": 9, "default": 8, "npa": 6,
+    "downgrade": 5, "plant shut": 6, "factory closed": 6,
+    "promoter sell": 5, "pledged shares sold": 7, "regulatory action": 6,
+    "show cause": 4, "penalty": 3, "fine imposed": 3,
+    "loss widened": 3, "revenue decline": 3,
+    "auditor resigned": 9, "qualified opinion": 7, "going concern": 8,
+    "debt restructure": 5,
+}
+# Back-compat: list view for any legacy `for kw in NEGATIVE_KEYWORDS` loops.
+NEGATIVE_KEYWORDS = list(NEGATIVE_KEYWORDS_SEVERITY.keys())
 POSITIVE_KEYWORDS = [
     "contract win","order win","expansion","new plant","capacity addition",
     "earnings beat","profit up","revenue growth","dividend","buyback",
@@ -2122,6 +2153,7 @@ def ai_daily_summary(
     import re
 
     # Translate numbers to qualitative labels BEFORE sending to AI
+    # (regime_label is also used by the rule-based fallback below).
     regime_label = {
         "STRONG_BULL":     "strongly bullish with broad participation",
         "BULL":            "bullish with improving breadth",
@@ -2131,6 +2163,13 @@ def ai_daily_summary(
         "BEAR":            "weakening with institutional selling",
         "STRONG_BEAR":     "in capital preservation mode",
     }.get(regime, "uncertain")
+
+    # Stage C: kill-switch bypasses LLM entirely and returns rule-based summary.
+    if not ENABLE_AI_NARRATIVES:
+        return _rule_based_summary(
+            regime, regime_label, buy_count, near_miss_count,
+            top_near_miss_symbol, portfolio_alerts, ema_bear, upcoming_event
+        )
 
     nifty_label = (
         "falling sharply" if nifty_pct < -1.0 else
@@ -2258,6 +2297,10 @@ def ai_buy_thesis(
     accumulation signal and any soft warnings so it has stock-specific evidence
     to cite instead of falling back to generic phrases like 'strong buy signal'.
     """
+    # Stage C: kill-switch bypasses LLM entirely and returns rule-based thesis.
+    if not ENABLE_AI_NARRATIVES:
+        return _rule_based_thesis(symbol, sector, rr, conf_trend, catalyst, sector_status)
+
     fs = factor_scores or {}
     ranked = sorted(fs.items(), key=lambda kv: -(kv[1] or 0))
     top_factors = [f"{k}={int(v)}" for k, v in ranked[:3] if v is not None]
@@ -2383,6 +2426,14 @@ def ai_near_miss_insight(
     conf_only    = len(fail_reasons) == 1 and "CONF" in primary_fail
     rr_fail      = any("RR" in f for f in fail_reasons)
     tq_fail      = any("TQ" in f for f in fail_reasons)
+
+    # Stage C: kill-switch bypasses LLM entirely and returns rule-based insight.
+    if not ENABLE_AI_NARRATIVES:
+        return _rule_based_near_miss_insight(
+            symbol, conf_gap, conf_only, rr_fail, tq_fail,
+            conf_trend, days_watching, sector_status,
+            confidence=confidence, tq=tq, rr=rr,
+        )
 
     trend_label = (
         "confidence rising steadily"  if conf_trend and "rising"  in conf_trend.lower() else
@@ -2615,12 +2666,17 @@ def _rule_based_news_score(text: str) -> dict:
         if kw in tl:
             return {"severity": 92, "category": "BLACK_SWAN", "is_black_swan": True,
                     "summary": f"Black swan keyword: {kw}", "news_source": "RULE_BASED"}
-    neg = sum(1 for kw in NEGATIVE_KEYWORDS if kw in tl)
+    # Severity-weighted: a single "fraud" (10) trumps three "downgrade" (5 each = 15)
+    # only when both are present, but "fraud" alone already >15 → HIGH_RISK.
+    neg_sev = sum(sev for kw, sev in NEGATIVE_KEYWORDS_SEVERITY.items() if kw in tl)
+    neg_hits = sum(1 for kw in NEGATIVE_KEYWORDS_SEVERITY if kw in tl)
     pos = sum(1 for kw in POSITIVE_KEYWORDS if kw in tl)
-    if neg >= 3:
-        return {"severity": 65, "category": "HIGH_RISK",     "is_black_swan": False, "summary": f"{neg} negative signals", "news_source": "RULE_BASED"}
-    elif neg >= 1:
-        return {"severity": 35, "category": "MODERATE_RISK", "is_black_swan": False, "summary": f"{neg} negative signal(s)", "news_source": "RULE_BASED"}
+    if neg_sev >= 15:
+        return {"severity": 70, "category": "HIGH_RISK",     "is_black_swan": False, "summary": f"{neg_hits} negative signals (severity {neg_sev})", "news_source": "RULE_BASED"}
+    elif neg_sev >= 5:
+        return {"severity": 40, "category": "MODERATE_RISK", "is_black_swan": False, "summary": f"{neg_hits} negative signal(s) (severity {neg_sev})", "news_source": "RULE_BASED"}
+    elif neg_sev >= 1:
+        return {"severity": 20, "category": "MILD_RISK",     "is_black_swan": False, "summary": f"{neg_hits} minor negative signal(s)", "news_source": "RULE_BASED"}
     elif pos >= 1:
         return {"severity": -30, "category": "POSITIVE",     "is_black_swan": False, "summary": f"{pos} positive signal(s)", "news_source": "RULE_BASED"}
     return {"severity": 0, "category": "NEUTRAL", "is_black_swan": False, "summary": "No significant news", "news_source": "RULE_BASED"}
@@ -5401,6 +5457,30 @@ def detect_market_regime(nifty_df, breadth_data: dict, macro_signals: dict) -> d
                               above_ema20=above_ema20,
                               above_ema50=above_ema50)
 
+    # Issue 7 fix: demote regime one tier when breadth is weak AND
+    # advance/decline is decisively bearish. Guards against the "index-up
+    # but market-broken" scenario where 3 mega-caps mask a 47-stock rout.
+    # Env: BREADTH_DEMOTION (default 1). Set to 0 to disable.
+    if os.getenv("BREADTH_DEMOTION", "1") == "1":
+        try:
+            _b20 = float(breadth_data.get("ema20_pct", 50) or 50)
+            _adv_dec = float(breadth_data.get("adv_dec_ratio", 1.0) or 1.0)
+            if _b20 < 40.0 and _adv_dec < 0.9:
+                _demotion_chain = {
+                    "STRONG_BULL":     "BULL",
+                    "BULL":            "SIDEWAYS",
+                    "SIDEWAYS":        "TRANSITION",
+                    "TRANSITION":      "HIGH_VOLATILITY",
+                    "HIGH_VOLATILITY": "BEAR",
+                    "BEAR":            "STRONG_BEAR",
+                    "STRONG_BEAR":     "STRONG_BEAR",
+                }
+                _new_regime = _demotion_chain.get(regime, regime)
+                if _new_regime != regime:
+                    regime = _new_regime
+        except (TypeError, ValueError):
+            pass
+
     return {
         "regime":     regime,
         "score":      round(score, 1),
@@ -5577,11 +5657,17 @@ _MAX_POSITION_PCT_ENV = float(os.getenv("MAX_POSITION_PCT", "25")) / 100.0
 
 def compute_position_size(entry: float, stop: float, capital: float,
                            risk_per_trade: float = 0.015,
-                           max_position_pct: float = None) -> dict:
+                           max_position_pct: float = None,
+                           avg_val_lakhs: float = None) -> dict:
     """Risk-based position sizing — always returns non-zero for valid inputs.
 
     Returns keys: shares, position_value, position_pct, risk_amount, risk_pct,
     max_loss (= shares × (entry − stop), the actual worst-case rupee loss).
+
+    Issue 6 (liquidity cap): when avg_val_lakhs > 0, additionally cap
+    position value to LIQUIDITY_MAX_PCT_OF_ADV (default 5%) of average daily
+    traded value. This prevents entering positions we can't unwind without
+    slippage. Only tightens; never expands the position.
     """
     if max_position_pct is None:
         max_position_pct = _MAX_POSITION_PCT_ENV
@@ -5596,6 +5682,19 @@ def compute_position_size(entry: float, stop: float, capital: float,
         if position_value > capital * max_position_pct:
             shares         = max(1, int((capital * max_position_pct) / entry))
             position_value = shares * entry
+        # Issue 6 fix: liquidity cap. avg_val_lakhs is average daily
+        # rupee volume in lakhs (₹100k units). We limit our position to
+        # LIQUIDITY_MAX_PCT_OF_ADV of that so we can exit in under 1 day
+        # without moving price. Default 5% — set env to 0 to disable.
+        try:
+            _liq_pct = float(os.getenv("LIQUIDITY_MAX_PCT_OF_ADV", "5.0")) / 100.0
+        except (TypeError, ValueError):
+            _liq_pct = 0.05
+        if avg_val_lakhs and avg_val_lakhs > 0 and _liq_pct > 0:
+            _liq_cap_value = float(avg_val_lakhs) * 100_000 * _liq_pct
+            if position_value > _liq_cap_value:
+                shares         = max(1, int(_liq_cap_value / entry))
+                position_value = shares * entry
         position_pct = (position_value / capital) * 100
         # Actual worst-case rupee loss (may differ slightly from risk_amount
         # because shares is an integer). Downstream renders read this key.
@@ -7582,6 +7681,33 @@ def compute_all_factors(symbol: str, df,
         result["avg_volume"]      = round(avg_vol_20, 0)
         result["avg_value_lakhs"] = round(avg_val_lakhs, 1)
         result["near_52w_high"]   = near_52w_high
+        # Issue 8 fix: populate catalyst tags. Previously code READ
+        # `catalysts` (line ~2253, ~10385) but nothing WROTE it, so the
+        # tags were always empty. Now they're driven off computed indicators.
+        # Volume surge is split into UP (bullish, close >= prev_close) vs
+        # DOWN (distribution warning, close < prev_close) so downstream
+        # thesis logic doesn't confuse the two.
+        try:
+            _cats: list = []
+            _prev_close = float(closes[-2]) if len(closes) >= 2 else float(last)
+            _today_up = float(last) >= _prev_close
+            if vol_ratio > 1.5:
+                _cats.append("VOL_SURGE_UP" if _today_up else "VOL_SURGE_DOWN")
+            # Retain legacy "VOL_SURGE" tag when direction is bullish so
+            # existing rule_based_thesis / thesis_parts consumers keep working.
+            if "VOL_SURGE_UP" in _cats:
+                _cats.append("VOL_SURGE")
+            if last > ema20 > ema50 > ema200:
+                _cats.append("UPTREND")
+            if near_52w_high:
+                _cats.append("NEAR_52W_HIGH")
+            if accum_signal == "ACCUMULATING":
+                _cats.append("ACCUMULATION")
+            elif accum_signal == "DISTRIBUTING":
+                _cats.append("DISTRIBUTION")
+            result["catalysts"] = _cats
+        except Exception:
+            result["catalysts"] = []
         result["price"]           = entry
         result["ret1d"]           = round(ret1d_check, 2)
         result["ret5d"]           = round(ret5d, 2)
@@ -8195,6 +8321,26 @@ def run_gates(stock: dict, regime: str, thresholds: dict,
     # ─────────────────────────────────────────────────────────────────────
     # Phase R1 (2026-07-06): INSTITUTIONAL VALIDATION LAYER — Event gates
     # ─────────────────────────────────────────────────────────────────────
+
+    # Issue 2 fix — Gate 3g2: RS_LAGGING (relative strength vs Nifty).
+    # A stock trailing the index by RS_LAG_GATE_PCT (default -5.0%) over
+    # 21 trading days is a technical weakness signal. We hard-reject unless
+    # the stock is explicitly flagged as an oversold_reversal setup (where
+    # RS underperformance is the entry catalyst, not a warning).
+    # Env: RS_LAG_GATE_PCT (default -5.0). Set to 0 to disable.
+    try:
+        _rs_gate = float(os.getenv("RS_LAG_GATE_PCT", "-5.0"))
+    except (TypeError, ValueError):
+        _rs_gate = -5.0
+    if _rs_gate < 0:
+        _rs_diff = float(stock.get("rs_diff21", 0) or 0)
+        _is_oversold_rev = bool(stock.get("oversold_reversal", False))
+        if _rs_diff < _rs_gate and not _is_oversold_rev:
+            return {
+                "decision":     "REJECTED",
+                "fail_reasons": [f"RS_LAGGING({_rs_diff:+.1f}%<{_rs_gate:+.1f}%)"],
+                "warnings":     [],
+            }
 
     # Gate 3h — NEWS_SEVERITY_HIGH (HARD).
     # If the LLM news classifier flagged any recent news at severity ≥
@@ -12457,7 +12603,7 @@ def _run_pipeline_inner():
     # ── Phase G-BATCH2 (2026-07-07): enrichment from new signal modules ──
     # Each block is fully feature-flagged so pipeline degrades gracefully
     # when a source (nselib / Groq / RSS / Screener) is down or slow.
-    #   • quality_scores.py     — Piotroski F + Beneish M (fundamentals)
+    #   • quality_scores.py     — Piotroski F-Score (fundamentals)
     #   • options_data.py       — PCR / max-pain (F&O universe only)
     #   • news_sentiment.py     — Groq/keyword classifier on 7-day headlines
     #   • insider_feed.py       — promoter/KMP filings + bulk/block deals
@@ -12499,7 +12645,7 @@ def _run_pipeline_inner():
             _hard = False; _reasons_new: list = []
             _agg_bonus = 0.0
 
-            # -- Quality (Piotroski + Beneish) -----------------------------
+            # -- Quality (Piotroski F-Score) --------------------------------
             if _mod_q is not None:
                 try:
                     _fund = _stk.get("fundamentals") or _stk.get("fundamentals_raw") or {}
