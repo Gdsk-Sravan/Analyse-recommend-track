@@ -55,6 +55,16 @@ try:
 except ImportError:
     _BS4_OK = False
 
+# ── Phase I shadow-log (2026-07-07) ─────────────────────────────────────────
+# Records what Phase-I-skipped stocks WOULD have done (paper trades) so we
+# can validate backtest predictions in live conditions. Zero real-money risk.
+# Toggle via env: PHASE_I_SHADOW_LOG=false disables both recording & summary.
+try:
+    import shadow_log
+    _SHADOW_LOG_OK = True
+except ImportError:
+    _SHADOW_LOG_OK = False
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # SECTION 0b — SAFETY BASELINE (Phase A — added 2026-06-30)
@@ -5792,6 +5802,15 @@ def apply_setup_edge(stock: dict, regime: str) -> tuple:
         # BREAKOUT is the only setup with positive expectancy in the backtest,
         # so in choppy/weak regimes we require it as the entry pattern.
         skip_reason = f"REGIME_CHOP_NO_BREAKOUT({regime}/{setup})"
+
+        # Phase I shadow-log (2026-07-07): record what this REJECTED stock
+        # WOULD have done — pure paper-trade tracking. Zero money at risk.
+        # Safe no-op if shadow_log missing or toggle disabled.
+        if _SHADOW_LOG_OK:
+            try:
+                shadow_log.record_shadow_trade(stock, regime)
+            except Exception as _e:
+                pass  # never let the shadow log break the pipeline
 
     return setup, adj_conf, skip_reason
 
@@ -11753,6 +11772,19 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
         lines.append("  No active holdings.")
     lines.append("")
 
+    # ── Phase I shadow-log summary (2026-07-07) ──
+    # Compact block showing what Phase-I-skipped stocks would have done.
+    # Pure paper — nothing to act on. Safe no-op if module unavailable or
+    # CSV is empty. Toggle off with PHASE_I_SHADOW_LOG=false.
+    if _SHADOW_LOG_OK:
+        try:
+            _shadow_block = shadow_log.format_shadow_summary(max_lines=6)
+            if _shadow_block:
+                lines.append(_shadow_block)
+                lines.append("")
+        except Exception:
+            pass
+
     # ── Upcoming Events (FIX 4: config-based, 2 lines per event max) ──
     if upcoming_events:
         lines.extend(format_upcoming_events_compact(upcoming_events, portfolio_alerts))
@@ -12139,6 +12171,24 @@ def _run_pipeline_inner():
     # deleted so downstream `.get()` returns "" cleanly.
     globals()["_PIPELINE_REGIME"] = ""
     _ensure_portfolio_json()
+
+    # ── Phase I shadow-log (2026-07-07): resolve outcomes for previously
+    # skipped stocks. Each PENDING row is checked: did the stock hit +5%
+    # target or −3% stop first (or exceed max-hold days)? Pure paper —
+    # no real trades affected. Safe no-op if shadow_log unavailable.
+    if _SHADOW_LOG_OK:
+        try:
+            _shadow_stats = shadow_log.update_shadow_outcomes(quiet=True)
+            if _shadow_stats.get("resolved_today", 0) > 0:
+                _log(
+                    f"[shadow_log] resolved {_shadow_stats['resolved_today']} today "
+                    f"(wins {_shadow_stats['wins']}, "
+                    f"losses {_shadow_stats['losses']}, "
+                    f"time-exits {_shadow_stats['time_exits']}) · "
+                    f"pending {_shadow_stats['pending']}"
+                )
+        except Exception as _e:
+            _log(f"[shadow_log] update failed (non-fatal): {_e}")
 
     # ── Sector map (must be first — used by all scoring) ──
     _init_sector_map()
