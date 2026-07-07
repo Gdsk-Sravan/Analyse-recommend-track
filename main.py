@@ -62,10 +62,11 @@ except ImportError:
 # Real-money pipeline (CAPITAL=500000) → these are mandatory:
 #   - FetchResult provenance on every replaced fetcher
 #   - validate_macro() range gates with last-known-good fallback
-#   - cross_check_fii() for source reconciliation
 #   - explicit Asia/Kolkata timezone (no implicit dependency on TZ env var)
 #   - tenacity retries with exponential jitter
 #   - decision audit JSONL for post-mortem
+# Note: cross_check_fii() removed in Stage-A cleanup (Phase C4 disabled FII/DII
+# fetch pipeline-wide; helper had no remaining callers).
 # ─────────────────────────────────────────────────────────────────────────────
 from dataclasses import dataclass
 from typing import Any, Optional
@@ -242,33 +243,9 @@ def validate_macro(macro: dict) -> dict:
     return macro
 
 
-def cross_check_fii(nsdl_val: Optional[float],
-                    bse_val: Optional[float]) -> "tuple[Optional[float], str]":
-    """
-    Source reconciliation. NSDL is authoritative (T-1 final).
-    BSE is provisional (T+0). If both exist and disagree by >25%, flag LOW confidence.
-    Returns (chosen_value, confidence).
-    """
-    if nsdl_val is None and bse_val is None:
-        return None, "NONE"
-    if nsdl_val is None:
-        return bse_val, "BSE_ONLY"
-    if bse_val is None:
-        return nsdl_val, "NSDL_ONLY"
-    # Both present
-    if nsdl_val == 0 and bse_val == 0:
-        return 0.0, "BOTH_ZERO"
-    larger = max(abs(nsdl_val), abs(bse_val))
-    if larger > 0:
-        rel_diff = abs(nsdl_val - bse_val) / larger
-        if rel_diff > 0.25:
-            try:
-                _log(f"[XCHECK] FII disagree by {rel_diff*100:.0f}%: "
-                     f"NSDL={nsdl_val:+.0f}Cr vs BSE={bse_val:+.0f}Cr — using NSDL")
-            except Exception:
-                pass
-            return nsdl_val, "LOW"
-    return nsdl_val, "HIGH"
+# Stage-A cleanup (2026-07-XX): cross_check_fii() removed — was only called by
+# the legacy FII/DII cascade (also removed). FII/DII fetching disabled since
+# Phase C4; see fetch_fii_dii_flows() stub below.
 
 
 def append_decision_audit(entry: dict) -> None:
@@ -454,15 +431,13 @@ if TRADING_MODE == "swing":
     # Events — HARD gate for swing (gap risk = career risk)
     _set_default("EARNINGS_BLACKOUT_DAYS", "5")
     _set_default("NEWS_SEVERITY_MAX", "2")
-    # LLM validator — R5 PRUNE (2026-07-06): audit of 480 rows across 3 days
-    #   showed 0/480 verdicts ever populated. Default OFF; opt in via env.
-    _set_default("LLM_VALIDATOR", "0")
-    _set_default("LLM_VALIDATOR_MODE", "advise")
+    # Stage-A cleanup (2026-07-XX): LLM_VALIDATOR removed (was default OFF,
+    # 0/480 populated in prior audits). See git history to revive.
     # Pledge — warning, not dealbreaker (swing exits before it matters)
     _set_default("PLEDGE_SEVERITY", "warning")   # vs "dealbreaker" in position
     # Confidence bar — normal
     _set_default("FUND_MISSING_CONF_CAP", "80")
-    print(f"[TRADING_MODE=swing] Preset applied: MIN_ROE=10, MAX_DE=1.5, BQ_GATE=overlay, LLM=off(R5), PLEDGE=warning")
+    print(f"[TRADING_MODE=swing] Preset applied: MIN_ROE=10, MAX_DE=1.5, BQ_GATE=overlay, PLEDGE=warning")
 
 elif TRADING_MODE == "position":
     # Fundamentals — strict
@@ -475,13 +450,11 @@ elif TRADING_MODE == "position":
     # Events — HARD
     _set_default("EARNINGS_BLACKOUT_DAYS", "5")
     _set_default("NEWS_SEVERITY_MAX", "2")
-    # LLM validator — veto mode
-    _set_default("LLM_VALIDATOR", "1")
-    _set_default("LLM_VALIDATOR_MODE", "veto")
+    # Stage-A cleanup (2026-07-XX): LLM_VALIDATOR removed. See git history.
     # Pledge — dealbreaker
     _set_default("PLEDGE_SEVERITY", "dealbreaker")
     _set_default("FUND_MISSING_CONF_CAP", "75")
-    print(f"[TRADING_MODE=position] Preset applied: MIN_ROE=15, MAX_DE=1.0, BQ_GATE=hard, LLM=veto, PLEDGE=dealbreaker")
+    print(f"[TRADING_MODE=position] Preset applied: MIN_ROE=15, MAX_DE=1.0, BQ_GATE=hard, PLEDGE=dealbreaker")
 
 elif TRADING_MODE == "custom":
     print(f"[TRADING_MODE=custom] No preset applied; all env vars honored as-is")
@@ -493,7 +466,6 @@ else:
     for k, v in [("MIN_ROE","10"),("MAX_DE","1.5"),("BUSINESS_QUALITY_GATE","0"),
                  ("SECTOR_STRICT_GATE","1"),("SECTOR_RANK_CUTOFF","6"),
                  ("EARNINGS_BLACKOUT_DAYS","5"),("NEWS_SEVERITY_MAX","2"),
-                 ("LLM_VALIDATOR","0"),("LLM_VALIDATOR_MODE","advise"),
                  ("PLEDGE_SEVERITY","warning"),("FUND_MISSING_CONF_CAP","80")]:
         _set_default(k, v)
 
@@ -2325,134 +2297,6 @@ def ai_buy_thesis(
     return _rule_based_thesis(symbol, sector, rr, conf_trend, catalyst, sector_status)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Phase R3 (2026-07-06) — LLM Buy Thesis Validator
-# ═══════════════════════════════════════════════════════════════════════════
-#
-# Purpose: red-team second-opinion pass on every BUY / STRONG_BUY / BUY_CONTRARIAN
-# / BUY_TURNAROUND signal AFTER all deterministic gates. The pipeline gates
-# check individual facts (ROE, D/E, sector rank, technical setup) but cannot
-# spot pattern-level red flags like:
-#   • "Great ROE but from one-off other-income line"
-#   • "Momentum + strong sector but earnings expected in 3 days (blackout)"
-#   • "STRONG_BUY criteria met but stock is in a hyped sector at extremes"
-#   • "BQ score is high but the DE/ROCE pair suggests financialisation, not ops"
-# The validator returns a structured JSON verdict (GO / CAUTION / NO_GO) and
-# the pipeline uses it either as advisory (default) or as a veto (opt-in).
-#
-# Env vars:
-#   LLM_VALIDATOR=1             enable (default 0 — opt-in until proven stable)
-#   LLM_VALIDATOR_MODE=advise   "advise" (add warning only) or "veto" (demote NO_GO to WATCHLIST)
-#   LLM_VALIDATOR_MAX=5         max stocks validated per run (cost / latency cap)
-# ═══════════════════════════════════════════════════════════════════════════
-
-def ai_validate_buy_thesis(
-    symbol: str, sector: str, decision: str,
-    confidence: float, tq: float, rr: float,
-    bq_score: float, bq_verdict: str, bq_flags: list,
-    sector_composite: float, sector_verdict: str,
-    roe: float, de_ratio: float, pledge_pct: float,
-    fii_pct: float, dii_pct: float,
-    fail_reasons: list, warnings: list, soft_warnings: list,
-    regime: str, catalysts: list,
-) -> dict:
-    """
-    Red-team second opinion on a BUY-tier stock. Returns:
-       {
-         "verdict": "GO" | "CAUTION" | "NO_GO",
-         "reason":  str,   # one-line rationale
-         "red_flags": list[str],
-         "source":  "llm" | "rule_based" | "unavailable"
-       }
-    Never raises. On any error returns a permissive default (source=unavailable).
-    """
-    fallback = {"verdict": "GO", "reason": "validator unavailable", "red_flags": [], "source": "unavailable"}
-    try:
-        # Rule-based sanity checks (also acts as fallback if AI unavailable)
-        rule_flags = []
-        rule_verdict = "GO"
-        if bq_verdict in ("DECLINING", "WEAK"):
-            rule_flags.append(f"BQ_VERDICT_{bq_verdict}")
-            rule_verdict = "CAUTION"
-        if de_ratio > 2.0 and sector not in ("BANKING", "FINANCE", "INSURANCE", "NBFC"):
-            rule_flags.append(f"HIGH_LEVERAGE(DE={de_ratio:.2f})")
-            rule_verdict = "CAUTION"
-        # Pledge severity is regime-configurable (Phase R4). Swing mode treats
-        # it as a warning (CAUTION); position mode treats it as a dealbreaker
-        # (NO_GO). Default matches historical behavior (dealbreaker).
-        _pledge_sev = os.getenv("PLEDGE_SEVERITY", "dealbreaker").lower()
-        if pledge_pct > 20:
-            rule_flags.append(f"HIGH_PLEDGE({pledge_pct:.0f}%)")
-            if _pledge_sev == "warning":
-                # swing mode: only downgrade to CAUTION if we were still GO
-                if rule_verdict == "GO":
-                    rule_verdict = "CAUTION"
-            else:
-                rule_verdict = "NO_GO"
-        if bq_score < 45 and decision == "STRONG_BUY":
-            rule_flags.append(f"STRONG_BUY_WITH_WEAK_BQ({bq_score:.0f})")
-            rule_verdict = "CAUTION"
-        # If decision is STRONG_BUY but BQ_verdict weak — contradiction
-        if decision == "STRONG_BUY" and bq_verdict not in ("STRONG", "ACCEPTABLE"):
-            rule_flags.append("STRONG_BUY_BQ_MISMATCH")
-            rule_verdict = "CAUTION"
-
-        # Compact prompt (target < 1000 chars so full response fits in max_tokens=140)
-        _wf = ", ".join([str(f) for f in (warnings or [])[:3]]) or "none"
-        _sw = ", ".join([str(s) for s in (soft_warnings or [])[:3]]) or "none"
-        _cat = ", ".join(catalysts[:3]) if catalysts else "none"
-        _flags = ", ".join(bq_flags[:6]) if bq_flags else "none"
-
-        prompt = (
-            "You are a strict institutional risk manager reviewing a proposed BUY.\n"
-            f"Stock: {symbol} · Sector: {sector} · Regime: {regime}\n"
-            f"Decision: {decision} · Confidence: {confidence:.0f} · TQ: {tq:.0f} · RR: {rr:.2f}x\n"
-            f"Business Quality: BQ={bq_score:.0f} verdict={bq_verdict} flags=[{_flags}]\n"
-            f"Sector composite: {sector_composite:.0f} verdict={sector_verdict}\n"
-            f"Fundamentals: ROE={roe:.1f}% DE={de_ratio:.2f} Pledge={pledge_pct:.0f}% FII={fii_pct:.1f}% DII={dii_pct:.1f}%\n"
-            f"Catalysts: {_cat}\n"
-            f"Warnings: {_wf}\n"
-            f"Soft warnings: {_sw}\n\n"
-            "Return ONLY a JSON object with EXACTLY these keys (no markdown, no extra text):\n"
-            '{"verdict":"GO"|"CAUTION"|"NO_GO","reason":"<max 20 words>","red_flags":["FLAG1","FLAG2"]}\n\n'
-            "Rules for verdict:\n"
-            "- GO if fundamentals + technicals + sector are all consistent with a normal BUY\n"
-            "- CAUTION if there is one meaningful contradiction (e.g. STRONG_BUY but BQ weak, or high DE)\n"
-            "- NO_GO if there are ≥2 red flags OR any single dealbreaker (pledge>20%, decision inconsistent with BQ verdict, sector momentum negative)\n"
-            "Cite SPECIFIC numbers from the data above in the reason field."
-        )
-        raw = _call_ai(prompt, max_tokens=140)
-        if not raw:
-            # Fall back to rule-based verdict
-            return {"verdict": rule_verdict, "reason": "rule-based validator (LLM unavailable)",
-                    "red_flags": rule_flags, "source": "rule_based"}
-
-        parsed = _parse_ai_json(raw)
-        if not parsed or "verdict" not in parsed:
-            return {"verdict": rule_verdict, "reason": "LLM output unparseable",
-                    "red_flags": rule_flags, "source": "rule_based"}
-
-        v = str(parsed.get("verdict", "GO")).upper()
-        if v not in ("GO", "CAUTION", "NO_GO"):
-            v = "GO"
-        reason = str(parsed.get("reason", ""))[:200]
-        red_flags = parsed.get("red_flags", []) or []
-        if not isinstance(red_flags, list):
-            red_flags = [str(red_flags)]
-        red_flags = [str(f)[:60] for f in red_flags][:5]
-        # Merge in rule-based flags so we don't lose deterministic checks
-        for rf in rule_flags:
-            if rf not in red_flags:
-                red_flags.append(rf)
-        # If rule-based said NO_GO (pledge>20% is a dealbreaker), always upgrade
-        if rule_verdict == "NO_GO":
-            v = "NO_GO"
-        return {"verdict": v, "reason": reason, "red_flags": red_flags, "source": "llm"}
-    except Exception as e:
-        try: _log(f"[WARN] ai_validate_buy_thesis error for {symbol}: {e}")
-        except Exception: pass
-        return fallback
-
 
 def _rule_based_near_miss_insight(
     symbol: str, conf_gap: float, conf_only: bool,
@@ -2629,8 +2473,7 @@ def run_all_ai_calls(
     """
     from concurrent.futures import ThreadPoolExecutor
 
-    results = {"daily_summary": "", "buy_theses": {}, "near_miss_insights": {},
-               "buy_validations": {}}
+    results = {"daily_summary": "", "buy_theses": {}, "near_miss_insights": {}}
     near_miss    = [w for w in watchlist if w.get("tier") == "NEAR_MISS"]
     top_nm       = near_miss[0] if near_miss else {}
     upcoming_ev  = events[0]["name"] if events else ""
@@ -2696,41 +2539,6 @@ def run_all_ai_calls(
             # the remainder receive the deterministic rule-based fallback so
             # every Near Miss card in Telegram has an insight line.
             NM_AI_CAP = 15
-            # ── Phase R3 (2026-07-06) — LLM buy thesis validator ──
-            # Opt-in; only when LLM_VALIDATOR=1. Runs in parallel with the
-            # thesis+insight calls so no additional latency (all use the same
-            # ThreadPoolExecutor with max_workers=8).
-            if os.getenv("LLM_VALIDATOR", "0") == "1":
-                try:
-                    _val_max = int(os.getenv("LLM_VALIDATOR_MAX", "5"))
-                except (TypeError, ValueError):
-                    _val_max = 5
-                for stock in buys[:_val_max]:
-                    sym = stock["symbol"]
-                    futures[f"validate_{sym}"] = executor.submit(
-                        ai_validate_buy_thesis,
-                        symbol           = sym,
-                        sector           = stock.get("sector", "OTHERS"),
-                        decision         = stock.get("decision", "BUY"),
-                        confidence       = float(stock.get("final_confidence", 0) or 0),
-                        tq               = float(stock.get("trade_quality_score", 0) or 0),
-                        rr               = float(stock.get("rr_ratio", 0) or 0),
-                        bq_score         = float(stock.get("bq_score", 0) or 0),
-                        bq_verdict       = str(stock.get("bq_verdict", "UNKNOWN")),
-                        bq_flags         = stock.get("bq_flags", []) or [],
-                        sector_composite = float(stock.get("sector_composite_score", 50) or 50),
-                        sector_verdict   = str(stock.get("sector_verdict", "NEUTRAL")),
-                        roe              = float(stock.get("roe", 0) or 0),
-                        de_ratio         = float(stock.get("de_ratio", 0) or 0),
-                        pledge_pct       = float(stock.get("promoter_pledge_pct", 0) or 0),
-                        fii_pct          = float(stock.get("fii_pct", 0) or 0),
-                        dii_pct          = float(stock.get("dii_pct", 0) or 0),
-                        fail_reasons     = stock.get("fail_reasons", []) or [],
-                        warnings         = stock.get("warnings", []) or [],
-                        soft_warnings    = stock.get("_soft_warnings", []) or [],
-                        regime           = regime,
-                        catalysts        = stock.get("catalysts", []) or [],
-                    )
             for w in near_miss[:NM_AI_CAP]:
                 sym = w["symbol"]
                 futures[f"nm_{sym}"] = executor.submit(
@@ -2787,9 +2595,6 @@ def run_all_ai_calls(
                         results["buy_theses"][key[4:]] = text or ""
                     elif key.startswith("nm_"):
                         results["near_miss_insights"][key[3:]] = text or ""
-                    elif key.startswith("validate_"):
-                        # Phase R3 — LLM validator result (dict, not str)
-                        results.setdefault("buy_validations", {})[key[len("validate_"):]] = text or {}
                 except Exception as e:
                     _log(f"[WARN] AI call {key} timed out or failed: {e}")
     except Exception as e:
@@ -2799,8 +2604,7 @@ def run_all_ai_calls(
         f"[INFO] AI calls complete: "
         f"summary={'OK' if results['daily_summary'] else 'FALLBACK'} | "
         f"buy theses={len(results['buy_theses'])} | "
-        f"near miss insights={len(results['near_miss_insights'])} | "
-        f"validations={len(results.get('buy_validations', {}))}"
+        f"near miss insights={len(results['near_miss_insights'])}"
     )
     return results
 
@@ -4678,507 +4482,18 @@ def macro_regime_adjustment(macro: dict) -> int:
     return max(-20, min(20, adj))
 
 
-def _nse_session_get(path: str, timeout: int = 12) -> "requests.Response | None":
-    """
-    Establishes a proper NSE browser-like session before hitting any API endpoint.
-    NSE uses Cloudflare which drops requests without prior homepage visit + cookies.
-    Note: do NOT set Accept-Encoding to include 'br' (brotli) — requests cannot
-    decompress brotli without the optional brotli library, causing garbled responses.
-    """
-    try:
-        _BROWSER_UA = (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/124.0.0.0 Safari/537.36"
-        )
-        _BASE_HEADERS = {
-            "User-Agent":      _BROWSER_UA,
-            "Accept":          "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Accept-Language": "en-IN,en;q=0.9",
-            "Accept-Encoding": "gzip, deflate",  # no 'br' — requests can't decode brotli
-            "Connection":      "keep-alive",
-        }
-        session = requests.Session()
-        session.get("https://www.nseindia.com", headers=_BASE_HEADERS, timeout=10)
-        import time as _t; _t.sleep(0.8)
-        r = session.get(
-            f"https://www.nseindia.com{path}",
-            headers={**_BASE_HEADERS,
-                     "Referer": "https://www.nseindia.com",
-                     "X-Requested-With": "XMLHttpRequest",
-                     "Accept": "application/json, text/plain, */*"},
-            timeout=timeout,
-        )
-        return r if r.status_code == 200 else None
-    except Exception:
-        return None
-
-
-def _parse_fii_dii_from_text(text: str) -> "dict | None":
-    """
-    Shared regex parser for FII/DII numbers from any text source.
-    Handles patterns like:
-      "FII net sellers of Rs 1,234.56 crore"
-      "FIIs bought Rs 384 crore; DIIs bought Rs 5748 crore"
-      "FIIs Pull Rs 20,637 Crore in One Day"
-      "FPI net purchase: 1234.56"
-    Returns {"fii_flow_cr": float, "dii_flow_cr": float} or None.
-    """
-    import re as _re
-    text = text.replace("\n", " ").replace("\u00a0", " ")
-
-    # Words that imply net BUY (positive)
-    _BUY_WORDS  = r'bought|purchased|inflow|invest|pour|poured|pump|pumped|net\s+buy|net\s+purchase'
-    # Words that imply net SELL (negative)
-    _SELL_WORDS = r'sold|sell|outflow|seller|pull|pulled|withdraw|withdrew|withdrawn|dump|dumped|offload|offloaded|exit'
-
-    # Generic amount pattern: optional "Rs" then digits with optional commas/decimals
-    _AMT = r'(?:Rs\.?\s*|INR\s*|₹\s*)?(\d[\d,]*(?:\.\d+)?)\s*[Cc]rore'
-
-    fii_pat_buy  = rf'(?:FII|FPI)s?\s+(?:net\s+)?(?:{_BUY_WORDS})[^\d{{}}]{{0,40}}{_AMT}'
-    fii_pat_sell = rf'(?:FII|FPI)s?\s+(?:net\s+)?(?:{_SELL_WORDS})[^\d{{}}]{{0,40}}{_AMT}'
-    fii_pat_net  = rf'(?:FII|FPI)\s+net[^\d]{{0,30}}([-]?[\d,]+(?:\.\d+)?)'
-    dii_pat_buy  = rf'(?:DII[sS]?|[Dd]omestic\s+[Ii]nstitutional\s+[Ii]nvestors?)\s+(?:net\s+)?(?:{_BUY_WORDS})[^\d{{}}]{{0,40}}{_AMT}'
-    dii_pat_sell = rf'(?:DII[sS]?|[Dd]omestic\s+[Ii]nstitutional\s+[Ii]nvestors?)\s+(?:net\s+)?(?:{_SELL_WORDS})[^\d{{}}]{{0,40}}{_AMT}'
-    dii_pat_net  = rf'(?:DII[sS]?|[Dd]omestic\s+[Ii]nstitutional)\s+net[^\d]{{0,30}}([-]?[\d,]+(?:\.\d+)?)'
-
-    def _extract(buy_pat, sell_pat, net_pat):
-        m = _re.search(buy_pat, text, _re.I)
-        if m:
-            return float(m.group(1).replace(",", ""))
-        m = _re.search(sell_pat, text, _re.I)
-        if m:
-            return -float(m.group(1).replace(",", ""))
-        m = _re.search(net_pat, text, _re.I)
-        if m:
-            return float(m.group(1).replace(",", ""))
-        return None
-
-    fii_val = _extract(fii_pat_buy, fii_pat_sell, fii_pat_net)
-    dii_val = _extract(dii_pat_buy, dii_pat_sell, dii_pat_net)
-
-    if fii_val is not None or dii_val is not None:
-        return {
-            "fii_flow_cr": fii_val or 0.0,
-            "dii_flow_cr": dii_val or 0.0,
-        }
-    return None
-
-
-def _fetch_fii_dii_mc_rss() -> "dict | None":
-    """Moneycontrol marketstats RSS — plain HTTP, no cookies, works from CI."""
-    import re as _re
-    url = "https://www.moneycontrol.com/rss/marketstats.xml"
-    try:
-        if not _FEEDPARSER_OK:
-            _log("    [MC RSS] feedparser not available — skipped")
-            return None
-        feed    = feedparser.parse(url)
-        status  = getattr(feed, 'status', 'N/A')
-        entries = feed.entries
-        _log(f"    [MC RSS] HTTP {status} — {len(entries)} entries")
-        fii_entries = [e for e in entries[:10]
-                       if ("fii" in (e.get("title","")+e.get("summary","")).lower()
-                           or "fpi" in (e.get("title","")+e.get("summary","")).lower())
-                       and "crore" in (e.get("title","")+e.get("summary","")).lower()]
-        _log(f"    [MC RSS] {len(fii_entries)} FII-related entries found")
-        for entry in fii_entries:
-            text = entry.get("title", "") + " " + entry.get("summary", "")
-            result = _parse_fii_dii_from_text(text)
-            if result:
-                return result
-            _log(f"    [MC RSS] No parse match — title: {entry.get('title','')!r}")
-    except Exception as e:
-        _log(f"    [MC RSS] Error — {e}")
-    return None
-
-
-def _fetch_fii_dii_et_rss() -> "dict | None":
-    """Economic Times markets RSS — plain HTTP, no cookies, works from CI."""
-    import re as _re
-    try:
-        if not _FEEDPARSER_OK:
-            _log("    [ET RSS] feedparser not available — skipped")
-            return None
-        for feed_url in [
-            "https://economictimes.indiatimes.com/markets/stocks/news/rss.cms",
-            "https://economictimes.indiatimes.com/markets/rss.cms",
-            "https://economictimes.indiatimes.com/rss/news/topic/fii",
-        ]:
-            feed    = feedparser.parse(feed_url)
-            status  = getattr(feed, 'status', 'N/A')
-            entries = feed.entries
-            _log(f"    [ET RSS] {feed_url} → HTTP {status}, {len(entries)} entries")
-            if not entries:
-                continue
-            fii_entries = [
-                e for e in entries[:20]
-                if ("fii" in (e.get("title","")+e.get("summary","")).lower()
-                    or "fpi" in (e.get("title","")+e.get("summary","")).lower())
-                and "crore" in (e.get("title","")+e.get("summary","")).lower()
-                and any(w in (e.get("title","")+e.get("summary","")).lower()
-                        for w in ("bought", "sold", "net", "pull", "pour", "inflow", "outflow"))
-            ]
-            _log(f"    [ET RSS] {len(fii_entries)} FII-related entries")
-            for entry in fii_entries:
-                text   = entry.get("title", "") + " " + entry.get("summary", "")
-                result = _parse_fii_dii_from_text(text)
-                if result:
-                    _log(f"    [ET RSS] matched — title: {entry.get('title','')!r}")
-                    return result
-                _log(f"    [ET RSS] no parse match — title: {entry.get('title','')!r}")
-            if fii_entries:
-                break  # Found relevant entries but couldn't parse — don't try more URLs
-    except Exception as e:
-        _log(f"    [ET RSS] Error — {e}")
-    return None
-
-
-def _fetch_fii_dii_bs_rss() -> "dict | None":
-    """Business Standard markets RSS — plain HTTP, no cookies, works from CI."""
-    url = "https://www.business-standard.com/rss/markets-106.rss"
-    try:
-        if not _FEEDPARSER_OK:
-            _log("    [BS RSS] feedparser not available — skipped")
-            return None
-        feed    = feedparser.parse(url)
-        status  = getattr(feed, 'status', 'N/A')
-        entries = feed.entries
-        _log(f"    [BS RSS] HTTP {status} — {len(entries)} entries")
-        fii_entries = [e for e in entries[:20]
-                       if ("fii" in (e.get("title","")+e.get("summary","")).lower()
-                           or "fpi" in (e.get("title","")+e.get("summary","")).lower())
-                       and "crore" in (e.get("title","")+e.get("summary","")).lower()]
-        _log(f"    [BS RSS] {len(fii_entries)} FII-related entries")
-        for entry in fii_entries:
-            text   = entry.get("title", "") + " " + entry.get("summary", "")
-            result = _parse_fii_dii_from_text(text)
-            if result:
-                return result
-            _log(f"    [BS RSS] No parse match — title: {entry.get('title','')!r}")
-    except Exception as e:
-        _log(f"    [BS RSS] Error — {e}")
-    return None
-
-
-def _fetch_fii_dii_google_news() -> "dict | None":
-    """
-    Google News RSS — single combined query extracts both FII and DII from the same article.
-    DII never has standalone headlines — it always appears alongside FII in the same article.
-    Falls back to FII-only query if combined query yields nothing.
-    """
-    try:
-        if not _FEEDPARSER_OK:
-            _log("    [Google News] feedparser not available — skipped")
-            return None
-        from urllib.parse import quote
-        today_str = ist_today().strftime("%d %b").lstrip("0")  # "29 Jun"
-
-        _CUMULATIVE_PHRASES_STATIC = (
-            "so far", "lakh crore", "ytd", "cumulative",
-            "month to date", "year to date", "this month", "this year",
-            "in the month", "for the month", "during the month",
-            "total outflow", "total inflow",
-            "since january", "since april", "outflows reach", "inflows reach",
-            # Phase B1 (2026-06-30): kill historical-record headlines that misled the parser.
-            # Phase B2 (2026-07-02): removed "single-day" / "single day" — legitimate daily
-            # prints often use that phrasing (e.g. "largest single-day outflow" IS today's
-            # data). Keep only unambiguously historical markers.
-            "largest", "biggest", "record",
-            "all-time", "all time",
-            "highest ever", "lowest ever", "biggest ever", "largest ever",
-        )
-        # Phase C7e (2026-07-02): year-specific "total 2024" / "outflow in 2025" phrases
-        # were hardcoded. Now generated dynamically from all years up to today so this
-        # filter never goes stale on Jan 1 of a new year.
-        _cur_year = ist_today().year
-        _year_phrases = tuple(
-            phrase
-            for y in range(2020, _cur_year + 1)
-            for phrase in (
-                f"total {y}",
-                f"outflow in {y}", f"inflow in {y}",
-                f"outflow of {y}", f"inflow of {y}",
-            )
-        )
-        _CUMULATIVE_PHRASES = _CUMULATIVE_PHRASES_STATIC + _year_phrases
-
-        # Try combined query first (best chance of finding both FII + DII in one article),
-        # then fall back to FII-only
-        for raw_q in [
-            f"FII DII crore NSE {today_str}",   # combined — most articles mention both
-            f"FII FPI crore NSE {today_str}",    # FII-only fallback
-        ]:
-            url  = f"https://news.google.com/rss/search?q={quote(raw_q)}&hl=en-IN&gl=IN&ceid=IN:en"
-            _log(f"    [Google News] fetching: {url}")
-            feed    = feedparser.parse(url)
-            status  = getattr(feed, "status", "N/A")
-            entries = feed.entries
-            _log(f"    [Google News] HTTP {status} — {len(entries)} entries")
-
-            for entry in entries[:25]:
-                title = entry.get("title", "")
-                text  = title + " " + entry.get("summary", "")
-                tl    = text.lower()
-
-                if "fii" not in tl and "fpi" not in tl and "foreign institutional" not in tl:
-                    continue
-                if "crore" not in tl:
-                    continue
-                if any(p in tl for p in _CUMULATIVE_PHRASES):
-                    _log(f"    [Google News] skipped (cumulative) — {title!r}")
-                    continue
-
-                # Phase B1.1 (2026-06-30): freshness guard. Reject articles
-                # older than 3 calendar days so stale headlines (e.g. a Feb-3
-                # report parsed in June) cannot leak through as "today's" flow.
-                pub_struct = entry.get("published_parsed") or entry.get("updated_parsed")
-                if pub_struct is not None:
-                    try:
-                        pub_dt = datetime.datetime(*pub_struct[:6], tzinfo=datetime.timezone.utc)
-                        age_days = (datetime.datetime.now(datetime.timezone.utc) - pub_dt).days
-                        if age_days > 3:
-                            _log(
-                                f"    [Google News] skipped (stale, {age_days}d old) — {title!r}"
-                            )
-                            continue
-                    except Exception:
-                        pass  # bad/missing date — be permissive, parse anyway
-
-                # Belt-and-braces: also block any article whose body explicitly
-                # quotes a different month/year. Today's article would say e.g.
-                # "30 Jun", not "Feb 3" or "Mar 12". This catches stripped
-                # Google-News titles where published_parsed is wrong.
-                now_ist     = datetime.datetime.now(IST)
-                this_month  = now_ist.strftime("%b").lower()       # 'jun'
-                this_year   = str(now_ist.year)
-                other_month_hit = False
-                for m in ("jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"):
-                    if m == this_month:
-                        continue
-                    # Match "feb 3", "feb, 3", "feb 3,", "feb 03"
-                    if re.search(rf"\b{m}\s+\d", tl):
-                        other_month_hit = True
-                        break
-                if other_month_hit:
-                    _log(f"    [Google News] skipped (off-month date in body) — {title!r}")
-                    continue
-
-                _log(f"    [Google News] attempting parse — {title!r}")
-                result = _parse_fii_dii_from_text(text)
-                if not result or result.get("fii_flow_cr", 0) == 0:
-                    _log(f"    [Google News] no FII value found")
-                    continue
-
-                fii_val   = result["fii_flow_cr"]
-                dii_val   = result.get("dii_flow_cr", 0.0)
-                dii_found = dii_val != 0
-                _log(
-                    f"    [Google News] matched — FII {fii_val:+.0f}Cr"
-                    + (f" | DII {dii_val:+.0f}Cr" if dii_found else " | DII not in this article")
-                )
-                return {
-                    "fii_flow_cr": fii_val,
-                    "dii_flow_cr": dii_val,
-                    "dii_found":   dii_found,
-                }
-
-    except Exception as e:
-        _log(f"    [Google News] Error — {e}")
-    return None
-
-
-def _fetch_fii_dii_nse() -> "dict | None":
-    """Try NSE fiidiiTradeReact with proper session (works on local, may fail on CI)."""
-    try:
-        r = _nse_session_get("/api/fiidiiTradeReact")
-        if not r:
-            _log("    [NSE API] Session/request returned None (Cloudflare block or timeout)")
-            return None
-        _log(f"    [NSE API] HTTP {r.status_code} | Content-Type: {r.headers.get('Content-Type','?')} | Body len: {len(r.content)}")
-        if not r.content:
-            _log("    [NSE API] Empty body — Cloudflare gate (no action needed if before 5:30 PM)")
-            return None
-        ct = r.headers.get("Content-Type", "")
-        if "html" in ct.lower() or r.content[:1] == b"<":
-            _log(f"    [NSE API] Got HTML instead of JSON (Cloudflare gate) — body snippet: {r.text[:80]!r}")
-            return None
-        try:
-            data = r.json()
-        except Exception as je:
-            _log(f"    [NSE API] JSON parse failed: {je} — body snippet: {r.text[:80]!r}")
-            return None
-        if not isinstance(data, list) or not data:
-            _log(f"    [NSE API] Unexpected response format: {type(data).__name__} — {str(data)[:80]}")
-            return None
-        latest   = data[0]
-        fii_buy  = float(str(latest.get("fiiBuy",  "0")).replace(",", ""))
-        fii_sell = float(str(latest.get("fiiSell", "0")).replace(",", ""))
-        dii_buy  = float(str(latest.get("diiBuy",  "0")).replace(",", ""))
-        dii_sell = float(str(latest.get("diiSell", "0")).replace(",", ""))
-        if fii_buy + fii_sell + dii_buy + dii_sell == 0:
-            _log("    [NSE API] All buy/sell values are zero — data not yet published")
-            return None
-        return {
-            "fii_flow_cr": round(fii_buy - fii_sell, 2),
-            "dii_flow_cr": round(dii_buy - dii_sell, 2),
-        }
-    except Exception as e:
-        _log(f"    [NSE API] Unexpected error — {e}")
-        return None
-
-
-# ── Phase B1: nselib NSE category-wise turnover (authoritative T-1) ────────
-def _fetch_fii_dii_nselib_nsdl() -> "dict | None":
-    """
-    Authoritative T-1 FII / DII source via nselib `category_turnover_cash`.
-
-    NSE publishes the official "Category-wise Turnover (Cash Market)" sheet
-    every business day at ~7 PM IST. It carries Buy / Sell / Net values
-    (Rs Crores) for: Bank, Insurance Companies, Mutual Funds, AIF, PMS,
-    RETAIL, OTHERS, **FPI**. Free, no auth, CI-friendly.
-
-      FII flow  = FPI Net
-      DII flow  = Banks + Insurance + Mutual Funds + AIF + PMS (Net)
-
-    Walks back day-by-day until it finds the most recent published date
-    (NSE archive has ~T-1 lag; weekends + holidays are skipped silently).
-    Name kept for backward compat with the source-cascade table.
-    """
-    if not _NSELIB_OK or _nselib_cm is None:
-        _log("    [nselib NSE-cat] nselib not installed — skipped")
-        return None
-    fn = getattr(_nselib_cm, "category_turnover_cash", None)
-    if fn is None:
-        _log("    [nselib NSE-cat] category_turnover_cash unavailable in this nselib build")
-        return None
-
-    DII_CATS = {"bank", "insurance companies", "mutual funds", "aif", "pms"}
-    FII_CATS = {"fpi"}
-
-    today = ist_today()
-
-    # Compute the *expected* freshest business date.
-    #  * After 7 PM IST on a business day  → expect today (NSDL publishes ~7 PM IST)
-    #  * Before 7 PM IST on a business day → expect T-1 (previous business day)
-    #  * On a weekend / holiday            → expect the most recent business day
-    now_ist_dt = datetime.datetime.now(IST)
-    from datetime import time as _dtime
-    if today.weekday() < 5 and now_ist_dt.time() >= _dtime(19, 0):
-        exp_t1 = today
-    else:
-        exp_t1 = today - datetime.timedelta(days=1)
-        while exp_t1.weekday() >= 5:  # Sat/Sun → walk back to Fri
-            exp_t1 -= datetime.timedelta(days=1)
-
-    for delta in range(1, 10):     # T-1 .. T-9 — covers weekends + holidays
-        d = today - datetime.timedelta(days=delta)
-        # Skip weekends — NSE never publishes for Sat / Sun
-        if d.weekday() >= 5:
-            continue
-        date_str = d.strftime("%d-%m-%Y")
-        try:
-            df = fn(date_str)
-        except Exception as e:
-            msg = str(e)
-            # "No data available" is the normal not-yet-published / holiday signal
-            if "No data available" not in msg:
-                _log(f"    [nselib NSE-cat] {date_str} error: {e}")
-            continue
-        if df is None or (hasattr(df, "empty") and df.empty):
-            continue
-        try:
-            cols = {c.lower(): c for c in df.columns}
-            cat_col  = cols.get("category")
-            net_col  = cols.get("net value in rs.crores") or cols.get("net value")
-            if cat_col is None or net_col is None:
-                _log(f"    [nselib NSE-cat] {date_str} unexpected schema: {list(df.columns)}")
-                continue
-            fii_net = 0.0
-            dii_net = 0.0
-            for _, row in df.iterrows():
-                cat = str(row[cat_col]).strip().lower()
-                try:
-                    val = float(str(row[net_col]).replace(",", "").strip())
-                except (ValueError, TypeError):
-                    continue
-                if cat in FII_CATS:
-                    fii_net += val
-                elif cat in DII_CATS:
-                    dii_net += val
-            if fii_net == 0.0 and dii_net == 0.0:
-                continue
-            stale = d < exp_t1
-            stale_tag = f" ⚠️ STALE (expected T-1={exp_t1.strftime('%d-%m-%Y')})" if stale else ""
-            _log(f"    [nselib NSE-cat] {date_str} ✓ — FII {fii_net:+.0f}Cr DII {dii_net:+.0f}Cr{stale_tag}")
-            return {
-                "fii_flow_cr":   round(fii_net, 2),
-                "dii_flow_cr":   round(dii_net, 2),
-                "dii_found":     dii_net != 0,
-                "as_of":         d.isoformat(),
-                "is_provisional": False,
-                "stale":         stale,
-                "expected_t1":   exp_t1.isoformat(),
-            }
-        except Exception as e:
-            _log(f"    [nselib NSE-cat] {date_str} parse failure: {e}")
-            continue
-    _log("    [nselib NSE-cat] no data found in last 9 days")
-    return None
-
-
-def _fetch_fii_dii_bse() -> "dict | None":
-    """
-    BSE categorywise turnover — public HTML, no Cloudflare gate from CI.
-    Provisional T+0 numbers. Returns FII + DII. Used for cross-check vs NSDL.
-    """
-    try:
-        url = "https://api.bseindia.com/BseIndiaAPI/api/CatTurnover/w?TDate="
-        # The endpoint accepts an empty TDate and returns latest available
-        tdate = ist_today().strftime("%Y%m%d")
-        resp = requests.get(
-            url + tdate,
-            headers={
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                              "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
-                "Accept":  "application/json, text/plain, */*",
-                "Referer": "https://www.bseindia.com/markets/equity/EQReports/categorywise_turnover.aspx",
-            },
-            timeout=10,
-        )
-        if resp.status_code != 200:
-            _log(f"    [BSE FII] HTTP {resp.status_code} — skipped")
-            return None
-        try:
-            data = resp.json()
-        except Exception:
-            return None
-        rows = data if isinstance(data, list) else data.get("Table", data.get("data", []))
-        if not rows:
-            _log(f"    [BSE FII] HTTP 200 but empty rows for TDate={tdate} — not yet published")
-            return None
-        fii_net = 0.0
-        dii_net = 0.0
-        for r in rows:
-            cat = str(r.get("CATEGORY", r.get("Category", ""))).upper()
-            buy_v  = float(str(r.get("BUYVAL",  r.get("BuyValue",  0))).replace(",", "") or 0)
-            sell_v = float(str(r.get("SELLVAL", r.get("SellValue", 0))).replace(",", "") or 0)
-            net_v  = buy_v - sell_v
-            if "FII" in cat or "FPI" in cat or "FOREIGN" in cat:
-                fii_net += net_v
-            elif "DII" in cat or "DOMESTIC" in cat or "MUTUAL" in cat or "MF" in cat:
-                dii_net += net_v
-        if fii_net == 0 and dii_net == 0:
-            return None
-        _log(f"    [BSE FII] ✓ — FII {fii_net:+.0f}Cr DII {dii_net:+.0f}Cr")
-        return {
-            "fii_flow_cr": round(fii_net, 2),
-            "dii_flow_cr": round(dii_net, 2),
-            "dii_found":   dii_net != 0,
-        }
-    except Exception as e:
-        _log(f"    [BSE FII] error — {e}")
-        return None
+# ─────────────────────────────────────────────────────────────────────────────
+# Stage-A cleanup (2026-07-XX): FII/DII source cascade REMOVED.
+#
+# Deleted helpers (Phase C4 disabled fetch_fii_dii_flows since 2026-07-02;
+# they were orphaned — 0 external callers, 0 in-file callers after stub):
+#   _nse_session_get, _parse_fii_dii_from_text, _fetch_fii_dii_mc_rss,
+#   _fetch_fii_dii_et_rss, _fetch_fii_dii_bs_rss, _fetch_fii_dii_google_news,
+#   _fetch_fii_dii_nse, _fetch_fii_dii_nselib_nsdl, _fetch_fii_dii_bse
+#
+# All ~490 LOC. See git history for original 7-source cascade if ever needed.
+# Contract preserved via the fetch_fii_dii_flows() stub below.
+# ─────────────────────────────────────────────────────────────────────────────
 
 
 def fetch_fii_dii_flows(max_retries: int = 2) -> dict:
@@ -5208,225 +4523,9 @@ def fetch_fii_dii_flows(max_retries: int = 2) -> dict:
     }
 
 
-def _fii_dii_flows_disabled_legacy_impl(max_retries: int = 2) -> dict:
-    """Kept for reference; never called. Original 7-source cascade lives in git history."""
-    from datetime import time as dtime
-    import time as _time
-
-    now_ist     = ist_now()
-    now_t       = now_ist.time()
-    just_closed = dtime(15, 30) <= now_t <= dtime(16, 15)
-    is_prov     = now_t < dtime(18, 0)
-
-    # Timing context — informational only, we always attempt sources
-    if now_t < dtime(15, 30):
-        _log(f"  [FII/DII] {now_t.strftime('%H:%M')} IST — market still open, today's data not published yet (expected)")
-    elif now_t < dtime(17, 30):
-        _log(f"  [FII/DII] {now_t.strftime('%H:%M')} IST — market closed, NSE provisional data expected ~5:30 PM (may get 0)")
-    else:
-        _log(f"  [FII/DII] {now_t.strftime('%H:%M')} IST — data should be available, attempting all sources")
-
-    result = {
-        "fii_flow_cr": 0.0, "dii_flow_cr": 0.0,
-        "is_provisional": False, "available": False, "dii_found": False,
-        "source": "NONE", "confidence": "NONE",
-    }
-
-    # Phase B1 (2026-06-30): NSDL is the authoritative T-1 source; BSE is provisional T+0.
-    # Try authoritative paths first, then RSS fallbacks for CI.
-    sources = [
-        ("nselib NSDL",           _fetch_fii_dii_nselib_nsdl),
-        ("BSE Categorywise",      _fetch_fii_dii_bse),
-        ("NSE API",               _fetch_fii_dii_nse),
-        ("Moneycontrol RSS",      _fetch_fii_dii_mc_rss),
-        ("Economic Times RSS",    _fetch_fii_dii_et_rss),
-        ("Business Standard RSS", _fetch_fii_dii_bs_rss),
-        ("Google News RSS",       _fetch_fii_dii_google_news),
-    ]
-
-    # First pass: gather NSDL + BSE for cross-check, return early if NSDL is good
-    nsdl_data: "dict | None" = None
-    bse_data:  "dict | None" = None
-    for name, fn in sources[:2]:
-        try:
-            _log(f"  [FII/DII] Trying {name}...")
-            d = fn()
-            if d and (d.get("fii_flow_cr", 0) != 0 or d.get("dii_flow_cr", 0) != 0):
-                if name == "nselib NSDL":
-                    nsdl_data = d
-                else:
-                    bse_data = d
-        except Exception as e:
-            _log(f"  [FII/DII] {name} error: {e}")
-
-    if nsdl_data is not None:
-        # Freshness check — if NSE archive is behind expected T-1, prefer provisional
-        # sources (BSE / RSS) which usually publish T-1 by 5:30 PM IST.
-        nsdl_stale = bool(nsdl_data.get("stale"))
-        if nsdl_stale and bse_data is None:
-            _log(f"  [FII/DII] NSDL is STALE (as_of={nsdl_data.get('as_of')} "
-                 f"expected={nsdl_data.get('expected_t1')}) and BSE missing — "
-                 f"falling through to RSS sources for fresher T-1 data")
-            # Skip returning stale NSDL; try RSS below
-        else:
-            nsdl_fii = nsdl_data.get("fii_flow_cr")
-            bse_fii  = bse_data.get("fii_flow_cr") if bse_data else None
-            chosen_fii, confidence = cross_check_fii(nsdl_fii, bse_fii)
-            result["fii_flow_cr"]    = chosen_fii if chosen_fii is not None else nsdl_fii
-            # DII: prefer NSDL if present, else BSE
-            if nsdl_data.get("dii_found"):
-                result["dii_flow_cr"] = nsdl_data.get("dii_flow_cr", 0.0)
-                result["dii_found"]   = True
-            elif bse_data and bse_data.get("dii_found"):
-                result["dii_flow_cr"] = bse_data.get("dii_flow_cr", 0.0)
-                result["dii_found"]   = True
-            result["is_provisional"] = is_prov
-            result["available"]      = True
-            result["source"]         = "nsdl+bse" if bse_data else "nsdl"
-            result["confidence"]     = "STALE" if nsdl_stale else confidence
-            result["as_of"]          = nsdl_data.get("as_of")
-            result["stale"]          = nsdl_stale
-            dii_str = f"{result['dii_flow_cr']:+.0f}Cr" if result["dii_found"] else "N/A"
-            stale_tag = " ⚠️ STALE" if nsdl_stale else ""
-            _log(f"  [FII/DII] ✓ NSDL{stale_tag} — FII {result['fii_flow_cr']:+.0f}Cr | "
-                 f"DII {dii_str} | as_of={result['as_of']} | confidence={result['confidence']}")
-            return result
-
-    # NSDL missed — fall back to BSE alone if we have it
-    if bse_data is not None:
-        result["fii_flow_cr"]    = bse_data["fii_flow_cr"]
-        result["dii_flow_cr"]    = bse_data.get("dii_flow_cr", 0.0)
-        result["dii_found"]      = bse_data.get("dii_found", False)
-        result["is_provisional"] = True  # BSE is provisional
-        result["available"]      = True
-        result["source"]         = "bse"
-        result["confidence"]     = "MEDIUM"
-        dii_str = f"{result['dii_flow_cr']:+.0f}Cr" if result["dii_found"] else "N/A"
-        _log(f"  [FII/DII] ✓ BSE (provisional, no NSDL) — FII {result['fii_flow_cr']:+.0f}Cr | DII {dii_str}")
-        return result
-
-    # Authoritative sources missed — try RSS fallbacks
-    for name, fn in sources[2:]:
-        try:
-            _log(f"  [FII/DII] Trying {name}...")
-            data = fn()
-            if data and (data.get("fii_flow_cr", 0) != 0 or data.get("dii_flow_cr", 0) != 0):
-                result["fii_flow_cr"]    = data["fii_flow_cr"]
-                result["dii_flow_cr"]    = data["dii_flow_cr"]
-                result["dii_found"]      = data.get("dii_found", data.get("dii_flow_cr", 0) != 0)
-                result["is_provisional"] = is_prov
-                result["available"]      = True
-                result["source"]         = name.lower().replace(" ", "_")
-                result["confidence"]     = "LOW"   # RSS scrape is best-effort
-                dii_str = f"{result['dii_flow_cr']:+.0f}Cr" if result["dii_found"] else "N/A"
-                _log(
-                    f"  [FII/DII] {name} ✓ — "
-                    f"FII {result['fii_flow_cr']:+.0f}Cr | DII {dii_str} | confidence=LOW"
-                )
-                return result
-        except Exception as e:
-            _log(f"  [FII/DII] {name} error: {e}")
-
-    # If market just closed, wait 60s and retry RSS sources
-    if just_closed:
-        _log("  [FII/DII] All sources returned nothing — waiting 60s for data to publish...")
-        _time.sleep(60)
-        for name, fn in [
-            ("Moneycontrol RSS",   _fetch_fii_dii_mc_rss),
-            ("Economic Times RSS", _fetch_fii_dii_et_rss),
-        ]:
-            try:
-                data = fn()
-                if data and (data.get("fii_flow_cr", 0) != 0 or data.get("dii_flow_cr", 0) != 0):
-                    result.update(data)
-                    result["is_provisional"] = True
-                    result["available"]      = True
-                    _log(f"  [FII/DII] {name} (retry) ✓ — FII {result['fii_flow_cr']:+.0f}Cr")
-                    return result
-            except Exception:
-                pass
-
-    # Last resort: if we skipped stale NSDL earlier but RSS also failed, use stale NSDL
-    if nsdl_data is not None and not result["available"]:
-        _log(f"  [FII/DII] ⚠️ All fresh sources failed — returning STALE NSDL "
-             f"(as_of={nsdl_data.get('as_of')}) as last resort")
-        result["fii_flow_cr"]    = nsdl_data.get("fii_flow_cr", 0.0)
-        result["dii_flow_cr"]    = nsdl_data.get("dii_flow_cr", 0.0)
-        result["dii_found"]      = nsdl_data.get("dii_found", False)
-        result["is_provisional"] = True
-        result["available"]      = True
-        result["source"]         = "nsdl_stale"
-        result["confidence"]     = "STALE"
-        result["as_of"]          = nsdl_data.get("as_of")
-        result["stale"]          = True
-        return result
-
-    _log(
-        "  [FII/DII] All sources returned 0 — "
-        + ("data not published yet (normal before ~5:30 PM, no action needed)"
-           if now_t < dtime(17, 30)
-           else "data should be available but all sources failed (API/network issue — investigate)")
-    )
-    return result
-
-
 def get_fii_dii_data() -> dict:
     """Master function — single entry point for all FII/DII fetching."""
     return fetch_fii_dii_flows(max_retries=2)
-
-
-def format_fii_dii_line(fii_data: dict) -> str:
-    """
-    Timing-aware FII/DII formatter.
-    Never shows Rs0Cr — shows a timing explanation when data isn't published yet.
-    Shows 'N/A' for DII when it was not found (vs genuinely zero).
-    """
-    from datetime import time as dtime
-    now_ist     = ist_now()
-    just_closed = dtime(15, 30) <= now_ist.time() <= dtime(16, 30)
-    market_open = dtime(9, 15)  <= now_ist.time() <  dtime(15, 30)
-
-    if not fii_data.get("available"):
-        if just_closed:
-            return "FII/DII: Provisional data publishing (available ~6:30 PM)"
-        elif market_open:
-            return "FII/DII: Intraday provisional data pending (~10:30 AM)"
-        else:
-            return "FII/DII: Data unavailable"
-
-    fii       = fii_data["fii_flow_cr"]
-    dii       = fii_data["dii_flow_cr"]
-    dii_found = fii_data.get("dii_found", dii != 0)  # backward-compat: if no flag, assume found if non-zero
-    prov      = " (provisional)" if fii_data.get("is_provisional") else ""
-
-    # Signed formatting so the icon is never ambiguous. 🟢 = inflow (positive),
-    # 🔴 = outflow (negative), ⚪ = zero/unknown. Previously showed a red icon
-    # next to a positive rupee number which contradicted the daily summary.
-    fii_icon = "🟢" if fii > 0 else ("🔴" if fii < 0 else "⚪")
-    dii_icon = "🟢" if dii > 0 else ("🔴" if dii < 0 else "⚪")
-
-    if fii > 500 and dii_found and dii > 500:
-        sentiment = "💪 Both buying"
-    elif fii < -500 and dii_found and dii < -500:
-        sentiment = "⚠️ Both selling"
-    elif fii > 500:
-        sentiment = "🟢 FII buying"
-    elif dii_found and dii > 500 and fii < -500:
-        sentiment = "🟡 DII absorbing FII selling"
-    elif dii_found and dii > 500:
-        sentiment = "🟡 DII supporting"
-    elif fii < -500:
-        sentiment = "🔴 FII selling"
-    else:
-        sentiment = "➡️ Neutral flows"
-
-    # Show the SIGN in the amount too (₹+3318Cr / ₹-3318Cr) so text and icon agree.
-    dii_str = f"{dii_icon} ₹{dii:+,.0f}Cr" if dii_found else "N/A"
-
-    return (
-        f"FII {fii_icon} ₹{fii:+,.0f}Cr · "
-        f"DII {dii_str} · {sentiment}{prov}"
-    )
 
 
 def interpret_nifty_structure(close: float, ema20: float, ema50: float,
@@ -8827,6 +7926,20 @@ def run_gates(stock: dict, regime: str, thresholds: dict,
     fail_reasons = []
     warnings = []
     thresh = thresholds[regime]
+
+    # ── Phase G-BATCH2 (2026-07-07): honour Phase-G hard rejects ─────────
+    # If any of quality/options/news/insider modules flagged a HARD reject
+    # during Step 14a enrichment, propagate it here so the stock skips the
+    # rest of gate evaluation (and lands in `rejected` with a clean reason).
+    if stock.get("phaseG_hard_reject"):
+        _phaseG_reasons = [r for r in (stock.get("fail_reasons") or [])
+                           if r.split("(", 1)[0] in
+                           ("QUALITY_FAIL", "OPTIONS_FAIL", "NEWS_FAIL", "INSIDER_FAIL")]
+        return {
+            "decision": "REJECTED",
+            "fail_reasons": _phaseG_reasons or ["PHASE_G_HARD_REJECT"],
+            "warnings": [],
+        }
 
     # Phase R2 (2026-07-06): compute BQ + sector composite EARLY so downstream
     # logic + taxonomy can use them. Stamped onto `stock` for downstream
@@ -13341,6 +12454,141 @@ def _run_pipeline_inner():
     # can compute trajectory (RISING / FADING / FLAT) at classification time.
     _conf_history_for_wl = load_confidence_history()
 
+    # ── Phase G-BATCH2 (2026-07-07): enrichment from new signal modules ──
+    # Each block is fully feature-flagged so pipeline degrades gracefully
+    # when a source (nselib / Groq / RSS / Screener) is down or slow.
+    #   • quality_scores.py     — Piotroski F + Beneish M (fundamentals)
+    #   • options_data.py       — PCR / max-pain (F&O universe only)
+    #   • news_sentiment.py     — Groq/keyword classifier on 7-day headlines
+    #   • insider_feed.py       — promoter/KMP filings + bulk/block deals
+    # Each populates: stock["quality"], stock["options_signal"],
+    # stock["news_sig"], stock["insider_sig"] and cumulatively adjusts
+    # stock["final_confidence"] via factor_bonus. `hard_reject` flags
+    # short-circuit any candidate that fails a mandatory quality gate.
+    _flag = lambda k, d="true": os.environ.get(k, d).lower() == "true"
+    _quality_on = _flag("ENABLE_QUALITY_SCORE",  "true")
+    _options_on = _flag("ENABLE_OPTIONS_GATE",   "true")
+    _news_on    = _flag("ENABLE_NEWS_SENTIMENT", "true")
+    _insider_on = _flag("ENABLE_INSIDER_SIGNAL", "true")
+    _bonus_cap  = float(os.environ.get("PHASE_G_BONUS_CAP", "5.0"))  # ±5 conf pts
+
+    if _quality_on or _options_on or _news_on or _insider_on:
+        _log(
+            f"[14a/17] Enriching top-{len(top_40)} with quality/options/news/insider "
+            f"[Q={int(_quality_on)} O={int(_options_on)} N={int(_news_on)} "
+            f"I={int(_insider_on)}]"
+        )
+        _mod_q = _mod_o = _mod_n = _mod_i = None
+        try:
+            if _quality_on: import quality_scores as _mod_q  # type: ignore
+        except Exception as _e: _log(f"  [WARN] quality_scores import: {_e}"); _mod_q = None
+        try:
+            if _options_on: import options_data as _mod_o    # type: ignore
+        except Exception as _e: _log(f"  [WARN] options_data import: {_e}");   _mod_o = None
+        try:
+            if _news_on:    import news_sentiment as _mod_n  # type: ignore
+        except Exception as _e: _log(f"  [WARN] news_sentiment import: {_e}"); _mod_n = None
+        try:
+            if _insider_on: import insider_feed as _mod_i    # type: ignore
+        except Exception as _e: _log(f"  [WARN] insider_feed import: {_e}");   _mod_i = None
+
+        _q_hard = _n_hard = _i_hard = 0
+        for _stk in top_40:
+            _sym = _stk.get("symbol", "")
+            _sym_clean = _sym.replace(".NS", "")
+            _hard = False; _reasons_new: list = []
+            _agg_bonus = 0.0
+
+            # -- Quality (Piotroski + Beneish) -----------------------------
+            if _mod_q is not None:
+                try:
+                    _fund = _stk.get("fundamentals") or _stk.get("fundamentals_raw") or {}
+                    if isinstance(_fund, dict) and _fund:
+                        _q = _mod_q.quality_composite(_fund)
+                        _stk["quality"] = _q
+                        if _q.get("ok"):
+                            _agg_bonus += float(_q.get("factor_bonus", 0.0) or 0.0)
+                            if _q.get("hard_reject"):
+                                _hard = True; _q_hard += 1
+                                _reasons_new.append(f"QUALITY_FAIL({_q.get('reject_reason','')})")
+                except Exception as _e:
+                    _stk.setdefault("_enrich_errors", []).append(f"quality:{_e}")
+
+            # -- Options (PCR / max-pain) ---------------------------------
+            if _mod_o is not None:
+                try:
+                    _spot = float(_stk.get("close") or _stk.get("cmp") or 0.0)
+                    _os = _mod_o.options_signal(_sym_clean, spot=_spot or None)
+                    _stk["options_signal"] = _os
+                    if _os.get("ok"):
+                        _agg_bonus += float(_os.get("factor_bonus", 0.0) or 0.0)
+                        if _os.get("hard_reject"):
+                            _hard = True
+                            _reasons_new.append(f"OPTIONS_FAIL({_os.get('reject_reason','')})")
+                except Exception as _e:
+                    _stk.setdefault("_enrich_errors", []).append(f"options:{_e}")
+
+            # -- News sentiment -------------------------------------------
+            if _mod_n is not None:
+                try:
+                    _ns = _mod_n.news_sentiment_signal(
+                        _sym_clean,
+                        company_name=_stk.get("company_name") or _stk.get("name"),
+                        lookback_days=7,
+                    )
+                    _stk["news_sig"] = _ns
+                    if _ns.get("ok"):
+                        _agg_bonus += float(_ns.get("factor_bonus", 0.0) or 0.0)
+                        if _ns.get("hard_reject"):
+                            _hard = True; _n_hard += 1
+                            _reasons_new.append(f"NEWS_FAIL({_ns.get('reject_reason','')})")
+                except Exception as _e:
+                    _stk.setdefault("_enrich_errors", []).append(f"news:{_e}")
+
+            # -- Insider filings ------------------------------------------
+            if _mod_i is not None:
+                try:
+                    _isg = _mod_i.insider_signal(_sym_clean, lookback_days=30)
+                    _stk["insider_sig"] = _isg
+                    if _isg.get("ok"):
+                        _agg_bonus += float(_isg.get("factor_bonus", 0.0) or 0.0)
+                        if _isg.get("hard_reject"):
+                            _hard = True; _i_hard += 1
+                            _reasons_new.append(f"INSIDER_FAIL({_isg.get('reject_reason','')})")
+                except Exception as _e:
+                    _stk.setdefault("_enrich_errors", []).append(f"insider:{_e}")
+
+            # -- Apply cumulative bonus to final_confidence ---------------
+            # Cap in ±_bonus_cap points so a single soft signal can't dominate.
+            _agg_bonus = max(-_bonus_cap, min(_bonus_cap, _agg_bonus * _bonus_cap))
+            _stk["phaseG_bonus"] = round(_agg_bonus, 2)
+            try:
+                _fc = float(_stk.get("final_confidence", 0) or 0)
+                _stk["final_confidence_pre_phaseG"] = _fc
+                _stk["final_confidence"] = max(0.0, min(100.0, _fc + _agg_bonus))
+            except Exception:
+                pass
+
+            # -- Propagate hard rejects to the existing gate machinery ----
+            if _hard:
+                _stk["phaseG_hard_reject"] = True
+                _fr = _stk.setdefault("fail_reasons", [])
+                for _r in _reasons_new:
+                    if _r not in _fr:
+                        _fr.append(_r)
+
+        _log(
+            f"  [Phase G] hard-rejects — quality:{_q_hard} news:{_n_hard} "
+            f"insider:{_i_hard}. Bonus cap ±{_bonus_cap} conf pts. "
+            f"See stock['quality']/['options_signal']/['news_sig']/['insider_sig']."
+        )
+        # Re-sort by new final_confidence (Phase-G-bonused)
+        top_40.sort(key=lambda x: (
+            -float(x.get("final_confidence", 0) or 0),
+            -float(x.get("swing_alpha_score", 0) or 0),
+            x["symbol"],
+        ))
+
     for stock in top_40:
         sym_clean     = stock["symbol"].replace(".NS", "")
         promoter_data = stock.get("promoter_data", {"promoter_pledge_pct": 0})
@@ -13446,11 +12694,20 @@ def _run_pipeline_inner():
                 f"Recommended: unset it so score-redistribution handles missing data gracefully."
             )
 
-    # Sort all lists by opportunity score (ENHANCEMENT 1)
+    # Sort BUYs by final_confidence desc, swing_alpha tiebreaker.
+    # Stage-A cleanup (2026-07-XX): was `buys.sort(key=-opportunity_score)` but
+    # the 480-row audit (see comment at 11b above) showed 20/20 top-20 overlap
+    # between opportunity_score and final_confidence — the extra re-sort was a
+    # no-op. opportunity_score is still computed (populated below) so Telegram
+    # cards and the Excel export still display "Opp NN".
     for stock in buys + watchlist_stocks:
         if "opportunity_score" not in stock:
             stock["opportunity_score"] = compute_opportunity_score(stock)
-    buys.sort(key=lambda x: (-x.get("opportunity_score", 0), x.get("symbol", "")))
+    buys.sort(key=lambda x: (
+        -float(x.get("final_confidence", 0) or 0),
+        -float(x.get("swing_alpha_score", 0) or 0),
+        x.get("symbol", ""),
+    ))
     # Phase 1 #44 (2026-07-05): watchlist sort by (tier priority, conf_gap asc).
     # Rationale: for research, the most useful row on top is the one closest
     # to becoming a BUY — not the one with the biggest opportunity_score
@@ -13644,11 +12901,10 @@ def _run_pipeline_inner():
                 "sector_verdict":        stock.get("sector_verdict"),
                 "taxonomy_inputs":       stock.get("taxonomy_inputs"),
                 "reject_tier":           stock.get("reject_tier"),  # "AVOID_TURNAROUND" or R3 bucket
-                # Phase R3 (2026-07-06): LLM validator output (present only when LLM_VALIDATOR=1)
-                "llm_validator_verdict":   stock.get("llm_validator_verdict"),
-                "llm_validator_reason":    stock.get("llm_validator_reason"),
-                "llm_validator_red_flags": stock.get("llm_validator_red_flags"),
-                "llm_validator_source":    stock.get("llm_validator_source"),
+                # Stage-A cleanup (2026-07-XX): llm_validator_* fields removed
+                # from audit — ai_validate_buy_thesis was disabled by default
+                # (LLM_VALIDATOR=0) and never populated in swing mode. See
+                # git history + audit note if you need to revive it.
                 # Phase R4 (2026-07-06): Swing-alpha overlay (4 signals)
                 "swing_alpha_score":       stock.get("swing_alpha_score"),
                 "rs_vs_nifty_20d":         stock.get("rs_vs_nifty_20d"),
@@ -13856,56 +13112,6 @@ def _run_pipeline_inner():
         events           = upcoming_events,
     )
 
-    # ── 15b. Phase R3 (2026-07-06) — LLM Buy Thesis Validator wiring ──
-    # If LLM_VALIDATOR=1 the validator has already run in parallel with the
-    # thesis generation. Now apply its verdicts:
-    #   • Stamp validator output on each BUY stock (verdict / reason / red_flags)
-    #   • If LLM_VALIDATOR_MODE=veto AND verdict==NO_GO → demote BUY→WATCHLIST
-    #     with LLM_VETO warning, so the stock stays visible but doesn't trigger
-    #     a live trade.
-    #   • Log the aggregate GO/CAUTION/NO_GO histogram for post-mortem.
-    _validations = ai_results.get("buy_validations", {}) or {}
-    if _validations:
-        _mode = os.getenv("LLM_VALIDATOR_MODE", "advise").lower()
-        _hist = {"GO": 0, "CAUTION": 0, "NO_GO": 0}
-        _demoted = []
-        for _b in list(buys):
-            _val = _validations.get(_b.get("symbol"))
-            if not _val:
-                continue
-            _v = _val.get("verdict", "GO")
-            _hist[_v] = _hist.get(_v, 0) + 1
-            # Stamp on the stock so the audit + Telegram both see it
-            _b["llm_validator_verdict"] = _v
-            _b["llm_validator_reason"] = _val.get("reason", "")
-            _b["llm_validator_red_flags"] = _val.get("red_flags", [])
-            _b["llm_validator_source"] = _val.get("source", "unavailable")
-            if _v == "NO_GO" and _mode == "veto":
-                # Demote BUY → WATCHLIST (advisory demotion — the stock stays
-                # visible in the watchlist for observation but does NOT
-                # trigger a live trade). We don't re-run classify_watchlist
-                # here (that would require re-plumbing thresholds/conf_history
-                # into this scope); the audit + Telegram consumers already
-                # accept a bare "WATCHLIST" without a sub-tier.
-                _b.setdefault("warnings", []).append(
-                    f"LLM_VETO: {_val.get('reason', 'validator NO_GO')}"
-                )
-                _b["decision"] = "WATCHLIST"
-                _b["watchlist_tier"] = _b.get("watchlist_tier") or "LLM_VETOED"
-                _demoted.append(_b.get("symbol"))
-                watchlist_stocks.append(_b)
-                buys.remove(_b)
-            elif _v == "CAUTION":
-                _b.setdefault("warnings", []).append(
-                    f"LLM_CAUTION: {_val.get('reason', 'validator CAUTION')}"
-                )
-        _log(
-            f"  LLM validator: GO={_hist.get('GO',0)} · CAUTION={_hist.get('CAUTION',0)} · "
-            f"NO_GO={_hist.get('NO_GO',0)} · mode={_mode}"
-        )
-        if _demoted:
-            _log(f"  LLM_VETO demoted {len(_demoted)} BUY → WATCHLIST: {_demoted}")
-
     message = format_telegram_message(
         regime_data      = regime_data,
         buys             = buys,
@@ -13993,6 +13199,31 @@ def _run_pipeline_inner():
         today_str_pipe,
         rejected=rejected,   # 2026-07-06: also persist rejects for 3-week retrospective
     )
+
+    # ── Phase G-BATCH1 (2026-07-07): post-trade attribution report ────────
+    # Appends 3 sheets to recommendation_tracker.xlsx:
+    #   Attribution_Factor  — per-factor IC (rank-correlation with P&L)
+    #   Attribution_Gate    — per-gate P&L delta vs population avg
+    #   Attribution_Regime  — per-regime win-rate + expectancy
+    # Feature-gated. Reads existing tracker log; never touches live positions.
+    if os.environ.get("ENABLE_ATTRIBUTION", "true").lower() == "true":
+        try:
+            import attribution as _attr
+            _summary_attr = _attr.build_attribution_report(
+                tracker_json="trade_tracker.json",
+                tracker_xlsx="recommendation_tracker.xlsx",
+                out_xlsx="recommendation_tracker.xlsx",
+                lookback_days=int(os.environ.get("ATTRIBUTION_LOOKBACK", "90")),
+            )
+            _log(
+                f"  [Attribution] {_summary_attr.get('closed_in_window', 0)}/"
+                f"{_summary_attr.get('total_trades', 0)} closed trades analysed. "
+                f"Top factor: {_summary_attr.get('top_factor_by_lift')} · "
+                f"Top gate: {_summary_attr.get('top_gate_by_delta')} · "
+                f"Best regime: {_summary_attr.get('best_regime')}"
+            )
+        except Exception as _e_attr:
+            _log(f"  [WARN] attribution report failed (non-fatal): {_e_attr}")
 
     # ── 17b. Phase 1 #54 (2026-07-05): flush price-fetch failures ─────────
     # Every fetch_price_data(...) that returned None (any reason) is here.
