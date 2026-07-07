@@ -515,10 +515,10 @@ def run_backtest():
         # Payoff = %T1 - %STOP as a very rough per-bar avg return proxy
         avg_return_pct = ((t1_all - stop_all) / total * 1.0) if total > 0 else 0.0
 
-        # ── Phase G6 (2026-07-07): Deflated Sharpe + Monte Carlo ──────────
-        # López de Prado (2014) — guards against multiple-testing overfitting.
-        # Reconstruct per-trade P&L% from stored rows: T1_HIT ≈ +target, STOP ≈ -stop.
-        # If the row carries an explicit `pnl_pct` field we prefer that.
+        # ── Phase G6 (2026-07-07): Monte Carlo permutation + bootstrap CI ──
+        # Guards against luck. Reconstruct per-trade P&L% from stored rows:
+        # T1_HIT ≈ +target, STOP ≈ -stop. If the row carries an explicit
+        # `pnl_pct` field we prefer that.
         adv_stats = {"available": False, "reason": "backtest_stats disabled"}
         try:
             import backtest_stats as _bs  # local import to keep top-level clean
@@ -549,8 +549,8 @@ def run_backtest():
             adv_stats = {"available": False, "reason": f"error: {_e}"}
         # Extract a canonical Sharpe for backward compat
         _sr = 0.0
-        if adv_stats.get("available") and isinstance(adv_stats.get("deflated_sharpe"), dict):
-            _sr = float(adv_stats["deflated_sharpe"].get("sr_annualised", 0.0) or 0.0)
+        if adv_stats.get("available"):
+            _sr = float(adv_stats.get("sr_annualised", 0.0) or 0.0)
 
         summary_json = {
             "trades":               total,
@@ -563,7 +563,7 @@ def run_backtest():
             "avg_return_pct":       round(avg_return_pct, 2),
             "sharpe":               round(_sr, 4),
             "sharpe_ratio":         round(_sr, 4),
-            "advanced_stats":       adv_stats,     # Phase G6 — DSR / MC / bootstrap
+            "advanced_stats":       adv_stats,     # Phase G6 — MC / bootstrap (Stage B: DSR removed)
             "recommended_min_conf": rec_threshold,
             "run_date":             str(datetime.date.today()),
             "source":               "backtest_walkforward.py",
