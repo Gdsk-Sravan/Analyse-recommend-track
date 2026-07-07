@@ -1,0 +1,26 @@
+WALK-FORWARD BACKTEST — THRESHOLD RECOMMENDATIONS
+=======================================================
+Run date: 2026-07-07
+Symbols tested: 200
+Total bars: 26665
+
+Recommended min_confidence (60% win rate threshold): 85
+
+Win rate by confidence bucket:
+  Bucket |  Total |  WinRate |  StopRate
+----------------------------------------
+      40 |   5277 |    29.4% |     65.9%
+      45 |   5705 |    27.1% |     70.1%
+      50 |   5481 |    28.2% |     68.3%
+      55 |   4054 |    30.2% |     66.0%
+      60 |   2633 |    33.8% |     61.1%
+      65 |   1680 |    41.3% |     52.4%
+      70 |   1163 |    47.2% |     42.6%
+      75 |    563 |    48.0% |     41.4%
+      80 |    107 |    43.9% |     43.9%
+
+HOW TO USE:
+1. Update REGIME_THRESHOLDS in main.py min_confidence values
+   based on the bucket where win_rate >= 60%
+2. Tighten thresholds by 3-5 pts during earnings season
+3. Re-run this backtest quarterly to recalibrate

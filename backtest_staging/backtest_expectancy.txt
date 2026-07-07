@@ -1,0 +1,19 @@
+EXPECTANCY REPORT — WALK-FORWARD BACKTEST
+=======================================================
+Run date        : 2026-07-07
+Trades          : 26665
+Total R         : -4650.75
+Expectancy / trade: -0.174 R
+Profit factor   : 0.79
+
+INTERPRETATION:
+  Expectancy > 0.10 R    : reasonable edge
+  Expectancy > 0.20 R    : strong edge
+  Expectancy < 0         : LOSING SYSTEM — do not follow live
+  Profit factor > 1.5    : good
+  Profit factor > 2.0    : excellent
+
+ACTION ITEMS: look at backtest_by_setup.csv,
+backtest_by_regime.csv, and backtest_by_sector.csv for the
+worst-expectancy buckets (sorted first). These are the buckets
+to blacklist, tighten thresholds on, or reduce weighting for.
