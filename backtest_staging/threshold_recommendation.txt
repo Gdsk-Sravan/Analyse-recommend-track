@@ -2,22 +2,18 @@ WALK-FORWARD BACKTEST — THRESHOLD RECOMMENDATIONS
 =======================================================
 Run date: 2026-07-07
 Symbols tested: 200
-Total bars: 26665
+Total bars: 3064
 
 Recommended min_confidence (45% win rate threshold, 100+ trades): 70
 
 Win rate by confidence bucket:
   Bucket |  Total |  WinRate |  StopRate
 ----------------------------------------
-      40 |   5277 |    29.4% |     65.9%
-      45 |   5705 |    27.1% |     70.1%
-      50 |   5481 |    28.2% |     68.3%
-      55 |   4054 |    30.2% |     66.0%
-      60 |   2633 |    33.8% |     61.1%
-      65 |   1680 |    41.3% |     52.4%
-      70 |   1163 |    47.2% |     42.6%
-      75 |    563 |    48.0% |     41.4%
-      80 |    107 |    43.9% |     43.9%
+      70 |   1124 |    47.2% |     45.4%
+      75 |   1023 |    47.1% |     43.3%
+      80 |    456 |    47.1% |     38.6%
+      85 |    266 |    49.2% |     38.7%
+      90 |    195 |    54.9% |     33.3%
 
 HOW TO USE:
 1. Update REGIME_THRESHOLDS in main.py min_confidence values
