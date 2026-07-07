@@ -514,6 +514,44 @@ def run_backtest():
         win_rate = (t1_all / total * 100.0) if total > 0 else 0.0
         # Payoff = %T1 - %STOP as a very rough per-bar avg return proxy
         avg_return_pct = ((t1_all - stop_all) / total * 1.0) if total > 0 else 0.0
+
+        # ── Phase G6 (2026-07-07): Deflated Sharpe + Monte Carlo ──────────
+        # López de Prado (2014) — guards against multiple-testing overfitting.
+        # Reconstruct per-trade P&L% from stored rows: T1_HIT ≈ +target, STOP ≈ -stop.
+        # If the row carries an explicit `pnl_pct` field we prefer that.
+        adv_stats = {"available": False, "reason": "backtest_stats disabled"}
+        try:
+            import backtest_stats as _bs  # local import to keep top-level clean
+            pnls: list = []
+            for _row in all_rows:
+                if "pnl_pct" in _row and _row["pnl_pct"] is not None:
+                    pnls.append(float(_row["pnl_pct"]))
+                    continue
+                # fall back to outcome mapping (approximation)
+                _oc = _row.get("outcome")
+                _tgt = float(_row.get("target_pct") or _row.get("t1_pct") or 3.0)
+                _stp = float(_row.get("stop_pct")   or 1.5)
+                if _oc == "T1_HIT":
+                    pnls.append(+_tgt)
+                elif _oc == "STOP_HIT":
+                    pnls.append(-_stp)
+                else:  # TIME_EXIT — assume near-flat
+                    pnls.append(0.0)
+            # `n_trials_tested` reflects the parameter sweep breadth. We test a
+            # single canonical configuration per run, but a conservative deflation
+            # of 10 acknowledges implicit threshold hunting during development.
+            adv_stats = _bs.compute_all(
+                pnls,
+                n_trials_tested=int(os.environ.get("BT_N_TRIALS", "10")),
+                trades_per_year=max(1, int(total / 2)),  # ~2y of data typically
+            )
+        except Exception as _e:
+            adv_stats = {"available": False, "reason": f"error: {_e}"}
+        # Extract a canonical Sharpe for backward compat
+        _sr = 0.0
+        if adv_stats.get("available") and isinstance(adv_stats.get("deflated_sharpe"), dict):
+            _sr = float(adv_stats["deflated_sharpe"].get("sr_annualised", 0.0) or 0.0)
+
         summary_json = {
             "trades":               total,
             "n_trades":             total,
@@ -523,8 +561,9 @@ def run_backtest():
             "time_exit_rate":       round((time_all / total * 100.0) if total > 0 else 0.0, 2),
             "avg_return":           round(avg_return_pct, 2),
             "avg_return_pct":       round(avg_return_pct, 2),
-            "sharpe":               0.0,
-            "sharpe_ratio":         0.0,
+            "sharpe":               round(_sr, 4),
+            "sharpe_ratio":         round(_sr, 4),
+            "advanced_stats":       adv_stats,     # Phase G6 — DSR / MC / bootstrap
             "recommended_min_conf": rec_threshold,
             "run_date":             str(datetime.date.today()),
             "source":               "backtest_walkforward.py",
