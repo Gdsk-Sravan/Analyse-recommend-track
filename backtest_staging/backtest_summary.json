@@ -27,22 +27,22 @@
     "monte_carlo": {
       "n_iters": 1000,
       "observed_cum_pnl": -8.1,
-      "observed_max_drawdown": -10.215,
-      "p_value_pnl": 0.842,
-      "p_value_drawdown_favourable": 0.127,
+      "observed_max_drawdown": -9.225,
+      "p_value_pnl": 0.813,
+      "p_value_drawdown_favourable": 0.47,
       "verdict": "RANDOM"
     },
     "bootstrap_win_rate": {
       "win_rate": 0.3118,
-      "ci_low_2p5": 0.3064,
-      "ci_high_97p5": 0.3173,
+      "ci_low_2p5": 0.3062,
+      "ci_high_97p5": 0.3175,
       "n_trades": 26665,
       "n_iters": 2000
     },
     "overall_verdict": "NO_EDGE",
     "n_trades": 26665
   },
-  "recommended_min_conf": 85,
+  "recommended_min_conf": 70,
   "run_date": "2026-07-07",
   "source": "backtest_walkforward.py"
 }
