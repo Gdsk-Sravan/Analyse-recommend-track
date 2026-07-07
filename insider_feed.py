@@ -9,10 +9,14 @@ Data sources:
     - nselib.capital_market.block_deal_data()        → negotiated large trades
 
 Signal logic:
-    - Promoter/director/KMP acquired (buy) recently → BULLISH factor bonus
     - Promoter/director/KMP disposed (sell) recently → BEARISH factor bonus
     - Large *sell* by promoter in last 30 days at aggregate > ₹1 cr → optional hard gate
-    - Cluster of block-deal *buyers* on a rising trend → bullish confirmation
+    - Bulk/block-deal net direction on the day → same-week bullish/bearish confirmation
+
+Note (Stage B): promoter-BUY scoring was removed. Empirical work on Indian
+promoter purchases (Bodhanwala 2023 and others) shows a 30-90 day price-impact
+horizon, outside the 5-15 day swing window this system targets. Same-week
+signals (bulk/block deals + promoter sells) are retained.
 
 Cache: 6 hours (this data updates end-of-day only).
 
@@ -223,7 +227,7 @@ def insider_signal(symbol: str, lookback_days: int = 30) -> Dict[str, Any]:
 
     Result shape:
         {ok, symbol, insider_buy_value_inr, insider_sell_value_inr,
-         promoter_sell_inr_last_30d, bulk_block_buy_count, bulk_block_sell_count,
+         promoter_sell_value_inr, bulk_block_buy_count, bulk_block_sell_count,
          factor_bonus, hard_reject, reject_reason}
     """
     now = time.time()
@@ -240,35 +244,32 @@ def insider_signal(symbol: str, lookback_days: int = 30) -> Dict[str, Any]:
     sell_val = sum(r["value_inr"] for r in ins if r["side"] == "SELL")
     promoter_sell_val = sum(r["value_inr"] for r in ins
                             if r["side"] == "SELL" and _is_promoter(r))
-    promoter_buy_val  = sum(r["value_inr"] for r in ins
-                            if r["side"] == "BUY"  and _is_promoter(r))
+    # Note (Stage B): promoter-BUY branch was removed. Bodhanwala (2023) and
+    # other empirical work on Indian promoter purchases show a 30-90 day
+    # price-impact horizon — outside the 5-15 day swing window this system
+    # targets. Promoter *sells* keep same-week impact and are retained.
 
     bd_buys  = sum(1 for r in bd if r["side"] == "BUY")
     bd_sells = sum(1 for r in bd if r["side"] == "SELL")
 
     # ── Scoring (soft) ──
     bonus = 0.0
-    # Promoter buys are a strong bullish signal
-    if promoter_buy_val > 1e7:      # > 1 cr
-        bonus += 0.30
-    elif promoter_buy_val > 1e6:    # > 10 lakh
-        bonus += 0.15
     # Promoter sells modestly bearish (many are ESOP / tax-driven — soft)
     if promoter_sell_val > 5e7:     # > 5 cr in 30d = material
         bonus -= 0.30
     elif promoter_sell_val > 1e7:   # > 1 cr
         bonus -= 0.15
-    # Bulk/block deals net
+    # Bulk/block deals net (same-week impact — swing-relevant)
     if bd_buys > bd_sells + 1:
         bonus += 0.10
     elif bd_sells > bd_buys + 1:
         bonus -= 0.10
 
-    # Hard gate: opt-in
+    # Hard gate: opt-in — trigger only on outright promoter selling
     hard_reject = False
     reject_reason = ""
     if (os.environ.get("ENABLE_INSIDER_HARD_GATE", "false").lower() == "true"
-        and promoter_sell_val > 1e7 and promoter_buy_val < promoter_sell_val * 0.1):
+        and promoter_sell_val > 1e7):
         hard_reject = True
         reject_reason = (f"Promoter sold ₹{promoter_sell_val/1e7:.2f} Cr "
                          f"in last {lookback_days}d")
@@ -279,7 +280,6 @@ def insider_signal(symbol: str, lookback_days: int = 30) -> Dict[str, Any]:
         "lookback_days": lookback_days,
         "insider_buy_value_inr": round(buy_val, 2),
         "insider_sell_value_inr": round(sell_val, 2),
-        "promoter_buy_value_inr": round(promoter_buy_val, 2),
         "promoter_sell_value_inr": round(promoter_sell_val, 2),
         "bulk_block_buy_count": bd_buys,
         "bulk_block_sell_count": bd_sells,
