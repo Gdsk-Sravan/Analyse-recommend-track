@@ -1,5 +1,11 @@
 {
-  "fresh_start_history": [],
+  "fresh_start_history": [
+    {
+      "date": "2026-07-07",
+      "run_ts": "2026-07-07T12:06:17Z",
+      "workflow": "tracker"
+    }
+  ],
   "jobs": {
     "research": {
       "exit_status": "ok",
@@ -10,9 +16,9 @@
     },
     "tracker": {
       "exit_status": "ok",
-      "fresh_start": false,
-      "last_run_utc": "2026-07-07T11:02:32Z",
-      "last_success_utc": "2026-07-07T11:02:32Z",
+      "fresh_start": true,
+      "last_run_utc": "2026-07-07T12:06:18Z",
+      "last_success_utc": "2026-07-07T12:06:18Z",
       "mode": "scheduled"
     },
     "weekly": {
