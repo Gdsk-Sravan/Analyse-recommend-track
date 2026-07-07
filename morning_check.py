@@ -417,6 +417,18 @@ def run_morning_check():
         adj_rr   = result["adjusted_rr"]
         max_ent  = result["max_valid_entry"]
 
+        # ── Phase G-BATCH2 (2026-07-07): intraday L1 hint ─────────────────
+        # If intraday_monitor has been running and recording 5-min snapshots,
+        # use them to refine the suggestion (breakout confirmed? gap fading?).
+        # Purely additive — the gap-validity verdict remains authoritative.
+        _intraday_hint = None
+        if os.environ.get("ENABLE_INTRADAY_HINT", "true").lower() == "true":
+            try:
+                import intraday_snapshots as _isn
+                _intraday_hint = _isn.entry_hint(sym, entry_price, stop_price)
+            except Exception:
+                _intraday_hint = None
+
         # Action emoji
         if action == "ENTER":
             emoji = "✅ ENTER"
@@ -454,6 +466,17 @@ def run_morning_check():
                 lines.append(f"→ R/R at open: {adj_rr:.2f}x — not worth the risk")
 
         lines.append(f"Conf: {conf:.1f} | TQ: {tq:.1f}")
+        # Phase G-BATCH2: intraday snapshot hint (only if we have recorded data)
+        if _intraday_hint and _intraday_hint.get("have_data"):
+            _ih = _intraday_hint
+            _hint_bits = [
+                f"Intraday: {_ih.get('n_snapshots', 0)} snaps",
+                f"gap {_ih.get('gap_pct', 0):+.1f}% ({_ih.get('gap_type', '?')})",
+                f"hint={_ih.get('action_hint', '')}",
+            ]
+            if _ih.get("breakout_confirmed"):
+                _hint_bits.append("BO✓")
+            lines.append("  · " + " | ".join(_hint_bits))
         lines.append("─" * 38)
 
     # Summary line
