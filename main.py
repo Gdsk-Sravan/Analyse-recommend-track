@@ -5803,13 +5803,16 @@ def apply_setup_edge(stock: dict, regime: str) -> tuple:
         # so in choppy/weak regimes we require it as the entry pattern.
         skip_reason = f"REGIME_CHOP_NO_BREAKOUT({regime}/{setup})"
 
-        # Phase I shadow-log (2026-07-07): record what this REJECTED stock
-        # WOULD have done — pure paper-trade tracking. Zero money at risk.
-        # Safe no-op if shadow_log missing or toggle disabled.
+        # Phase I shadow-log (2026-07-07): record this rejection into
+        # bucket B (WATCH_ME — right setup, wrong regime) OR bucket C
+        # (NOT_MY_STYLE — wrong setup entirely). Split lets us tell
+        # WHERE the edge lives after 30 days of observation.
         if _SHADOW_LOG_OK:
             try:
-                shadow_log.record_shadow_trade(stock, regime)
-            except Exception as _e:
+                _bucket = shadow_log.classify_skip_bucket(setup)
+                shadow_log.record_shadow_trade(_bucket, stock, regime,
+                                               note=f"skip:{skip_reason[:40]}")
+            except Exception:
                 pass  # never let the shadow log break the pipeline
 
     return setup, adj_conf, skip_reason
@@ -8611,6 +8614,21 @@ def run_gates(stock: dict, regime: str, thresholds: dict,
             )
         else:
             fail_reasons.append(f"CONF_FAIL(got {conf:.1f}, need {_min_conf})")
+
+            # Phase I shadow-log (2026-07-07): Bucket D · SO_CLOSE
+            # Right setup + right regime, confidence just below the gate.
+            # Answers: "is my min_confidence threshold set too high?"
+            if _SHADOW_LOG_OK:
+                try:
+                    _sd_setup  = stock.get("setup_type", "OTHER")
+                    if shadow_log.is_near_miss_conf(_sd_setup, regime,
+                                                   conf, _min_conf):
+                        shadow_log.record_shadow_trade(
+                            "D", stock, regime,
+                            note=f"near_miss({conf:.1f}<{_min_conf})",
+                        )
+                except Exception:
+                    pass
 
     # Gate 7: Trade Quality (HARD)
     tq = stock.get("trade_quality_score", 0)
@@ -13140,6 +13158,19 @@ def _run_pipeline_inner():
         _dec = gate_result["decision"]
         if _dec in ("BUY", "STRONG_BUY", "BUY_CONTRARIAN", "BUY_TURNAROUND"):
             buys.append(stock)
+
+            # Phase I shadow-log (2026-07-07): Bucket A · TAKEN
+            # Log every real BUY signal as a shadow row too — this is
+            # the ground-truth reference bucket. When compared against
+            # B/C/D, it confirms whether our edge is real AND lets us
+            # measure Phase I win-rate live (independent of tracker.json
+            # which is Excel-only and hard to aggregate).
+            if _SHADOW_LOG_OK:
+                try:
+                    shadow_log.record_shadow_trade("A", stock, regime,
+                                                   note=f"real_buy:{_dec}")
+                except Exception:
+                    pass
         elif _dec == "WATCHLIST":
             wl = classify_watchlist(stock, regime, effective_thresholds,
                                      conf_history=_conf_history_for_wl)
