@@ -8665,7 +8665,10 @@ def run_gates(stock: dict, regime: str, thresholds: dict,
         stock.get("symbol", "").replace(".NS", ""),
         results_dates or [],
         upcoming_events or [],
-        window_days=5,
+        # Issue 11 fix: honour EARNINGS_BLACKOUT_DAYS env (default 5). Presets
+        # set this to 3 (swing) or 7 (conservative) — previously the literal
+        # 5 here silently overrode the preset, making the knob dead code.
+        window_days=int(os.getenv("EARNINGS_BLACKOUT_DAYS", "5") or 5),
     )
     if near_event:
         # Move to WATCHLIST rather than REJECTED — setup may still be valid post-event
