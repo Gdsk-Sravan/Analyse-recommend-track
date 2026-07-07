@@ -4,10 +4,10 @@ news_sentiment.py
 News sentiment analysis for NSE stocks using RSS headline aggregation + Groq LLM.
 
 Rationale:
-    Piotroski/Beneish/technicals capture "steady state" quality but miss the
-    day-of catalysts — fraud disclosure, downgrade, promoter arrest, tender-
-    offer, block-deal buyer identity. These move prices +/- 5-15% in a single
-    session and are almost always news-driven.
+    Piotroski/technicals capture "steady state" quality but miss the day-of
+    catalysts — fraud disclosure, downgrade, promoter arrest, tender-offer,
+    block-deal buyer identity. These move prices +/- 5-15% in a single session
+    and are almost always news-driven.
 
 Approach:
     1. Fetch RSS from Moneycontrol, Economic Times, Business Standard, LiveMint
