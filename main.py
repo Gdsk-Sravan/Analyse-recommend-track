@@ -12622,10 +12622,22 @@ def _run_pipeline_inner():
     _bonus_cap  = float(os.environ.get("PHASE_G_BONUS_CAP", "5.0"))  # ±5 conf pts
 
     if _quality_on or _options_on or _news_on or _insider_on:
+        # Phase G-BATCH2 perf fix (2026-07-07): previously this block ran a
+        # serial for-loop over the top-N (≈120) candidates, calling four
+        # network-bound helpers per stock (options_data → NSE derivatives
+        # API, news_sentiment → 4×RSS feeds + Groq LLM, insider_feed → NSE
+        # capital-market API). Wall time observed in prod GH-Actions run
+        # 2026-07-07: ~32 min for 120 stocks (≈16 s/stock).
+        # Fix: dispatch the per-stock enrichment via ThreadPoolExecutor.
+        # Each helper is IO-bound + already thread-safe (module-level dict
+        # caches with GIL-atomic get/set). Workers configurable via
+        # PHASE_G_MAX_WORKERS (default 8 — matches neighbouring pipeline
+        # stages and stays well under NSE / Groq rate limits).
+        _phase_g_workers = max(1, int(os.environ.get("PHASE_G_MAX_WORKERS", "8")))
         _log(
             f"[14a/17] Enriching top-{len(top_40)} with quality/options/news/insider "
             f"[Q={int(_quality_on)} O={int(_options_on)} N={int(_news_on)} "
-            f"I={int(_insider_on)}]"
+            f"I={int(_insider_on)}] · workers={_phase_g_workers}"
         )
         _mod_q = _mod_o = _mod_n = _mod_i = None
         try:
@@ -12641,12 +12653,24 @@ def _run_pipeline_inner():
             if _insider_on: import insider_feed as _mod_i    # type: ignore
         except Exception as _e: _log(f"  [WARN] insider_feed import: {_e}");   _mod_i = None
 
-        _q_hard = _n_hard = _i_hard = 0
-        for _stk in top_40:
+        # Counters must be updated atomically from worker threads.
+        import threading as _threading
+        _phase_g_lock = _threading.Lock()
+        _phase_g_counters = {"q_hard": 0, "n_hard": 0, "i_hard": 0, "done": 0}
+        _phase_g_total = len(top_40)
+        _phase_g_start = time.time()
+
+        def _enrich_one(_stk):
+            """Per-stock enrichment — runs on a worker thread.
+            Mutates `_stk` in place (safe: each thread owns a distinct dict).
+            Returns None; hard-reject counters are updated under a lock.
+            """
             _sym = _stk.get("symbol", "")
             _sym_clean = _sym.replace(".NS", "")
-            _hard = False; _reasons_new: list = []
+            _hard = False
+            _reasons_new: list = []
             _agg_bonus = 0.0
+            _local_q_hard = _local_n_hard = _local_i_hard = 0
 
             # -- Quality (Piotroski F-Score) --------------------------------
             if _mod_q is not None:
@@ -12658,7 +12682,7 @@ def _run_pipeline_inner():
                         if _q.get("ok"):
                             _agg_bonus += float(_q.get("factor_bonus", 0.0) or 0.0)
                             if _q.get("hard_reject"):
-                                _hard = True; _q_hard += 1
+                                _hard = True; _local_q_hard = 1
                                 _reasons_new.append(f"QUALITY_FAIL({_q.get('reject_reason','')})")
                 except Exception as _e:
                     _stk.setdefault("_enrich_errors", []).append(f"quality:{_e}")
@@ -12689,7 +12713,7 @@ def _run_pipeline_inner():
                     if _ns.get("ok"):
                         _agg_bonus += float(_ns.get("factor_bonus", 0.0) or 0.0)
                         if _ns.get("hard_reject"):
-                            _hard = True; _n_hard += 1
+                            _hard = True; _local_n_hard = 1
                             _reasons_new.append(f"NEWS_FAIL({_ns.get('reject_reason','')})")
                 except Exception as _e:
                     _stk.setdefault("_enrich_errors", []).append(f"news:{_e}")
@@ -12702,7 +12726,7 @@ def _run_pipeline_inner():
                     if _isg.get("ok"):
                         _agg_bonus += float(_isg.get("factor_bonus", 0.0) or 0.0)
                         if _isg.get("hard_reject"):
-                            _hard = True; _i_hard += 1
+                            _hard = True; _local_i_hard = 1
                             _reasons_new.append(f"INSIDER_FAIL({_isg.get('reject_reason','')})")
                 except Exception as _e:
                     _stk.setdefault("_enrich_errors", []).append(f"insider:{_e}")
@@ -12726,6 +12750,37 @@ def _run_pipeline_inner():
                     if _r not in _fr:
                         _fr.append(_r)
 
+            # -- Update shared counters + heartbeat under a lock ----------
+            with _phase_g_lock:
+                _phase_g_counters["q_hard"] += _local_q_hard
+                _phase_g_counters["n_hard"] += _local_n_hard
+                _phase_g_counters["i_hard"] += _local_i_hard
+                _phase_g_counters["done"]   += 1
+                _done = _phase_g_counters["done"]
+            # Progress heartbeat every 20 stocks so the run isn't silent
+            # for many minutes if a network source is slow.
+            if _done % 20 == 0 or _done == _phase_g_total:
+                _elapsed = time.time() - _phase_g_start
+                _rate = _done / _elapsed if _elapsed > 0 else 0
+                _eta = (_phase_g_total - _done) / _rate if _rate > 0 else 0
+                _log(
+                    f"  [Phase G] progress {_done}/{_phase_g_total} · "
+                    f"{_rate:.1f} stk/s · elapsed {_elapsed:.0f}s · ETA {_eta:.0f}s"
+                )
+
+        # Dispatch across the worker pool. Any per-stock exception is
+        # already caught inside _enrich_one — we just wait for completion.
+        with ThreadPoolExecutor(max_workers=_phase_g_workers) as _ex:
+            _futs = [_ex.submit(_enrich_one, _stk) for _stk in top_40]
+            for _f in as_completed(_futs):
+                try:
+                    _f.result()
+                except Exception as _e:
+                    _log(f"  [Phase G] worker crashed unexpectedly: {_e}")
+
+        _q_hard = _phase_g_counters["q_hard"]
+        _n_hard = _phase_g_counters["n_hard"]
+        _i_hard = _phase_g_counters["i_hard"]
         _log(
             f"  [Phase G] hard-rejects — quality:{_q_hard} news:{_n_hard} "
             f"insider:{_i_hard}. Bonus cap ±{_bonus_cap} conf pts. "
