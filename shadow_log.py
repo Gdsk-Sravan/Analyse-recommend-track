@@ -466,6 +466,107 @@ def format_shadow_summary(max_pending_shown: int = 3) -> str:
     return "\n".join(lines)
 
 
+# ─── Telegram-formatted per-bucket brief (2026-07-07) ───────────────────────
+# Rich HTML-friendly block that shows WHAT was added tonight in each bucket,
+# plus resolved outcomes from the last run. This is the block that lets you
+# actually *see* the observation happening from your phone.
+def format_shadow_telegram(top_n_per_bucket: int = 5,
+                            show_resolved_today: bool = True) -> str:
+    """Full Telegram-oriented per-bucket brief.
+
+    - Per-bucket header with n / wr / verdict
+    - Up to `top_n_per_bucket` most-recent PENDING rows per bucket
+    - Optionally lists RESOLVED wins/losses from the current day
+    - Uses simple text (no markup) so it renders identically in Telegram
+      HTML mode with parse_mode disabled or enabled
+    """
+    if not SHADOW_ENABLED:
+        return ""
+    rows = _read_all()
+    if not rows:
+        return ""
+
+    total_all   = len(rows)
+    pending_all = sum(1 for r in rows if r.get("status") == _STATUS_PENDING)
+    resolved_all = total_all - pending_all
+
+    lines = [
+        "🔬 <b>SHADOW LOG</b> (Phase I observation — 4-bucket)",
+        f"Total: {total_all} · Pending: {pending_all} · Resolved: {resolved_all}",
+        "",
+    ]
+
+    _icons = {"A": "🎯", "B": "👀", "C": "🚫", "D": "🎚️"}
+
+    # Per-bucket detail block
+    for bucket in (BUCKET_A, BUCKET_B, BUCKET_C, BUCKET_D):
+        b_rows = [r for r in rows if r.get("bucket") == bucket]
+        if not b_rows:
+            continue
+        s = _bucket_stats(rows, bucket)
+        expected = _BUCKET_EXPECTED_WR[bucket]
+        verdict  = _bucket_verdict(s["wr"], expected, s["resolved"])
+        icon     = _icons.get(bucket, "•")
+
+        lines.append(
+            f"{icon} <b>{_BUCKET_NAME[bucket]}</b> "
+            f"· n={s['total']} · pend={s['pending']} · "
+            f"wr={s['wr']:.1f}% (exp {expected:.0f}%) · {verdict}"
+        )
+
+        # Show most-recent pending rows for this bucket
+        b_pending = [r for r in b_rows if r.get("status") == _STATUS_PENDING]
+        b_pending.sort(key=lambda r: r.get("date_added", ""), reverse=True)
+        for r in b_pending[:top_n_per_bucket]:
+            lines.append(
+                f"   • {r.get('date_added','')} "
+                f"<code>{r.get('symbol',''):<10}</code> "
+                f"{r.get('setup',''):<9} conf {r.get('conf','')} "
+                f"[{r.get('regime','')}] "
+                f"@ ₹{r.get('entry','')}"
+            )
+        if len(b_pending) > top_n_per_bucket:
+            lines.append(f"   … +{len(b_pending) - top_n_per_bucket} more")
+        lines.append("")
+
+    # Resolved-today section (WINs and LOSSes from most recent resolution)
+    if show_resolved_today and resolved_all > 0:
+        # "Today" = rows resolved on the most recent exit_date
+        resolved_rows = [r for r in rows
+                         if r.get("status") in (_STATUS_WIN, _STATUS_LOSS,
+                                                 _STATUS_TIME_EXIT)
+                         and r.get("exit_date")]
+        if resolved_rows:
+            resolved_rows.sort(key=lambda r: r.get("exit_date", ""),
+                               reverse=True)
+            latest_date = resolved_rows[0].get("exit_date", "")
+            today_resolved = [r for r in resolved_rows
+                              if r.get("exit_date") == latest_date]
+            if today_resolved:
+                wins   = [r for r in today_resolved
+                          if r.get("status") == _STATUS_WIN]
+                losses = [r for r in today_resolved
+                          if r.get("status") == _STATUS_LOSS]
+                lines.append(
+                    f"📌 <b>Resolved {latest_date}</b> "
+                    f"({len(wins)}W / {len(losses)}L / "
+                    f"{len(today_resolved) - len(wins) - len(losses)}TE)"
+                )
+                for r in today_resolved[:6]:
+                    _st_icon = "✅" if r.get("status") == _STATUS_WIN else (
+                        "❌" if r.get("status") == _STATUS_LOSS else "⏱️")
+                    lines.append(
+                        f"   {_st_icon} [{r.get('bucket','?')}] "
+                        f"<code>{r.get('symbol',''):<10}</code> "
+                        f"R={r.get('r_multiple','')} "
+                        f"({r.get('days_held','')}d)"
+                    )
+                if len(today_resolved) > 6:
+                    lines.append(f"   … +{len(today_resolved) - 6} more")
+
+    return "\n".join(lines).rstrip()
+
+
 # ─── CLI entrypoint (debug / cron) ──────────────────────────────────────────
 if __name__ == "__main__":
     print("[shadow_log] CLI: updating outcomes...")
