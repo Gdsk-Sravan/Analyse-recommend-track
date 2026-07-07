@@ -27,15 +27,15 @@
     "monte_carlo": {
       "n_iters": 1000,
       "observed_cum_pnl": -8.1,
-      "observed_max_drawdown": -9.225,
-      "p_value_pnl": 0.813,
-      "p_value_drawdown_favourable": 0.47,
+      "observed_max_drawdown": -9.54,
+      "p_value_pnl": 0.826,
+      "p_value_drawdown_favourable": 0.321,
       "verdict": "RANDOM"
     },
     "bootstrap_win_rate": {
       "win_rate": 0.3118,
-      "ci_low_2p5": 0.3062,
-      "ci_high_97p5": 0.3175,
+      "ci_low_2p5": 0.3064,
+      "ci_high_97p5": 0.3173,
       "n_trades": 26665,
       "n_iters": 2000
     },
