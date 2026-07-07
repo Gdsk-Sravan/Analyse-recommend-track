@@ -251,6 +251,7 @@ jobs:
             reject_outcome_log.csv
             run_health.json
             recommendation_tracker.xlsx
+            shadow_trades.csv
             .fresh_start_marker
           key: stock-reviewer-data-${{ runner.os }}-${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
@@ -395,6 +396,7 @@ jobs:
             reject_watch.json
             reject_outcome_log.csv
             run_health.json
+            shadow_trades.csv
             .fresh_start_marker
           )
           # Phase C7f (2026-07-07): on a FRESH_START run, main.py renamed the
