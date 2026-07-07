@@ -68,6 +68,30 @@ jobs:
             exit 1
           fi
 
+      # ── Phase C7f (2026-07-07): restore xlsx + sentinel from main.yml cache ──
+      # main.yml's cache/save step writes recommendation_tracker.xlsx and
+      # .fresh_start_marker (when a wipe just happened). Restoring here BEFORE
+      # the artifact-download fallback guarantees we see the freshest xlsx
+      # even when main.yml's git-commit step failed or ran too late. The
+      # fallback download still runs if the cache is empty on first-ever run.
+      - name: Restore cache from evening pipeline
+        continue-on-error: true
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            recommendation_tracker.xlsx
+            trade_tracker.json
+            tracker.json
+            delivery_cache.json
+            reject_watch.json
+            reject_outcome_log.csv
+            run_health.json
+            .fresh_start_marker
+          key: stock-reviewer-data-${{ runner.os }}-${{ github.ref_name }}-never-match
+          restore-keys: |
+            stock-reviewer-data-${{ runner.os }}-${{ github.ref_name }}-
+            stock-reviewer-data-${{ runner.os }}-
+
       # Fallback: if the xlsx is not yet committed to the repo, pull the last
       # artifact from main.yml. Once PERSIST_STATE_TO_REPO=true kicks in on the
       # evening job, the xlsx lives in git and this step is a no-op.
@@ -179,6 +203,9 @@ jobs:
           # so the false-negative dataset accumulates across daily runs.
           # Phase W (2026-07-03): persist run_health.json for cross-workflow
           # staleness detection.
+          # Phase C7f (2026-07-07): NEVER commit .fresh_start_marker or the
+          # .stale_* xlsx siblings — those are one-shot sentinels/leftovers
+          # from main.py's FRESH_START path and belong only in the cache.
           files=(recommendation_tracker.xlsx trade_tracker.json delivery_cache.json reject_watch.json reject_outcome_log.csv run_health.json)
           existing=()
           for f in "${files[@]}"; do [ -e "$f" ] && existing+=("$f"); done
