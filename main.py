@@ -12558,6 +12558,22 @@ def save_recommendations_to_excel(buys: list, watchlist: list,
             except Exception as _e:
                 _log(f"[FRESH_START] Could not rename {TRACKER_XLSX}: {_e} — will overwrite instead")
 
+        # Phase C7f (2026-07-07): drop a sentinel that downstream jobs
+        # (tracker_job.py, weekly_summary_job.py, research_job.py) read to
+        # auto-detect a wipe when their own FRESH_START input was not set.
+        # Without this, tracker.yml checkout pulls the pre-wipe xlsx from
+        # git and appends onto stale rows, undoing the reset.
+        # Contents: today's date so cross-day contamination is impossible.
+        # The marker is deleted by the first downstream job that honors it,
+        # so it fires exactly once.
+        if FRESH_START:
+            try:
+                with open(".fresh_start_marker", "w", encoding="utf-8") as _fm:
+                    _fm.write(f"{today_str}\n")
+                _log(f"[FRESH_START] Wrote .fresh_start_marker={today_str} for downstream jobs")
+            except Exception as _e:
+                _log(f"[FRESH_START] Could not write .fresh_start_marker: {_e}")
+
         if os.path.exists(TRACKER_XLSX):
             wb = openpyxl.load_workbook(TRACKER_XLSX)
         else:
