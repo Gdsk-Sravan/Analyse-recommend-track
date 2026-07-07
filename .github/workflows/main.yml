@@ -336,6 +336,7 @@ jobs:
             reject_outcome_log.csv
             run_health.json
             recommendation_tracker.xlsx
+            shadow_trades.csv
             .fresh_start_marker
           key: stock-reviewer-data-${{ runner.os }}-${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}
 
