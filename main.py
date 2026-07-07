@@ -11791,12 +11791,21 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
     lines.append("")
 
     # ── Phase I shadow-log summary (2026-07-07) ──
-    # Compact block showing what Phase-I-skipped stocks would have done.
-    # Pure paper — nothing to act on. Safe no-op if module unavailable or
-    # CSV is empty. Toggle off with PHASE_I_SHADOW_LOG=false.
+    # Rich per-bucket brief showing WHAT was added tonight in each bucket +
+    # resolved outcomes. Pure paper — nothing to act on. Safe no-op if
+    # module unavailable or CSV is empty. Toggle off entirely with
+    # PHASE_I_SHADOW_LOG=false; control verbosity with SHADOW_TELEGRAM_MODE:
+    #   "compact"   → 4-line rollup only (old behaviour)
+    #   "detailed"  → per-bucket top-5 stocks + resolved-today (default)
     if _SHADOW_LOG_OK:
         try:
-            _shadow_block = shadow_log.format_shadow_summary(max_lines=6)
+            _sh_mode = os.getenv("SHADOW_TELEGRAM_MODE", "detailed").lower()
+            if _sh_mode == "compact":
+                _shadow_block = shadow_log.format_shadow_summary(
+                    max_pending_shown=3)
+            else:
+                _shadow_block = shadow_log.format_shadow_telegram(
+                    top_n_per_bucket=5, show_resolved_today=True)
             if _shadow_block:
                 lines.append(_shadow_block)
                 lines.append("")
