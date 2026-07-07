@@ -313,6 +313,23 @@ def run_intraday_monitor() -> None:
         snap = _fetch_intraday_snapshot(sym)
         if not snap:
             continue
+
+        # ── Phase G7 (2026-07-07): record L1 snapshot for morning_check.py ──
+        # Cheap side-effect: append 5-min OHLC bucket for the symbol.
+        # Feature-gated so we don't break existing users.
+        if os.environ.get("ENABLE_INTRADAY_SNAPSHOTS", "true").lower() == "true":
+            try:
+                import intraday_snapshots as _isn
+                _isn.record_snapshot(
+                    sym,
+                    price=_scalar(snap.get("last")),
+                    high=_scalar(snap.get("high")),
+                    low=_scalar(snap.get("low")),
+                    volume=_scalar(snap.get("volume")),
+                )
+            except Exception as _e:  # never break monitor if snapshot fails
+                pass
+
         events = _detect_events(pos, snap)
         if not events:
             continue
