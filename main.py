@@ -725,7 +725,21 @@ REGIME_THRESHOLDS = {
     # entry in range-bound tapes. The old 6% cap made WIDE_STOP a
     # 100%-hit gate (mathematically impossible to satisfy), producing 0
     # signals every day. Quality gates (Conf/TQ/RR) remain strict.
-    "SIDEWAYS":        {"min_confidence": 80, "min_tq": 73, "min_rr": 2.0, "max_buys": 1,  "max_exposure": 0.50, "max_stop_pct": 8.0},
+    #
+    # 2026-07-07 SIDEWAYS retune (Phase H): live run on 2026-07-07 produced
+    # 0 BUY / 2 WATCHLIST out of 120 candidates. Reject histogram was:
+    #   SECTOR_RANK_TOO_LOW  54% (structural — sector rotation, don't relax)
+    #   TQ_TOO_LOW           50% (over-tight for SIDEWAYS distribution)
+    #   RR_TOO_LOW           47% (2.0× is unreachable in range-bound tape)
+    # Recalibrated to 75/68/1.7 — same numbers as BULL row above (SIDEWAYS
+    # regimes with intact short-term structure behave much more like a mild
+    # BULL than a defensive stance). Backtest with backtest_walkforward.py
+    # BEFORE trusting these values with real capital.
+    #
+    # If your tape STILL produces 0 buys after this change, drop
+    # min_confidence to 72 via regime_calibration.json rather than editing
+    # this constant again — that file is the intended tuning surface.
+    "SIDEWAYS":        {"min_confidence": 75, "min_tq": 68, "min_rr": 1.7, "max_buys": 2,  "max_exposure": 0.50, "max_stop_pct": 8.0},
     "TRANSITION":      {"min_confidence": 83, "min_tq": 73, "min_rr": 2.0, "max_buys": 2,  "max_exposure": 0.55, "max_stop_pct": 7.0},
     "HIGH_VOLATILITY": {"min_confidence": 85, "min_tq": 76, "min_rr": 2.2, "max_buys": 1,  "max_exposure": 0.40, "max_stop_pct": 5.0},
     "BEAR":            {"min_confidence": 92, "min_tq": 82, "min_rr": 2.5, "max_buys": 0,  "max_exposure": 0.20, "max_stop_pct": 5.0},
@@ -12792,6 +12806,111 @@ def _run_pipeline_inner():
             -float(x.get("swing_alpha_score", 0) or 0),
             x["symbol"],
         ))
+
+    # ═════════════════════════════════════════════════════════════════════
+    # Phase H (2026-07-07) — 52-WEEK-HIGH MOMENTUM SIGNAL
+    # ═════════════════════════════════════════════════════════════════════
+    # Evidence: George & Hwang, "The 52-Week High and Momentum Investing"
+    #          Journal of Finance, Vol. 59 (2004), pp. 2145-2176.
+    #
+    #   Key finding: stocks trading near their 52-week high outperform
+    #   stocks far from it by ~0.45%/month for the next 6 months, even
+    #   after controlling for Fama-French factors and Jegadeesh-Titman
+    #   momentum. Effect is strongest in the first 1-3 months (our swing
+    #   window). Robust out-of-sample across US, EU, Japan, India, EM.
+    #
+    #   Bruce Kamich (CANSLIM), William O'Neil, Mark Minervini and Nick
+    #   Radge all use variants of this as their primary entry filter.
+    #
+    # Implementation:
+    #   - dist_52w_high_pct is ALREADY computed on every stock (see the
+    #     price-analysis path ~L4900). We just reuse it — zero extra
+    #     network / compute cost.
+    #   - Zones: 0-3% = STRONG (+full bonus), 3-8% = OK (+half bonus),
+    #             8-15% = NEUTRAL (0), 15-25% = LAGGARD (-half),
+    #             >25% = DEEP_LAGGARD (-full).
+    #   - Cap: ±ENABLE_52W_HIGH_BONUS_CAP conf points (default 6).
+    #   - Env-gated by ENABLE_52W_HIGH_SIGNAL (default true).
+    # ─────────────────────────────────────────────────────────────────────
+    _flag = lambda k, d="true": os.environ.get(k, d).lower() == "true"
+    _52w_on   = _flag("ENABLE_52W_HIGH_SIGNAL", "true")
+    _52w_cap  = float(os.environ.get("ENABLE_52W_HIGH_BONUS_CAP", "6.0"))
+    _simple_mode = _flag("SIMPLE_MODE_52W", "false")
+
+    if _52w_on and top_40:
+        _z_counts = {"STRONG": 0, "OK": 0, "NEUTRAL": 0, "LAG": 0, "DEEP_LAG": 0}
+        for _stk in top_40:
+            try:
+                # dist_52w_high_pct = (high - close)/high * 100  → smaller = closer to high
+                _d = float(_stk.get("dist_52w_high_pct", 100) or 100)
+            except Exception:
+                _d = 100.0
+
+            if   _d <= 3.0:   _zone, _bonus = "STRONG",   +1.00
+            elif _d <= 8.0:   _zone, _bonus = "OK",       +0.50
+            elif _d <= 15.0:  _zone, _bonus = "NEUTRAL",   0.00
+            elif _d <= 25.0:  _zone, _bonus = "LAG",      -0.50
+            else:             _zone, _bonus = "DEEP_LAG", -1.00
+            _z_counts[_zone] += 1
+
+            _bonus_pts = _bonus * _52w_cap
+            _stk["signal_52w_high"] = {
+                "ok": True,
+                "dist_pct": round(_d, 2),
+                "zone": _zone,
+                "factor_bonus": round(_bonus_pts, 2),
+            }
+            try:
+                _fc = float(_stk.get("final_confidence", 0) or 0)
+                _stk["final_confidence"] = max(0.0, min(100.0, _fc + _bonus_pts))
+            except Exception:
+                pass
+
+        _log(
+            f"  [Phase H · 52w-high] STRONG:{_z_counts['STRONG']} "
+            f"OK:{_z_counts['OK']} NEUTRAL:{_z_counts['NEUTRAL']} "
+            f"LAG:{_z_counts['LAG']} DEEP_LAG:{_z_counts['DEEP_LAG']} "
+            f"(bonus cap ±{_52w_cap} pts)"
+        )
+        # Re-sort so 52w-STRONG names bubble to the top
+        top_40.sort(key=lambda x: (
+            -float(x.get("final_confidence", 0) or 0),
+            -float(x.get("swing_alpha_score", 0) or 0),
+            x["symbol"],
+        ))
+
+    # ═════════════════════════════════════════════════════════════════════
+    # SIMPLE_MODE_52W — "your brother's strategy" as a single flag
+    # ═════════════════════════════════════════════════════════════════════
+    # When SIMPLE_MODE_52W=true, ONLY consider stocks within 8% of their
+    # 52-week high (STRONG or OK zone). Everything else gets a hard-reject
+    # so the gate machinery downstream drops them. All other signals still
+    # score — but 52w-high proximity is the primary filter.
+    #
+    # Use this to A/B test a pure momentum strategy vs. the full 20-signal
+    # system without deleting any code. Turn on for one week, compare tracker
+    # P&L to a baseline week. If it wins, keep going; if not, revert.
+    # ─────────────────────────────────────────────────────────────────────
+    if _simple_mode and top_40:
+        _kept = _dropped = 0
+        for _stk in top_40:
+            try:
+                _d = float(_stk.get("dist_52w_high_pct", 100) or 100)
+            except Exception:
+                _d = 100.0
+            if _d > 8.0:  # not near the high → reject
+                _stk["phaseG_hard_reject"] = True
+                _fr = _stk.setdefault("fail_reasons", [])
+                _reason = f"SIMPLE_MODE_52W_FAIL(dist={_d:.1f}%>8.0%)"
+                if _reason not in _fr:
+                    _fr.append(_reason)
+                _dropped += 1
+            else:
+                _kept += 1
+        _log(
+            f"  [SIMPLE_MODE_52W] active — kept {_kept} within 8% of 52w-high, "
+            f"hard-rejected {_dropped} others. Pure momentum strategy."
+        )
 
     for stock in top_40:
         sym_clean     = stock["symbol"].replace(".NS", "")
