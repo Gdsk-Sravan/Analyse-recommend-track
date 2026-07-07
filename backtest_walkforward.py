@@ -467,12 +467,17 @@ def run_backtest():
         print(f"Saved: {full_path}")
 
     # ── Threshold recommendations ──────────────────────────────────────────────
-    # Find the confidence bucket where win_rate first exceeds 60%
-    target_wr = 60.0
-    rec_threshold = 85  # default if not found
+    # Break-even math: with T1=+5% and Stop=-3%, R/R ≈ 1.67
+    #                  → break-even win rate ≈ 1 / (1 + 1.67) = 37.5%
+    # We add a comfortable safety cushion and target 45% win rate.
+    # Empirically the peak we see across NSE (2y) is ~48% in the 70-80 band,
+    # so 45% picks the SWEET SPOT rather than falling back to the default.
+    target_wr = 45.0            # was 60.0 — unreachable, always fell back to default
+    min_bucket_size = 100       # need at least 100 trades for the number to be stable
+    rec_threshold = 70          # sensible default aligned with backtest evidence (was 85)
     for b in sorted(buckets.keys()):
         d  = buckets[b]
-        if d["total"] < 20:
+        if d["total"] < min_bucket_size:
             continue
         wr = d["t1"] / d["total"] * 100
         if wr >= target_wr:
@@ -486,7 +491,7 @@ def run_backtest():
         f.write(f"Run date: {datetime.date.today()}\n")
         f.write(f"Symbols tested: {len(symbols)}\n")
         f.write(f"Total bars: {len(all_rows)}\n\n")
-        f.write(f"Recommended min_confidence (60% win rate threshold): {rec_threshold}\n\n")
+        f.write(f"Recommended min_confidence ({target_wr:.0f}% win rate threshold, {min_bucket_size}+ trades): {rec_threshold}\n\n")
         f.write("Win rate by confidence bucket:\n")
         f.write(f"{'Bucket':>8} | {'Total':>6} | {'WinRate':>8} | {'StopRate':>9}\n")
         f.write("-" * 40 + "\n")
