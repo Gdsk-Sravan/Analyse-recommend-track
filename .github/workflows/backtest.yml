@@ -57,6 +57,18 @@ on:
         description: "TOP_N_SYMBOLS cap for backtest_walkforward.py (higher = slower + more accurate)."
         required: false
         default: "200"
+      simulate_live_filters:
+        description: "Phase I: mirror main.py's live filters (BREAKOUT bonus + WEAK/SIDEWAYS skip + min_conf=70). Set true to prove the 3 code fixes flip the edge."
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+      min_confidence_live:
+        description: "Phase I: min confidence floor when simulating live filters."
+        required: false
+        default: "70"
 
   schedule:
     # 03:47 IST on the 1st of Jan / Apr / Jul / Oct — weekday check happens
@@ -138,6 +150,11 @@ jobs:
           BACKTEST_OUTPUT_DIR: backtest_staging
           STOCKS_FILE:         stocks.txt
           TOP_N_SYMBOLS:       ${{ github.event.inputs.top_n_symbols || '200' }}
+          # Phase I (2026-07-07): flip on to prove main.py's live filters
+          # (BREAKOUT bonus + regime skip + min_conf floor) turn the raw
+          # -EV signal into a +EV one.
+          SIMULATE_LIVE_FILTERS: ${{ github.event.inputs.simulate_live_filters || 'false' }}
+          MIN_CONFIDENCE_LIVE:   ${{ github.event.inputs.min_confidence_live || '70' }}
         run: python3 backtest_walkforward.py
 
       - name: Diff + Telegram notify
