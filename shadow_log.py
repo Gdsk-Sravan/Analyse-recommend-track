@@ -520,10 +520,9 @@ def format_shadow_telegram(top_n_per_bucket: int = 5,
         for r in b_pending[:top_n_per_bucket]:
             lines.append(
                 f"   • {r.get('date_added','')} "
-                f"<code>{r.get('symbol',''):<10}</code> "
-                f"{r.get('setup',''):<9} conf {r.get('conf','')} "
-                f"[{r.get('regime','')}] "
-                f"@ ₹{r.get('entry','')}"
+                f"<code>{r.get('symbol','')}</code> · "
+                f"{r.get('setup','')} · conf {r.get('conf','')} · "
+                f"[{r.get('regime','')}] @ ₹{r.get('entry','')}"
             )
         if len(b_pending) > top_n_per_bucket:
             lines.append(f"   … +{len(b_pending) - top_n_per_bucket} more")
@@ -557,9 +556,9 @@ def format_shadow_telegram(top_n_per_bucket: int = 5,
                         "❌" if r.get("status") == _STATUS_LOSS else "⏱️")
                     lines.append(
                         f"   {_st_icon} [{r.get('bucket','?')}] "
-                        f"<code>{r.get('symbol',''):<10}</code> "
-                        f"R={r.get('r_multiple','')} "
-                        f"({r.get('days_held','')}d)"
+                        f"<code>{r.get('symbol','')}</code> · "
+                        f"R={r.get('r_multiple','')} · "
+                        f"{r.get('days_held','')}d"
                     )
                 if len(today_resolved) > 6:
                     lines.append(f"   … +{len(today_resolved) - 6} more")
