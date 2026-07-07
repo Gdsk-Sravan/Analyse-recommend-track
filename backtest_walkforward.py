@@ -439,12 +439,32 @@ def run_backtest():
     print(f"Saved: {wrc_path}")
 
     # Write all raw rows
+    # 2026-07-07 fix: rows in `all_rows` may carry extra fields (exit_bars,
+    # regime, sector, r_multiple, setup) added by later trade-simulator
+    # enhancements. Set extrasaction="ignore" so DictWriter drops unknown
+    # keys instead of raising ValueError. Full-fat rows are also written to
+    # backtest_raw_full.csv below for anyone who wants everything.
     raw_path = os.path.join(OUTPUT_DIR, "backtest_raw.csv")
     with open(raw_path, "w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=["symbol", "date", "confidence", "outcome"])
+        w = csv.DictWriter(
+            f,
+            fieldnames=["symbol", "date", "confidence", "outcome"],
+            extrasaction="ignore",
+        )
         w.writeheader()
         w.writerows(all_rows)
     print(f"Saved: {raw_path}")
+
+    # Full-fat dump — includes exit_bars/regime/sector/r_multiple/setup when
+    # present. Auto-derives field list from the union of all row keys.
+    if all_rows:
+        full_fields = sorted({k for r in all_rows for k in r.keys()})
+        full_path = os.path.join(OUTPUT_DIR, "backtest_raw_full.csv")
+        with open(full_path, "w", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=full_fields, extrasaction="ignore")
+            w.writeheader()
+            w.writerows(all_rows)
+        print(f"Saved: {full_path}")
 
     # ── Threshold recommendations ──────────────────────────────────────────────
     # Find the confidence bucket where win_rate first exceeds 60%
