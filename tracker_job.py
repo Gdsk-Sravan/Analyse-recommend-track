@@ -150,13 +150,57 @@ def _flag_position_health(sym: str, cur_return: float, deliv: dict) -> str:
     return ""
 
 
+def _detect_fresh_start_marker(today_str: str) -> bool:
+    """Phase C7f (2026-07-07): auto-detect a wipe main.py did earlier today.
+
+    main.py writes .fresh_start_marker containing today's date when it runs
+    with FRESH_START=true. tracker.yml checkout can silently pull the
+    pre-wipe xlsx from git (main.yml's persist step doesn't always land
+    before tracker.yml runs), so tracker MUST honor this marker or it will
+    append fresh rows onto stale rows and undo the reset.
+
+    Returns True if a marker for TODAY is present. Deletes the marker so
+    it fires exactly once (the next tracker run will be normal).
+    Any read/parse error is treated as "no marker" — non-fatal.
+    """
+    marker = ".fresh_start_marker"
+    if not os.path.exists(marker):
+        return False
+    try:
+        with open(marker, "r", encoding="utf-8") as _fm:
+            marker_date = _fm.read().strip()
+    except Exception as e:
+        print(f"[FRESH_START] Could not read {marker}: {e} — ignoring")
+        return False
+    if marker_date != today_str:
+        # Stale marker from a previous day (should not happen — main.py
+        # rewrites it on every FRESH_START run). Remove it and continue.
+        print(f"[FRESH_START] Stale marker date={marker_date} (today={today_str}) — removing")
+        try:
+            os.remove(marker)
+        except OSError:
+            pass
+        return False
+    # Marker is for today — consume it so we don't skip tomorrow too.
+    try:
+        os.remove(marker)
+        print(f"[FRESH_START] Consumed .fresh_start_marker for {today_str}")
+    except OSError as e:
+        print(f"[FRESH_START] Could not delete marker (non-fatal): {e}")
+    return True
+
+
 def run_tracker():
     today_str = datetime.now().strftime("%Y-%m-%d")
     print(f"=== TRACKER JOB: {today_str} ===")
     # Phase C7c: FRESH_START safety — if main.py just wiped state, skip tracking
     # today. It'll pick up naturally from tomorrow's run with clean baseline.
-    if FRESH_START:
-        print("[FRESH_START] tracker_job: main.py wiped state this run — skipping tracker update")
+    # Phase C7f (2026-07-07): ALSO honor .fresh_start_marker so we detect a
+    # wipe even when tracker.yml's own fresh_start input was not set.
+    marker_detected = _detect_fresh_start_marker(today_str)
+    if FRESH_START or marker_detected:
+        reason = "explicit input" if FRESH_START else "detected .fresh_start_marker"
+        print(f"[FRESH_START] tracker_job: main.py wiped state this run ({reason}) — skipping tracker update")
         print("[FRESH_START] tracker_job: will resume normal tracking on the next scheduled run")
         return
     print(f"[INFO] Run mode: {'SCHEDULED — will write tracking rows' if IS_SCHEDULED else 'MANUAL — read-only, no rows written'}")
