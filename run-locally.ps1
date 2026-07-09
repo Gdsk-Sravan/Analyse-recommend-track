@@ -109,7 +109,7 @@ Write-Host "══════════════════════�
 Write-Host ""
 Write-Host "Generated artifacts:" -ForegroundColor Cyan
 $artifacts = @(
-    "recommendation_tracker.xlsx",
+    "shadow_master.xlsx",
     "trade_tracker.json",
     "confidence_history.json",
     "gate_memory.json",
