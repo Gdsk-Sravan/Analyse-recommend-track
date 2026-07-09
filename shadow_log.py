@@ -445,10 +445,12 @@ def format_shadow_summary(max_pending_shown: int = 3) -> str:
             continue
         expected = _BUCKET_EXPECTED_WR[bucket]
         verdict  = _bucket_verdict(s["wr"], expected, s["resolved"])
+        # Phase Polish (2026-07-11): suppress "wr=0.0%" when n<10 resolved.
+        wr_display = f"{s['wr']:5.1f}%" if s["resolved"] >= 10 else "  —  "
         lines.append(
             f"  · {_BUCKET_NAME[bucket]:<20} "
             f"n={s['total']:>4} · pend={s['pending']:>3} · "
-            f"wr={s['wr']:5.1f}% · exp={s['exp_r']:+.2f}R · {verdict}"
+            f"wr={wr_display} · exp={s['exp_r']:+.2f}R · {verdict}"
         )
 
     # Show top 3 most recent PENDING for transparency (across all buckets)
@@ -508,10 +510,15 @@ def format_shadow_telegram(top_n_per_bucket: int = 5,
         verdict  = _bucket_verdict(s["wr"], expected, s["resolved"])
         icon     = _icons.get(bucket, "•")
 
+        # Phase Polish (2026-07-11): suppress the alarming "wr=0.0%" display
+        # when we haven't resolved enough trades yet. 0.0% reads as a total
+        # failure but really means "no data yet". Threshold 10 matches
+        # _bucket_verdict()'s "need ~20" cliff.
+        wr_display = f"{s['wr']:.1f}%" if s["resolved"] >= 10 else "—"
         lines.append(
             f"{icon} <b>{_BUCKET_NAME[bucket]}</b> "
             f"· n={s['total']} · pend={s['pending']} · "
-            f"wr={s['wr']:.1f}% (exp {expected:.0f}%) · {verdict}"
+            f"wr={wr_display} (exp {expected:.0f}%) · {verdict}"
         )
 
         # Show most-recent pending rows for this bucket
