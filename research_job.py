@@ -4,8 +4,8 @@ research_job.py — Research & Analytics (JOB 3)
 Run weekly (Saturdays) and monthly.
 GitHub Actions: schedule 0 4 * * 6 (Saturdays 9:30 AM IST / 4:00 UTC)
 
-Reads:  recommendation_tracker.xlsx
-Writes: recommendation_tracker.xlsx — Analysis sheets updated
+Reads:  shadow_master.xlsx
+Writes: shadow_master.xlsx — Analysis sheets updated
 
 Usage:
     python research_job.py
@@ -37,7 +37,7 @@ except ImportError:
     _OPENPYXL_OK = False
     print("[ERROR] openpyxl not installed. Run: pip install openpyxl")
 
-TRACKER_XLSX = os.getenv("TRACKER_XLSX", "recommendation_tracker.xlsx")
+TRACKER_XLSX = os.getenv("TRACKER_XLSX", "shadow_master.xlsx")
 # Phase C7c: FRESH_START flag — skip research on the reset run (nothing meaningful to analyze yet)
 FRESH_START  = os.getenv("FRESH_START", "false").lower() == "true"
 # Phase C7e (2026-07-02): min sample size for any bucket-level stat to be
