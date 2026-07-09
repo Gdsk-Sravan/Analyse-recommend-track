@@ -50,7 +50,7 @@ jobs:
       # is set on the evening job, these files live in git and this step is
       # a no-op safety net.
       - name: Download tracker artifact (fallback if git copies missing)
-        if: ${{ hashFiles('recommendation_tracker.xlsx', 'trade_tracker.json', 'confidence_history.json') == '' }}
+        if: ${{ hashFiles('shadow_master.xlsx', 'trade_tracker.json', 'confidence_history.json') == '' }}
         uses: dawidd6/action-download-artifact@v3
         continue-on-error: true
         with:
@@ -66,7 +66,7 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TRADE_TRACKER_V2_FILE: trade_tracker.json
           CONF_HISTORY_FILE: confidence_history.json
-          TRACKER_XLSX: recommendation_tracker.xlsx
+          TRACKER_XLSX: shadow_master.xlsx
           SCHEDULED_RUN: ${{ github.event.inputs.run_mode == 'scheduled' && 'true' || 'false' }}
           # Phase C7c: FRESH_START skips loading old state (still runs, but
           # produces a clean report without WoW deltas).
@@ -78,7 +78,7 @@ jobs:
         if: ${{ github.event.inputs.run_mode == 'scheduled' }}
         run: |
           set -e
-          if [ ! -f recommendation_tracker.xlsx ]; then
+          if [ ! -f shadow_master.xlsx ]; then
             echo "[INFO] No tracker file to commit"
             exit 0
           fi
@@ -88,7 +88,7 @@ jobs:
           # — must be committed so next week's run can compute deltas.
           # Phase W (2026-07-03): also commit run_health.json for cross-workflow
           # staleness detection.
-          files=(recommendation_tracker.xlsx weekly_metrics.json run_health.json)
+          files=(shadow_master.xlsx weekly_metrics.json run_health.json)
           existing=()
           for f in "${files[@]}"; do [ -e "$f" ] && existing+=("$f"); done
           if [ ${#existing[@]} -eq 0 ]; then
