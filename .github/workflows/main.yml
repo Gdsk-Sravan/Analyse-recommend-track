@@ -250,8 +250,10 @@ jobs:
             reject_watch.json
             reject_outcome_log.csv
             run_health.json
-            recommendation_tracker.xlsx
+            shadow_master.xlsx
             shadow_trades.csv
+            shadow_report.xlsx
+            reports/archive/**
             .fresh_start_marker
           key: stock-reviewer-data-${{ runner.os }}-${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
@@ -300,6 +302,57 @@ jobs:
       - name: Run evening pipeline
         run: python3 main.py
 
+      # ── 2026-07-09 Consolidation (D3): fold tracker_job.py + shadow_master_job.py in ──
+      # Was previously a standalone tracker.yml workflow at 4:30 PM IST. Now that
+      # the evening pipeline (main.py) already populates the Recommendations +
+      # shadow_trades.csv, run tracker_job.py right after to update Daily Tracking /
+      # Performance Summary / Portfolio Risk / Benchmark / Equity Curve sheets
+      # in shadow_master.xlsx, then run shadow_master_job.py to append today's
+      # A/B/C/D bucket rows + rebuild Live_Positions / Summary / Bucket_Comparison /
+      # Resolved_Today / Change_Log sheets on top.
+      - name: Run tracker job (Daily Tracking + Performance sheets)
+        continue-on-error: true
+        env:
+          TRACKER_XLSX: shadow_master.xlsx
+          SCHEDULED_RUN: "true"
+          FRESH_START: ${{ env.FRESH_START || 'false' }}
+          TRADE_TRACKER_V2_FILE: trade_tracker.json
+        run: python tracker_job.py
+
+      - name: Detect yfinance outage (from tracker_job)
+        if: always()
+        continue-on-error: true
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          if [ -f "yfinance_down.flag" ]; then
+            python scripts/notify_telegram.py --text \
+              "⚠️ tracker: yfinance API unreachable — no rows written. Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" || true
+          fi
+
+      - name: Run reject-outcome follow-up (Phase N-2)
+        continue-on-error: true
+        run: |
+          if [ -f "reject_watch.json" ]; then
+            python scripts/reject_followup.py \
+              --watch reject_watch.json \
+              --out reject_outcome_log.csv
+          else
+            echo "[INFO] reject_watch.json not yet populated — skipping"
+          fi
+
+      - name: Run shadow master job (buckets A/B/C/D + rollups)
+        continue-on-error: true
+        env:
+          SHADOW_MASTER_PATH: shadow_master.xlsx
+          SHADOW_ARCHIVE_DIR: reports/archive
+          SCHEDULED_RUN: "true"
+          FRESH_START: ${{ env.FRESH_START || 'false' }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python shadow_master_job.py --mode scan-and-update
+
       - name: Show summary
         if: always()
         run: |
@@ -335,8 +388,10 @@ jobs:
             reject_watch.json
             reject_outcome_log.csv
             run_health.json
-            recommendation_tracker.xlsx
+            shadow_master.xlsx
             shadow_trades.csv
+            shadow_report.xlsx
+            reports/archive/**
             .fresh_start_marker
           key: stock-reviewer-data-${{ runner.os }}-${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}
 
@@ -346,7 +401,7 @@ jobs:
         with:
           name: recommendation-tracker
           path: |
-            recommendation_tracker.xlsx
+            shadow_master.xlsx
             trade_tracker.json
             confidence_history.json
             gate_memory.json
@@ -385,7 +440,7 @@ jobs:
             portfolio_status.csv
             trade_journal.csv
             tracker.json
-            recommendation_tracker.xlsx
+            shadow_master.xlsx
             trade_tracker.json
             confidence_history.json
             gate_memory.json
@@ -398,19 +453,27 @@ jobs:
             reject_outcome_log.csv
             run_health.json
             shadow_trades.csv
+            shadow_report.xlsx
             .fresh_start_marker
           )
           # Phase C7f (2026-07-07): on a FRESH_START run, main.py renamed the
-          # old xlsx to recommendation_tracker.xlsx.stale_<date>. Do NOT commit
+          # old xlsx to shadow_master.xlsx.stale_<date>. Do NOT commit
           # that stale sibling to git — it would pollute the durable store and
           # eventually get restored by a downstream job's checkout. Also drop
           # any previously-committed .stale_* files so the repo stays clean.
           if [ "$FRESH_START" = "true" ]; then
             echo "[FRESH_START] Purging any .stale_* xlsx siblings from git tracking"
-            git ls-files 'recommendation_tracker.xlsx.stale_*' 2>/dev/null | xargs -r git rm -f || true
+            git ls-files 'shadow_master.xlsx.stale_*' 2>/dev/null | xargs -r git rm -f || true
           fi
           existing=()
           for f in "${files[@]}"; do [ -e "$f" ] && existing+=("$f"); done
+          # Phase I (2026-07-09): also stage the shadow-report archive dir so
+          # daily dated xlsx copies (reports/archive/shadow_report_YYYY-MM-DD.xlsx)
+          # get committed. The dir itself is stable; only new files trigger
+          # a real diff.
+          if [ -d reports/archive ]; then
+            existing+=("reports/archive")
+          fi
           [ ${#existing[@]} -eq 0 ] && exit 0
           git add "${existing[@]}"
           git diff --cached --quiet || git commit -m "chore: update portfolio state + tracker [skip ci]" && git push
