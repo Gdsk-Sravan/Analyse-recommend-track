@@ -65,6 +65,21 @@ try:
 except ImportError:
     _SHADOW_LOG_OK = False
 
+# ── 2026-07-09 Consolidation D3: shadow master job ──────────────────────────
+# Builds shadow_master.xlsx with 4 bucket sheets (A_TAKEN, B_WATCH_ME,
+# C_NOT_MY_STYLE, D_SO_CLOSE) + rollups (Summary, Bucket_Comparison,
+# Live_Positions, Resolved_Today, Change_Log). Runs after tracker_job.py so
+# the base Recommendations / Daily Tracking / Performance sheets exist. In
+# CI, the workflow also runs `python shadow_master_job.py` as a separate step
+# for full visibility — the in-process call here is kept for local runs
+# (run-locally.ps1) and produces a preview when SCHEDULED_RUN is false.
+# Toggle: SHADOW_REPORT_ENABLED=false disables the in-process call.
+try:
+    import shadow_master_job
+    _SHADOW_REPORT_OK = True
+except ImportError:
+    _SHADOW_REPORT_OK = False
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # SECTION 0b — SAFETY BASELINE (Phase A — added 2026-06-30)
@@ -396,7 +411,7 @@ IS_SCHEDULED        = os.getenv("SCHEDULED_RUN", "false").lower() == "true"
 #   • load_gate_memory()                        → returns {} (no stale 5d window)
 #   • load_regime_calibration()                 → returns {} (no stale deltas)
 #   • load_watchlist_persist() / conf_history   → return empty
-#   • recommendation_tracker.xlsx               → renamed to .stale_<date>
+#   • shadow_master.xlsx                        → renamed to .stale_<date>
 #   • decision_audit_*.jsonl                    → new file naturally (date-suffixed)
 # What it does NOT touch (rebuild-cost is high, not decision-tainted):
 #   • fundamentals_cache.json, sector_cache.json, delivery_cache.json
@@ -7884,6 +7899,27 @@ def compute_all_factors(symbol: str, df,
         result["atr14"]           = round(atr14, 2)
         result["rsi14"]           = round(rsi, 1)
 
+        # Phase I fix (2026-07-09): stamp the fields _classify_setup_live()
+        # needs so setup_type is correctly classified as BREAKOUT / MOMENTUM /
+        # PULLBACK / REVERSAL instead of falling through to "OTHER" for every
+        # stock. Root cause: classifier's docstring claimed these fields were
+        # already stamped by the scorer, but they weren't — every guard clause
+        # `if last <= 0 or ema20 <= 0 or ...` fired and returned "OTHER",
+        # forcing 100% of shadow-log rows into Bucket C.
+        try:
+            _h20 = float(np.max(highs[-20:])) if len(highs) >= 20 else float(np.max(highs))
+            _l20 = float(np.min(lows[-20:]))  if len(lows)  >= 20 else float(np.min(lows))
+            result["close"]     = round(float(last), 2)
+            result["ema20"]     = round(float(ema20), 2)
+            result["ema50"]     = round(float(ema50), 2)
+            result["high_20d"]  = round(_h20, 2)
+            result["low_20d"]   = round(_l20, 2)
+            result["chg_5d"]    = round(float(ret5d), 2)
+        except Exception:
+            # Defensive — leave classifier fields unset so it falls back to
+            # "OTHER" only in genuinely degenerate cases (no price data etc.)
+            pass
+
         # ── factor_scores mirror dict — used by format_confidence_breakdown() ──
         # Phase C5 (rating ≥ 9.0): preserve None (MISSING) so downstream code
         # can distinguish "measured neutral 50" from "not measured at all".
@@ -11020,7 +11056,7 @@ def format_watchlist_section(watchlist: list, regime: str,
     NEAR MISS  — full detail for ALL stocks (no truncation), sorted by R/R desc
     DEVELOPING — company-names-only (rows of 5), like MONITOR
     MONITOR    — company-names-only (rows of 5)
-    Full Entry/Stop/T1/T2 for every tier is persisted to recommendation_tracker.xlsx.
+    Full Entry/Stop/T1/T2 for every tier is persisted to shadow_master.xlsx.
     """
     thresh   = REGIME_THRESHOLDS[regime]
     min_conf = thresh["min_confidence"]
@@ -11857,11 +11893,11 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
 # SECTION 10b — EXCEL RECOMMENDATION TRACKER (PART C)
 # ─────────────────────────────────────────────────────────────────────────────
 
-TRACKER_XLSX = "recommendation_tracker.xlsx"
+TRACKER_XLSX = "shadow_master.xlsx"
 
 
 def _create_excel_workbook():
-    """Create recommendation_tracker.xlsx with all required sheets."""
+    """Create shadow_master.xlsx with all required sheets."""
     try:
         import openpyxl
         from openpyxl.styles import PatternFill, Font
@@ -12012,7 +12048,7 @@ def save_recommendations_to_excel(buys: list, watchlist: list,
                                    regime_data: dict, today_str: str,
                                    rejected: list = None) -> None:
     """
-    Appends today's recommendations to recommendation_tracker.xlsx.
+    Appends today's recommendations to shadow_master.xlsx.
     Creates file with all sheets if it doesn't exist. Never overwrites existing rows.
 
     2026-07-06: added `rejected` parameter — writes to "Rejected" sheet so we
@@ -13715,6 +13751,33 @@ def _run_pipeline_inner():
     # Send BUY signals to dedicated buy channel
     send_buy_telegram(buys, regime, timestamp)
 
+    # ── 2026-07-09 Consolidation D3: shadow master report ─────────────────
+    # Runs the bucket-tracking flow (A/B/C/D) on shadow_master.xlsx. This
+    # is the same job the workflow runs as a separate step under CI; keeping
+    # it here means run-locally.ps1 and manual runs also get a preview file
+    # + Telegram push. shadow_master_job internally gates save-vs-preview
+    # via SCHEDULED_RUN so double-runs under CI are safe (idempotent).
+    if _SHADOW_REPORT_OK and os.getenv("SHADOW_REPORT_ENABLED", "true").lower() != "false":
+        try:
+            _rep = shadow_master_job.run_scan_and_update(quiet=True)
+            if _rep.get("ok") and not _rep.get("skipped"):
+                _stats = _rep.get("stats", {}) or {}
+                _n_appended = _rep.get("n_appended", 0)
+                _n_resolved = len(_stats.get("resolved_today", []) or [])
+                _log(
+                    f"[shadow_master] {_rep.get('mode', '?')} · "
+                    f"xlsx={_rep.get('xlsx_path')} · "
+                    f"appended={_n_appended} · "
+                    f"updated={_stats.get('n_rows_updated', 0)} · "
+                    f"resolved={_n_resolved}"
+                )
+            elif _rep.get("skipped"):
+                _log(f"[shadow_master] skipped: {_rep.get('reason', '?')}")
+            else:
+                _log(f"[shadow_master] build failed: {_rep.get('error', '?')}")
+        except Exception as _ex:
+            _log(f"[shadow_master] non-fatal error: {_ex}")
+
     # ── 16. Trade Tracker updates ──
     _log("[16/17] Updating trade tracker...")
     tracker_entries = update_tracker_trailing_stop(tracker_entries)
@@ -13767,7 +13830,7 @@ def _run_pipeline_inner():
     )
 
     # ── Phase G-BATCH1 (2026-07-07): post-trade attribution report ────────
-    # Appends 3 sheets to recommendation_tracker.xlsx:
+    # Appends 3 sheets to shadow_master.xlsx:
     #   Attribution_Factor  — per-factor IC (rank-correlation with P&L)
     #   Attribution_Gate    — per-gate P&L delta vs population avg
     #   Attribution_Regime  — per-regime win-rate + expectancy
@@ -13777,8 +13840,8 @@ def _run_pipeline_inner():
             import attribution as _attr
             _summary_attr = _attr.build_attribution_report(
                 tracker_json="trade_tracker.json",
-                tracker_xlsx="recommendation_tracker.xlsx",
-                out_xlsx="recommendation_tracker.xlsx",
+                tracker_xlsx="shadow_master.xlsx",
+                out_xlsx="shadow_master.xlsx",
                 lookback_days=int(os.environ.get("ATTRIBUTION_LOOKBACK", "90")),
             )
             _log(
