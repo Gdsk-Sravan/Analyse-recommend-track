@@ -9,7 +9,7 @@ Answers the questions your rating flagged as MISSING:
     - "Which of my 10 score factors is actually predictive?"
 
 Inputs:
-    - trade_tracker.json OR recommendation_tracker.xlsx (the daily log)
+    - trade_tracker.json OR shadow_master.xlsx (the daily log)
     - Each trade row is expected to carry: symbol, entry_date, exit_date,
       entry_px, exit_px, side, factors (dict of {factor_name: value}),
       gates_passed (list[str]), regime, kelly_frac, ...
@@ -357,8 +357,8 @@ def _write_sheet(writer, name: str, records: Dict[str, Dict[str, float]], key_co
 
 def build_attribution_report(
     tracker_json: str = "trade_tracker.json",
-    tracker_xlsx: str = "recommendation_tracker.xlsx",
-    out_xlsx: str = "recommendation_tracker.xlsx",
+    tracker_xlsx: str = "shadow_master.xlsx",
+    out_xlsx: str = "shadow_master.xlsx",
     lookback_days: int = 90,
 ) -> Dict[str, Any]:
     """
@@ -444,8 +444,8 @@ if __name__ == "__main__":  # pragma: no cover
                         format="%(asctime)s %(levelname)s %(message)s")
     ap = argparse.ArgumentParser()
     ap.add_argument("--tracker-json", default="trade_tracker.json")
-    ap.add_argument("--tracker-xlsx", default="recommendation_tracker.xlsx")
-    ap.add_argument("--out", default="recommendation_tracker.xlsx")
+    ap.add_argument("--tracker-xlsx", default="shadow_master.xlsx")
+    ap.add_argument("--out", default="shadow_master.xlsx")
     ap.add_argument("--lookback", type=int, default=90)
     args = ap.parse_args()
 
