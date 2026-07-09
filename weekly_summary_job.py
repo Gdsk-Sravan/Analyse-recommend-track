@@ -16,7 +16,7 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID   = os.getenv("TELEGRAM_CHAT_ID", "")
 TRACKER_FILE       = os.getenv("TRADE_TRACKER_V2_FILE", "trade_tracker.json")
 CONF_HISTORY_FILE  = os.getenv("CONF_HISTORY_FILE", "confidence_history.json")
-TRACKER_XLSX       = os.getenv("TRACKER_XLSX", "recommendation_tracker.xlsx")
+TRACKER_XLSX       = os.getenv("TRACKER_XLSX", "shadow_master.xlsx")
 # Phase C7c: FRESH_START flag — skip old state on the reset run
 FRESH_START        = os.getenv("FRESH_START", "false").lower() == "true"
 # Phase C7e: persistent file holding last-week metrics for week-over-week deltas
@@ -153,7 +153,7 @@ def _fmt(v):
 
 def write_weekly_factor_summary(week_start: str, week_end: str) -> None:
     """
-    Reads Recommendations + Daily Tracking sheets from recommendation_tracker.xlsx
+    Reads Recommendations + Daily Tracking sheets from shadow_master.xlsx
     and writes a new 'Weekly Factor Summary' sheet with one row per factor.
 
     Columns per factor:
