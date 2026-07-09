@@ -11238,22 +11238,35 @@ def format_no_buy_explanation(top_rejected: list, regime: str,
     ]
 
     # ── Aggregate rejection reasons ────────────────────────────────────────
-    # Each rejected stock has a fail_reasons list like
-    #   ["CONF_FAIL(got 75.2, need 80)", "RR_FAIL(got 1.65, need 2.0)"]
-    # Strip the "(got X, need Y)" tail so CONF_FAIL / TQ_FAIL / RR_FAIL etc.
-    # aggregate cleanly. Non-parametric reasons (SECTOR_LAGGING, PORTFOLIO_FULL,
-    # KILL_SWITCH, LIQUIDITY_FAIL, HIGH_CORR_*, EVENT_BLOCK_*) pass through.
-    reason_counter = Counter()
-    total_rej      = 0
-    for s in (top_rejected or []):
-        frs = s.get("fail_reasons") or []
-        if not frs:
-            continue
-        total_rej += 1
-        for fr in frs:
+    # Phase Polish (2026-07-11): count ONE primary reason per stock (not
+    # every fail_reasons entry) so counts add up to total_rej. Previously a
+    # stock with both CONF_FAIL and TQ_FAIL was counted twice, producing
+    # sums like 119+1+1=121 for 120 rejects.
+    #
+    # Also split SETUP_EDGE_SKIP into 3 actionable sub-reasons so the user
+    # sees WHY 99% of rejects were setup-skipped:
+    #   - CHOP_NO_BREAKOUT: regime blocked non-BREAKOUT setup
+    #   - SETUP_OTHER:      setup=OTHER (unclassified pattern)
+    #   - SETUP_WEAK:       setup weak in current regime (fallback)
+    def _primary_reject_key(fail_reasons: list) -> str:
+        """Return a single canonical reject key for a stock. Priority order
+        matches _classify_reject_reason() but with SETUP_EDGE_SKIP broken
+        out into sub-reasons parsed from the inner payload."""
+        for fr in (fail_reasons or []):
+            raw = str(fr)
+            # Split SETUP_EDGE_SKIP into sub-reasons using the payload
+            # stamped by apply_setup_edge() (main.py:5814).
+            if raw.startswith("SETUP_EDGE_SKIP"):
+                inner = raw[len("SETUP_EDGE_SKIP("):].rstrip(")")
+                if inner.startswith("REGIME_CHOP_NO_BREAKOUT"):
+                    # Inner form: REGIME_CHOP_NO_BREAKOUT(TRANSITION/MOMENTUM)
+                    if "/OTHER" in inner:
+                        return "SETUP_OTHER"
+                    return "CHOP_NO_BREAKOUT"
+                return "SETUP_WEAK"
             # Strip parenthetical detail so buckets collapse.
-            key = str(fr).split("(", 1)[0].strip()
-            # Truncate very long HIGH_CORR_0.85_WITH_XYZ → HIGH_CORR
+            key = raw.split("(", 1)[0].strip()
+            # Truncate long variants.
             if key.startswith("HIGH_CORR_"):
                 key = "HIGH_CORR"
             elif key.startswith("EVENT_BLOCK_"):
@@ -11261,12 +11274,20 @@ def format_no_buy_explanation(top_rejected: list, regime: str,
             elif key.startswith("KILL_SWITCH"):
                 key = "KILL_SWITCH"
             elif key == "PROMOTER_PLEDGE_BLOCKLIST":
-                # Keep the blocklist reason distinct — helps the audit trail
-                # show WHICH names were caught by the curated list.
                 pass
             elif key.startswith("PROMOTER_PLEDGE_"):
                 key = "PROMOTER_PLEDGE"
-            reason_counter[key] += 1
+            return key
+        return "UNKNOWN"
+
+    reason_counter = Counter()
+    total_rej      = 0
+    for s in (top_rejected or []):
+        frs = s.get("fail_reasons") or []
+        if not frs:
+            continue
+        total_rej += 1
+        reason_counter[_primary_reject_key(frs)] += 1
 
     if total_rej > 0 and reason_counter:
         # Human-friendly labels for the top buckets
@@ -11288,13 +11309,18 @@ def format_no_buy_explanation(top_rejected: list, regime: str,
             "DATA_INCOMPLETE":         "Data incomplete",
             "SUSPECT_PUMP_LOW_DELIVERY": "Suspect pump (low delivery)",
             "INSTITUTIONAL_EXIT":      "Institutional exit signal",
+            # ── Phase Polish (2026-07-11): SETUP_EDGE_SKIP sub-reasons ──
+            "CHOP_NO_BREAKOUT":        "Chop regime — non-BREAKOUT blocked",
+            "SETUP_OTHER":             "Setup pattern unclassified (OTHER)",
+            "SETUP_WEAK":              "Setup weak for current regime",
             # Note: PORTFOLIO_FULL is no longer emitted as of 2026-07-03 \u2014
             # portfolio state no longer affects recommendations. It's a WARNING
             # only now, which never lands in fail_reasons.
         }
-        top3 = reason_counter.most_common(3)
+        # Phase Polish: show top 5 (was 3) since counts are now clean.
+        top5 = reason_counter.most_common(5)
         lines.append(f"  \U0001f4ca <b>Top reject reasons</b> (of {total_rej} rejects):")
-        for key, cnt in top3:
+        for key, cnt in top5:
             label = _LBL.get(key, key)
             pct   = int(round(cnt * 100.0 / total_rej))
             lines.append(f"    \u2022 {label}: {cnt} ({pct}%)")
@@ -11513,7 +11539,69 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
     thresh = regime_data["thresholds"]
 
     # ── Header ──────────────────────────────────────────────────────────────
-    lines.append(f"📊 <b>NSE SWING BRIEF</b> · {timestamp}")
+    # Phase Polish (2026-07-11): show the market close date (IST) in the
+    # header instead of just the dispatch timestamp. Prevents confusion
+    # when the run finishes after midnight IST (GitHub Actions is UTC) and
+    # renders "Jul 10 00:01 IST" for a scan built on Jul 9's close.
+    try:
+        _market_date = ist_today().strftime("%b %d, %Y")
+    except Exception:
+        _market_date = ""
+    if _market_date and _market_date not in (timestamp or ""):
+        lines.append(f"📊 <b>NSE SWING BRIEF</b> · Close {_market_date} · Scan {timestamp}")
+    else:
+        lines.append(f"📊 <b>NSE SWING BRIEF</b> · {timestamp}")
+
+    # ── Phase Polish (2026-07-11): setup mix instrumentation ────────────
+    # Show WHAT setups the pipeline actually saw tonight across the FULL
+    # evaluated pool (buys + watchlist + rejected, typically ~120 stocks).
+    # This is the evidence you need to eventually tune _SETUP_CONF_BONUS.
+    # Format:
+    #   🧭 Setup mix (120 evaluated): BREAKOUT 3 · MOMENTUM 42 · PULLBACK 18 · REVERSAL 25 · OTHER 32
+    #      • BREAKOUT: RELIANCE, TCS, INFY
+    #      • MOMENTUM: HDFC, ICICI, KOTAK, AXIS, SBI  (+37 more)
+    #      • …
+    #      ↳ became BUYs: BREAKOUT 1 (RELIANCE)
+    try:
+        _mix         = regime_data.get("_setup_mix") or {}
+        _mix_bought  = regime_data.get("_setup_mix_bought") or {}
+        _tickers     = regime_data.get("_setup_tickers") or {}
+        _tickers_buy = regime_data.get("_setup_tickers_buy") or {}
+        _pool_size   = regime_data.get("_setup_pool_size", 0)
+        if _mix:
+            _order = ("BREAKOUT", "MOMENTUM", "PULLBACK", "REVERSAL", "OTHER")
+            _parts = [f"{k} {_mix[k]}" for k in _order if _mix.get(k, 0) > 0]
+            if _parts:
+                lines.append(
+                    f"🧭 <b>Setup mix</b> ({_pool_size} evaluated): "
+                    + " · ".join(_parts)
+                )
+                # Per-setup ticker list — show up to 8 symbols, then "+N more"
+                _MAX_TICKERS = 8
+                for k in _order:
+                    _syms = _tickers.get(k, [])
+                    if not _syms:
+                        continue
+                    _shown = _syms[:_MAX_TICKERS]
+                    _extra = len(_syms) - len(_shown)
+                    _line  = f"   • <b>{k}</b>: " + ", ".join(_shown)
+                    if _extra > 0:
+                        _line += f"  <i>(+{_extra} more)</i>"
+                    lines.append(_line)
+            # BUY breakdown line with tickers
+            _bparts = []
+            for k in _order:
+                _n = _mix_bought.get(k, 0)
+                if _n <= 0:
+                    continue
+                _bsyms = _tickers_buy.get(k, [])[:5]  # cap at 5 for BUY line
+                _bparts.append(f"{k} {_n} ({', '.join(_bsyms)})" if _bsyms else f"{k} {_n}")
+            if _bparts:
+                lines.append("   ↳ <b>became BUYs</b>: " + " · ".join(_bparts))
+            elif buys is not None and len(buys) == 0:
+                lines.append("   ↳ <b>became BUYs</b>: none")
+    except Exception:
+        pass
     # FIX: stamp the actual latest OHLCV candle date used by the scan so
     # readers can tell whether data is fresh or from a prior session.
     try:
@@ -12704,6 +12792,19 @@ def _run_pipeline_inner():
             stock["phase_i_skip"] = _skip
     top_40.sort(key=lambda x: (-x["final_confidence"], x["symbol"]))
 
+    # ── Phase Polish (2026-07-11): setup-mix instrumentation ────────────
+    # NOTE: The full setup mix (across ALL evaluated stocks, not just top_40)
+    # is computed AFTER the gate loop below where buys/watchlist/rejected
+    # are finalized. This early hook only tracks top_40 for legacy audit.
+    from collections import Counter as _SetupCounter
+    _setup_mix_top40 = _SetupCounter()
+    for s in top_40:
+        st = s.get("setup_type", "OTHER") or "OTHER"
+        _setup_mix_top40[st] += 1
+    # Stashed for optional debug — the DISPLAYED mix (regime_data["_setup_mix"])
+    # is computed further down after the full evaluated pool is known.
+    regime_data["_setup_mix_top40"] = dict(_setup_mix_top40)
+
     # ── 11b. Opportunity score (kept for audit compat; NOT used for ranking) ──
     # R5 PRUNE (2026-07-06): 480-row audit showed 20/20 top-20 overlap between
     # opportunity_score and final_confidence — the re-sort was a no-op. Ranking
@@ -13559,6 +13660,39 @@ def _run_pipeline_inner():
     else:
         _log(f"  Gate memory: {len(gate_memory)} symbols tracked (NOT saved — manual run)")
     buys = tag_repeat_buy_signals(buys, tracker_entries)
+
+    # ── Phase Polish (2026-07-11): FULL setup-mix instrumentation ────────
+    # Compute setup mix from the FULL evaluated pool: buys + watchlist +
+    # rejected. This is the ~120 stocks that reached the gates (not just
+    # the top-40 candidates). Also collect the top ticker symbols per
+    # setup type so Telegram can show WHICH companies fell into each bucket.
+    try:
+        from collections import Counter as _MixCounter
+        _mix_all      = _MixCounter()   # every stock that reached gates
+        _mix_bought   = _MixCounter()   # of those, how many became BUYs
+        _tickers_all  = {}              # setup_type -> [symbols]
+        _tickers_buy  = {}              # setup_type -> [symbols] (BUYs only)
+
+        # buys + watchlist_stocks are already the surviving pools; rejected
+        # is the fail bucket. All three have setup_type stamped by
+        # apply_setup_edge() earlier in the pipeline.
+        _full_pool = list(buys or []) + list(watchlist_stocks or []) + list(rejected or [])
+        for _s in _full_pool:
+            _st = _s.get("setup_type", "OTHER") or "OTHER"
+            _mix_all[_st] += 1
+            _tickers_all.setdefault(_st, []).append(_s.get("symbol", "?"))
+        for _b in (buys or []):
+            _st = _b.get("setup_type", "OTHER") or "OTHER"
+            _mix_bought[_st] += 1
+            _tickers_buy.setdefault(_st, []).append(_b.get("symbol", "?"))
+
+        regime_data["_setup_mix"]         = dict(_mix_all)
+        regime_data["_setup_mix_bought"]  = dict(_mix_bought)
+        regime_data["_setup_tickers"]     = _tickers_all
+        regime_data["_setup_tickers_buy"] = _tickers_buy
+        regime_data["_setup_pool_size"]   = len(_full_pool)
+    except Exception as _e:
+        _log(f"  [setup-mix] instrumentation skipped: {_e}")
 
     # ── 14c. Position sizing — Kelly + Heat-aware ──
     # Compute Platt stats from tracker history (activates after 20 closed trades)
