@@ -1,0 +1,146 @@
+name: Shadow Log Weekly Report
+
+# Phase I weekly rollup (2026-07-09)
+# Generates shadow_report_weekly.xlsx every Saturday morning ~9 AM IST,
+# archives it, and delivers via Telegram as a document.
+# Purpose: detect if any Phase I bucket is quietly outperforming so the
+# user can decide (manually) whether to relax filters.
+#
+# TRIGGERING (2026-07-09 D3 alignment) — driven by cron-job.org, NOT by
+# GitHub's native schedule:. cron-job.org calls the GitHub REST API with
+# run_mode=scheduled every Saturday ~09:00 IST. Manual runs from the UI
+# default to run_mode=scheduled too (matches weekly.yml + research.yml).
+#
+# NEVER modifies any filter. Recommendations are suggestions only.
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_mode:
+        description: "Run mode (scheduled writes archive, manual is preview only)"
+        required: false
+        # 2026-07-09 D3 alignment: default is 'scheduled' so cron-job.org
+        # POSTs without inputs still get the real archive+commit path.
+        default: "scheduled"
+        type: choice
+        options:
+          - "manual"
+          - "scheduled"
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  shadow-weekly:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        # Same set as weekly.yml — yfinance not strictly needed here but
+        # shadow_log module imports it at top-level for outcome resolution.
+        run: pip install yfinance requests numpy openpyxl pandas python-dotenv tenacity
+
+      # Fallback: if shadow_trades.csv is not yet committed to the repo,
+      # try to pull the latest evening pipeline artifact. Once main.yml
+      # commits shadow_trades.csv (already wired in the persist step),
+      # this is a no-op safety net.
+      - name: Download shadow_trades artifact (fallback if git copy missing)
+        if: ${{ hashFiles('shadow_trades.csv') == '' }}
+        uses: dawidd6/action-download-artifact@v3
+        continue-on-error: true
+        with:
+          workflow: main.yml
+          name: evening-pipeline-output
+          path: .
+          workflow_conclusion: success
+
+      - name: Generate weekly shadow report
+        id: build
+        run: |
+          python shadow_weekly_job.py
+        env:
+          # 2026-07-09 D3: same SCHEDULED_RUN semantics as weekly.yml /
+          # research.yml / main.yml — 'scheduled' = write real files +
+          # archive + commit, 'manual' = build preview only.
+          SCHEDULED_RUN: ${{ github.event.inputs.run_mode == 'scheduled' && 'true' || 'false' }}
+          SHADOW_CSV_PATH: shadow_trades.csv
+          SHADOW_WEEKLY_PATH: shadow_report_weekly.xlsx
+          SHADOW_WEEKLY_ARCHIVE_DIR: reports/archive/weekly
+          SHADOW_MIN_N_FOR_VERDICT: "20"
+          SHADOW_DELTA_PP_THRESHOLD: "5.0"
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+
+      - name: Send weekly Excel to Telegram
+        if: ${{ hashFiles('shadow_report_weekly.xlsx') != '' }}
+        run: |
+          CAPTION="📊 Phase I Shadow Log · Weekly Rollup · $(date -u +%Y-%m-%d)
+          Bucket-level verdicts + suggestions in the Recommendations tab.
+          Suggestions only — no filter is auto-modified."
+          python scripts/notify_telegram_document.py \
+            shadow_report_weekly.xlsx \
+            --caption "$CAPTION"
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+
+      - name: Commit weekly archive back to repo (scheduled runs only)
+        # 2026-07-09 D3: gated on run_mode alone (no native schedule: any more —
+        # cron-job.org always passes run_mode=scheduled).
+        if: ${{ github.event.inputs.run_mode == 'scheduled' }}
+        run: |
+          set -e
+          if [ ! -f shadow_report_weekly.xlsx ]; then
+            echo "[INFO] No weekly xlsx to commit"
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          files=(shadow_report_weekly.xlsx)
+          # Include today's archived dated copy if it exists
+          today=$(date -u +%Y-%m-%d)
+          archived="reports/archive/weekly/shadow_report_weekly_${today}.xlsx"
+          [ -e "$archived" ] && files+=("$archived")
+          existing=()
+          for f in "${files[@]}"; do [ -e "$f" ] && existing+=("$f"); done
+          if [ ${#existing[@]} -eq 0 ]; then
+            echo "[INFO] Nothing to commit"
+            exit 0
+          fi
+          git add "${existing[@]}"
+          if git diff --cached --quiet; then
+            echo "[INFO] No changes to commit"
+            exit 0
+          fi
+          git commit -m "chore: weekly shadow report $(date -u +%Y-%m-%d) [skip ci]"
+          git push
+
+      - name: Upload weekly xlsx as artifact (90d retention)
+        if: ${{ always() && hashFiles('shadow_report_weekly.xlsx') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: shadow-report-weekly
+          path: |
+            shadow_report_weekly.xlsx
+            reports/archive/weekly/*.xlsx
+          retention-days: 90
+
+      - name: Notify on failure
+        if: ${{ failure() }}
+        run: |
+          python scripts/notify_telegram.py \
+            --text "🚨 Shadow Log Weekly Report FAILED on $(date -u +%Y-%m-%d) — check GitHub Actions logs" \
+            --prefix "⚠️"
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
