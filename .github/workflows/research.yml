@@ -51,7 +51,7 @@ jobs:
       # in, the xlsx will already be in the checkout and this step becomes a
       # no-op safety net.
       - name: Download recommendation tracker Excel (fallback if git copy missing)
-        if: ${{ hashFiles('recommendation_tracker.xlsx') == '' }}
+        if: ${{ hashFiles('shadow_master.xlsx') == '' }}
         continue-on-error: true
         uses: dawidd6/action-download-artifact@v3
         with:
@@ -63,7 +63,7 @@ jobs:
 
       - name: Run research analytics job
         env:
-          TRACKER_XLSX: recommendation_tracker.xlsx
+          TRACKER_XLSX: shadow_master.xlsx
           SCHEDULED_RUN: ${{ github.event.inputs.run_mode == 'scheduled' && 'true' || 'false' }}
           # Phase C7c: FRESH_START skips the research build on the reset run.
           FRESH_START: ${{ github.event.inputs.fresh_start || 'false' }}
@@ -75,14 +75,14 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: research-report
-          path: recommendation_tracker.xlsx
+          path: shadow_master.xlsx
           retention-days: 90
 
       - name: Commit research analytics back to repo (scheduled runs only)
         if: ${{ github.event.inputs.run_mode == 'scheduled' }}
         run: |
           set -e
-          if [ ! -f recommendation_tracker.xlsx ]; then
+          if [ ! -f shadow_master.xlsx ]; then
             echo "[INFO] No tracker file to commit"
             exit 0
           fi
@@ -90,7 +90,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           # Phase W (2026-07-03): also commit run_health.json for cross-workflow
           # staleness detection.
-          files=(recommendation_tracker.xlsx run_health.json)
+          files=(shadow_master.xlsx run_health.json)
           existing=()
           for f in "${files[@]}"; do [ -e "$f" ] && existing+=("$f"); done
           [ ${#existing[@]} -eq 0 ] && exit 0
