@@ -4,8 +4,8 @@ tracker_job.py — Recommendation Tracker (JOB 2)
 Run separately every trading day after market close.
 GitHub Actions: schedule weekdays at 4:30 PM IST (11:00 UTC).
 
-Reads:  recommendation_tracker.xlsx (created by main.py daily scanner)
-Writes: recommendation_tracker.xlsx — Daily Tracking sheet + Performance Summary
+Reads:  shadow_master.xlsx (created by main.py daily scanner)
+Writes: shadow_master.xlsx — Daily Tracking sheet + Performance Summary
 
 Usage:
     python tracker_job.py
@@ -36,7 +36,7 @@ except ImportError:
     _OPENPYXL_OK = False
     print("[ERROR] openpyxl not installed. Run: pip install openpyxl")
 
-TRACKER_XLSX  = os.getenv("TRACKER_XLSX", "recommendation_tracker.xlsx")
+TRACKER_XLSX  = os.getenv("TRACKER_XLSX", "shadow_master.xlsx")
 TRACKING_DAYS = 60  # track for 60 trading days after recommendation
 # Only write new tracking rows when triggered by GitHub Actions cron schedule
 IS_SCHEDULED  = os.getenv("SCHEDULED_RUN", "false").lower() == "true"
@@ -249,7 +249,7 @@ def run_tracker():
     if not _probe_ok:
         print("[ERROR] yfinance dry-check FAILED — RELIANCE.NS returned empty/None")
         print("[ERROR] Aborting tracker to protect data integrity (no rows written)")
-        print("[ERROR] The recommendation_tracker.xlsx is UNCHANGED — retry when yf is up")
+        print("[ERROR] The shadow_master.xlsx is UNCHANGED — retry when yf is up")
         # Emit a sentinel file the workflow can detect for its Telegram alert
         try:
             with open("yfinance_down.flag", "w", encoding="utf-8") as _f:
