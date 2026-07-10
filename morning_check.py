@@ -55,6 +55,25 @@ KS_LOSS_WINDOW_DAYS   = int(os.getenv("KS_LOSS_WINDOW_DAYS", "7"))
 TELEGRAM_MAX   = 4000
 
 
+# ─── Phase C7g (2026-07-10): cross-workflow FRESH_START marker ─────────────
+# morning_check runs on preflight.yml at 9:20 AM IST — a completely separate
+# runner from last night's main.py. The env var is only set inside main.py's
+# workflow; the committed `.fresh_start_marker` is the only signal we have.
+# Non-consuming peek: main.py cleans up on the next non-fresh-start run.
+def _peek_fresh_start_marker(today_str: str = None) -> bool:
+    marker = ".fresh_start_marker"
+    if not os.path.exists(marker):
+        return False
+    try:
+        with open(marker, "r", encoding="utf-8") as _fm:
+            marker_date = _fm.read().strip()
+    except Exception:
+        return False
+    if today_str is None:
+        today_str = datetime.date.today().isoformat()
+    return marker_date == today_str
+
+
 # ─── Phase C7d: Kill-Switch Awareness ────────────────────────────────────────
 # Standalone kill-switch computation. Mirrors main.py's compute_kill_switch_state
 # logic exactly so morning_check produces the same buys_paused verdict.
@@ -71,7 +90,7 @@ def _compute_morning_kill_switch() -> dict:
       - Drawdown from peak ≥ 10%       → HALT
       - Drawdown from peak 5% – 10%    → HALVE position size (still allow)
     """
-    if os.getenv("FRESH_START", "false").lower() == "true":
+    if os.getenv("FRESH_START", "false").lower() == "true" or _peek_fresh_start_marker():
         return {"buys_paused": False, "reason": "fresh_start", "sizing_multiplier": 1.0}
 
     if not os.path.exists(TRADE_TRACKER_V2_FILE):
@@ -226,8 +245,10 @@ def _send(message: str) -> None:
 
 
 def _load_tracker() -> list:
-    # Phase C7c: FRESH_START wipes tracker state for one run
-    if os.getenv("FRESH_START", "false").lower() == "true":
+    # Phase C7c + C7g: FRESH_START wipes tracker state for one run.
+    # Also honour cross-workflow .fresh_start_marker (env var is unreachable
+    # from morning_check's separate runner).
+    if os.getenv("FRESH_START", "false").lower() == "true" or _peek_fresh_start_marker():
         print("[FRESH_START] morning_check: ignoring old tracker.json — nothing to check yet")
         return []
     try:
