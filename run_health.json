@@ -15,20 +15,20 @@
     "evening": {
       "buys": 0,
       "exit_status": "ok",
-      "fresh_start": true,
-      "last_run_utc": "2026-07-09T18:31:06Z",
-      "last_success_utc": "2026-07-09T18:31:06Z",
-      "mode": "scheduled",
+      "fresh_start": false,
+      "last_run_utc": "2026-07-10T07:44:40Z",
+      "last_success_utc": "2026-07-10T07:44:40Z",
+      "mode": "manual",
       "regime": "TRANSITION",
       "shorts": 0,
       "tradable": 120,
-      "watchlist": 0
+      "watchlist": 6
     },
     "tracker": {
       "exit_status": "ok",
-      "fresh_start": true,
-      "last_run_utc": "2026-07-09T18:31:07Z",
-      "last_success_utc": "2026-07-09T18:31:07Z",
+      "fresh_start": false,
+      "last_run_utc": "2026-07-10T07:44:42Z",
+      "last_success_utc": "2026-07-10T07:44:42Z",
       "mode": "scheduled"
     }
   }
