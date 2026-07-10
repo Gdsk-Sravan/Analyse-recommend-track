@@ -12020,6 +12020,992 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
     return "\n".join(lines)
 
 
+# ═════════════════════════════════════════════════════════════════════════════
+# SECTION 9c — TELEGRAM MESSAGE v2 (Redesigned 2026-07-10)
+# ═════════════════════════════════════════════════════════════════════════════
+# Human-friendly redesign of the daily Telegram brief. Rationale:
+#   Old format put database-style aggregates in front of the reader
+#   ("MOMENTUM 112 · PULLBACK 18 · OTHER 32", "Rejected 114") but never
+#   showed which stocks were in each bucket. A new person couldn't tell
+#   whether SOBHA was scanned, rejected, or on watchlist.
+#
+# v2 goals (from user session 2026-07-10):
+#   1. Name every stock the reader cares about (all BREAKOUTs, top-10
+#      MOMENTUM, closest-15 rejects) so manual tracking is possible.
+#   2. Front-load the verdict ("0 buys, 1 close call") before any details.
+#   3. Show the tier math (conf_gap, penalty) inline so DEVELOPING vs
+#      MONITOR isn't a mystery.
+#   4. Attach a CSV with EVERY evaluated stock so the reader has full
+#      transparency into the universe.
+#
+# Design principles:
+#   • Gated by NEW_TELEGRAM_FORMAT env var (default "true"); flip to
+#     "false" for instant rollback to v1.
+#   • Each section is a standalone builder wrapped in try/except so one
+#     bad stock never breaks the whole message.
+#   • v2 orchestrator itself is wrapped in try/except at the call site;
+#     on ANY unexpected exception it logs and returns the v1 message.
+#     The user is guaranteed to receive a Telegram even if v2 has a bug.
+#   • Does NOT modify scoring, gates, or any pipeline behavior. Display only.
+# ═════════════════════════════════════════════════════════════════════════════
+
+NEW_TELEGRAM_FORMAT   = os.getenv("NEW_TELEGRAM_FORMAT", "true").lower() == "true"
+TELEGRAM_ATTACH_CSV   = os.getenv("TELEGRAM_ATTACH_CSV", "true").lower() == "true"
+TELEGRAM_PREV_STATE   = os.getenv("TELEGRAM_PREV_STATE", "telegram_prev_state.json")
+TELEGRAM_DAILY_CSV    = os.getenv("TELEGRAM_DAILY_CSV", "telegram_daily.csv")
+
+# 30 daily-tip strings that rotate by day-of-year. Teaches one concept
+# per day so a new reader gradually learns the vocabulary.
+_V2_DAILY_TIPS = [
+    "Confidence (0-100) is how sure the model is about the trade. It combines technicals, fundamentals, volume and regime.",
+    "Trade Quality (TQ) measures pattern strength: volume + tight range + strong close = high TQ. Independent of Confidence.",
+    "BREAKOUT setups are stocks piercing a resistance level. In choppy markets they're the ONLY setup we trust.",
+    "MOMENTUM setups are stocks already in an uptrend. In chop we penalise their confidence by 10% because momentum fades in sideways markets.",
+    "PULLBACK setups are dips inside an uptrend — great in bull regimes, blocked in chop (dips can become breakdowns).",
+    "REVERSAL setups mean the stock changed direction. Blocked in chop for the same reason as pullbacks.",
+    "The Regime is the overall market weather: BULL / TRANSITION / CHOP / BEAR. It changes the confidence bar.",
+    "TRANSITION regime raises the confidence bar to 83 (from 78 in BULL). Fewer stocks pass = higher quality.",
+    "R/R (Risk/Reward ratio) is the ratio of upside to downside. We require ≥1.8× for a BUY.",
+    "The Shadow Log tracks stocks we passed on. If a lot of them go up anyway, our filters are too tight.",
+    "Bucket A in the shadow log = 'high quality, blocked by risk gate'. These are the most useful to review.",
+    "Bucket B = 'watch me later' — chop-penalised MOMENTUM stocks that might rebound in a trend.",
+    "Bucket C = 'not my style' — wrong setup for the current chop regime (pullback / reversal).",
+    "ATR (Average True Range) is how much a stock moves per day. Our stop is 1.5× ATR below entry.",
+    "The 'chop penalty' reduces MOMENTUM confidence by 10% when regime is CHOP or TRANSITION. Breakouts are exempt.",
+    "The MIN_CONFIDENCE gate is regime-adjusted. BULL=78, TRANSITION=83, CHOP=85 — tighter in tougher markets.",
+    "The MIN_TQ gate is also regime-adjusted. BULL=65, TRANSITION=68, CHOP=71 — no weak patterns in chop.",
+    "The R/R gate is the hardest. Only trades where reward is at least 1.8× the risk make it through.",
+    "ROE < 15% or D/E > 1.5 blocks the stock at fundamentals — no leverage traps, no low-return businesses.",
+    "SECTOR_LAGGING means the stock's sector is in the bottom 30% of relative strength. Contrarian only.",
+    "'Near Miss' watchlist tier means the stock is ≤15 confidence points from a BUY — could trigger tomorrow.",
+    "'Developing' watchlist tier means 16-25 points from a BUY — worth tracking but not close yet.",
+    "'Monitor' watchlist tier means >25 points from a BUY — early stage, no action expected soon.",
+    "The Confidence Meter shows how the regime score is distributed. Above 60 = deploy freely.",
+    "The Risk Meter shows portfolio heat. Above 60% heat = STOP adding new positions.",
+    "Position sizing = Kelly-fraction × Capital, capped at 5% per stock. Bigger conviction = bigger size.",
+    "Every BUY signal has a 'max valid entry' — if the stock opens above it, skip the signal.",
+    "The 52-week high tells you if the stock is at all-time highs (usually bullish) or well below (harder to run).",
+    "VIX-IN measures Indian market fear. Below 13 = complacent (careful), above 20 = fear (opportunities).",
+    "We never execute automatically. Every message is a recommendation — you decide what to do.",
+]
+
+
+def _v2_html_esc(s) -> str:
+    """Safe HTML-escape that handles None / non-string / NaN."""
+    try:
+        if s is None:
+            return ""
+        return html.escape(str(s))
+    except Exception:
+        return ""
+
+
+def _v2_safe_float(x, default: float = 0.0) -> float:
+    """Extract a float from anything, defaulting to `default` on failure/NaN."""
+    try:
+        v = float(x)
+        # Reject NaN
+        if v != v:
+            return default
+        return v
+    except Exception:
+        return default
+
+
+def _v2_clean_ticker(sym) -> str:
+    """Strip .NS suffix and normalize."""
+    return str(sym or "?").replace(".NS", "").replace(".BO", "").strip()
+
+
+def _v2_bar(value: float, max_value: float = 100.0, width: int = 18) -> str:
+    """ASCII horizontal bar. Returns a string like '██████████░░░░'."""
+    try:
+        if max_value <= 0:
+            return "░" * width
+        pct = max(0.0, min(1.0, value / max_value))
+        filled = int(round(pct * width))
+        return "█" * filled + "░" * (width - filled)
+    except Exception:
+        return "░" * width
+
+
+def _v2_get_daily_tip() -> str:
+    """Return one tip per day-of-year, rotating through the 30-tip list."""
+    try:
+        doy = ist_today().timetuple().tm_yday
+        return _V2_DAILY_TIPS[doy % len(_V2_DAILY_TIPS)]
+    except Exception:
+        return _V2_DAILY_TIPS[0]
+
+
+def _v2_load_prev_state() -> dict:
+    """Load yesterday's snapshot for delta comparison. Empty dict on failure."""
+    try:
+        if os.path.exists(TELEGRAM_PREV_STATE):
+            with open(TELEGRAM_PREV_STATE, "r", encoding="utf-8") as f:
+                return json.load(f) or {}
+    except Exception:
+        pass
+    return {}
+
+
+def _v2_save_prev_state(snapshot: dict) -> None:
+    """Persist today's snapshot for tomorrow's delta section."""
+    try:
+        with open(TELEGRAM_PREV_STATE, "w", encoding="utf-8") as f:
+            json.dump(snapshot, f, indent=2, default=str)
+    except Exception as e:
+        _log(f"[v2] warn: could not save prev state: {e}")
+
+
+def _v2_primary_reject_label(stock: dict) -> str:
+    """Return a short human label for the stock's primary reject reason."""
+    try:
+        frs = stock.get("fail_reasons", []) or []
+        if not frs:
+            return "unknown"
+        raw = str(frs[0])
+        # Reuse the same classification map as v1's format_no_buy_explanation
+        _LBL = {
+            "CONF_FAIL":               "conf too low",
+            "TQ_FAIL":                 "TQ too low",
+            "RR_FAIL":                 "R/R too low",
+            "WIDE_STOP":               "stop too wide",
+            "SECTOR_LAGGING":          "sector lagging",
+            "SECTOR_CAP":              "sector cap",
+            "KILL_SWITCH":             "kill-switch",
+            "EVENT_BLOCK":             "event blackout",
+            "HIGH_CORR":               "too correlated",
+            "LIQUIDITY_FAIL":          "illiquid",
+            "REGIME_NO_BUY":           "regime blocks BUYs",
+            "PROMOTER_PLEDGE":         "pledge too high",
+            "BLACK_SWAN_NEWS":         "black-swan news",
+            "DATA_INCOMPLETE":         "data incomplete",
+            "CHOP_NO_BREAKOUT":        "chop: non-breakout blocked",
+            "SETUP_OTHER":             "setup unclassified",
+            "SETUP_WEAK":              "setup weak for regime",
+        }
+        # Setup-edge sub-reasons
+        if raw.startswith("SETUP_EDGE_SKIP"):
+            inner = raw[len("SETUP_EDGE_SKIP("):].rstrip(")")
+            if inner.startswith("REGIME_CHOP_NO_BREAKOUT"):
+                if "/OTHER" in inner:
+                    return _LBL["SETUP_OTHER"]
+                return _LBL["CHOP_NO_BREAKOUT"]
+            return _LBL["SETUP_WEAK"]
+        # ROE / DE bumps come through as fail_reasons too
+        if "ROE" in raw.upper():
+            return "ROE too low"
+        if raw.upper().startswith("DE_") or "D/E" in raw or "DE_HIGH" in raw.upper():
+            return "D/E too high"
+        if "MCAP" in raw.upper() or "MARKET_CAP" in raw.upper():
+            return "market cap too small"
+        key = raw.split("(", 1)[0].strip()
+        for prefix, val in [("HIGH_CORR_", "HIGH_CORR"),
+                            ("EVENT_BLOCK_", "EVENT_BLOCK"),
+                            ("KILL_SWITCH", "KILL_SWITCH"),
+                            ("PROMOTER_PLEDGE_", "PROMOTER_PLEDGE")]:
+            if key.startswith(prefix):
+                key = val
+                break
+        return _LBL.get(key, key.lower().replace("_", " "))
+    except Exception:
+        return "unknown"
+
+
+# ── Section builders ────────────────────────────────────────────────────────
+# Each returns list[str]; every one is independently wrapped in try/except
+# at the orchestrator level so one broken section can't kill the message.
+
+def _v2_section_header(timestamp: str) -> list:
+    """Message header with market close date."""
+    try:
+        market_date = ist_today().strftime("%d %b %Y")
+    except Exception:
+        market_date = ""
+    lines = [
+        "━" * 33,
+        f"📊 <b>DAILY SCAN</b> · Close {market_date}",
+        f"<i>Scan: {_v2_html_esc(timestamp)}</i>",
+        "━" * 33,
+    ]
+    return lines
+
+
+def _v2_section_one_line_summary(buys: list, watchlist: list, rejected: list,
+                                 regime: str, setup_mix: dict) -> list:
+    """The 1-sentence 'today in a nutshell' opener."""
+    try:
+        n_buy = len(buys or [])
+        n_wl  = len(watchlist or [])
+        n_rej = len(rejected or [])
+        n_mom = int((setup_mix or {}).get("MOMENTUM", 0))
+        n_bo  = int((setup_mix or {}).get("BREAKOUT", 0))
+
+        # Find the best watchlist stock (highest conf, prefer NEAR_MISS then DEVELOPING)
+        best_wl = None
+        for tier in ("NEAR_MISS", "DEVELOPING", "MONITOR"):
+            cands = [w for w in (watchlist or []) if w.get("tier") == tier]
+            if cands:
+                best_wl = max(cands, key=lambda x: _v2_safe_float(
+                    x.get("conf", x.get("final_confidence", 0))))
+                break
+
+        if n_buy > 0:
+            sentence = (
+                f"<b>{n_buy} BUY signal(s) today.</b> "
+                f"Regime is {regime}; {n_wl} more stocks are on the watchlist."
+            )
+        elif best_wl:
+            sym = _v2_clean_ticker(best_wl.get("symbol", "?"))
+            conf = _v2_safe_float(best_wl.get("conf", best_wl.get("final_confidence", 0)))
+            sentence = (
+                f"<b>No buys today.</b> Market is {regime.lower()} — closest to a signal "
+                f"is <b>{_v2_html_esc(sym)}</b> (conf {conf:.1f}). "
+                f"{n_wl} stocks on watchlist, {n_rej} rejected."
+            )
+        else:
+            sentence = (
+                f"<b>No buys, no close calls.</b> Market is {regime.lower()}. "
+                f"Scanned {n_buy + n_wl + n_rej} stocks — none met the bar today."
+            )
+
+        return [
+            "",
+            "📝 <b>TODAY IN ONE LINE</b>",
+            f"   {sentence}",
+            "",
+        ]
+    except Exception:
+        return []
+
+
+def _v2_section_verdict(buys: list, watchlist: list, rejected: list) -> list:
+    """The 4-line verdict block."""
+    try:
+        n_buy = len(buys or [])
+        n_wl  = len(watchlist or [])
+        n_rej = len(rejected or [])
+        near  = sum(1 for w in (watchlist or []) if w.get("tier") == "NEAR_MISS")
+        dev   = sum(1 for w in (watchlist or []) if w.get("tier") == "DEVELOPING")
+        mon   = sum(1 for w in (watchlist or []) if w.get("tier") == "MONITOR")
+
+        lines = [
+            "🎯 <b>THE VERDICT</b>",
+            f"   <b>{n_buy:>3}</b> 🟢 BUY signals",
+            f"   <b>{near:>3}</b> 🟡 Close call  (near-miss)",
+            f"   <b>{dev + mon:>3}</b> 🔵 Early stage ({dev} developing, {mon} monitor)",
+            f"   <b>{n_rej:>3}</b> 🔴 Rejected    (didn't pass filters)",
+            "",
+        ]
+        return lines
+    except Exception:
+        return []
+
+
+def _v2_section_vs_yesterday(buys: list, watchlist: list, rejected: list,
+                              regime: str, prev: dict) -> list:
+    """Delta vs yesterday's saved snapshot."""
+    try:
+        if not prev:
+            return []  # first run — no yesterday data
+        n_buy = len(buys or [])
+        n_wl  = len(watchlist or [])
+        n_rej = len(rejected or [])
+        prev_buy    = int(prev.get("buys", 0))
+        prev_wl     = int(prev.get("watchlist", 0))
+        prev_rej    = int(prev.get("rejected", 0))
+        prev_regime = str(prev.get("regime", ""))
+        prev_wl_syms = set(prev.get("watchlist_symbols", []) or [])
+        today_wl_syms = set(_v2_clean_ticker(w.get("symbol", "")) for w in (watchlist or []))
+        new_syms = sorted(today_wl_syms - prev_wl_syms)
+        gone_syms = sorted(prev_wl_syms - today_wl_syms)
+
+        def _arrow(now, prev_v):
+            d = now - prev_v
+            if d > 0:  return f"↑ +{d}"
+            if d < 0:  return f"↓ {d}"
+            return "= 0"
+
+        lines = ["📈 <b>vs YESTERDAY</b>"]
+        lines.append(f"   BUYs:      {prev_buy} → {n_buy}   ({_arrow(n_buy, prev_buy)})")
+        lines.append(f"   Watchlist: {prev_wl} → {n_wl}   ({_arrow(n_wl, prev_wl)})")
+        lines.append(f"   Rejected:  {prev_rej} → {n_rej}   ({_arrow(n_rej, prev_rej)})")
+        if prev_regime and prev_regime != regime:
+            lines.append(f"   Regime:    {_v2_html_esc(prev_regime)} → <b>{_v2_html_esc(regime)}</b>")
+        else:
+            lines.append(f"   Regime:    <b>{_v2_html_esc(regime)}</b> (unchanged)")
+        if new_syms:
+            preview = ", ".join(_v2_html_esc(s) for s in new_syms[:5])
+            extra = f" (+{len(new_syms) - 5} more)" if len(new_syms) > 5 else ""
+            lines.append(f"   ➕ New on WL: {preview}{extra}")
+        if gone_syms:
+            preview = ", ".join(_v2_html_esc(s) for s in gone_syms[:5])
+            extra = f" (+{len(gone_syms) - 5} more)" if len(gone_syms) > 5 else ""
+            lines.append(f"   ➖ Left WL:   {preview}{extra}")
+        lines.append("")
+        return lines
+    except Exception:
+        return []
+
+
+def _v2_section_buys(buys: list, regime: str, ai_results: dict) -> list:
+    """BUY signals — reuse the v1 format_buy_card for full detail."""
+    try:
+        if not buys:
+            return []
+        lines = ["🟢 <b>BUY SIGNALS</b>", ""]
+        buy_theses = (ai_results or {}).get("buy_theses", {}) or {}
+        for b in buys:
+            sizing = {
+                "position_value": b.get("position_value", 0),
+                "position_pct":   b.get("position_pct", 0),
+                "shares":         b.get("shares", 0),
+                "max_loss":       b.get("max_loss", 0),
+            }
+            thesis = buy_theses.get(b.get("symbol", ""), "")
+            try:
+                lines.extend(format_buy_card(b, sizing, regime, buy_thesis=thesis))
+            except Exception as e:
+                _log(f"[v2] buy_card failed for {b.get('symbol')}: {e}")
+                lines.append(f"  <b>{_v2_html_esc(_v2_clean_ticker(b.get('symbol')))}</b> — details in Excel")
+            lines.append("  " + "·" * 3)
+        lines.append("")
+        return lines
+    except Exception as e:
+        _log(f"[v2] section_buys crashed: {e}")
+        return []
+
+
+def _v2_section_close_call(watchlist: list, regime: str, ai_results: dict) -> list:
+    """Detailed card for each NEAR_MISS watchlist stock."""
+    try:
+        near = [w for w in (watchlist or []) if w.get("tier") == "NEAR_MISS"]
+        if not near:
+            return []
+        try:
+            thresh = REGIME_THRESHOLDS[regime]
+        except Exception:
+            thresh = {"min_confidence": 78, "min_tq": 65, "min_rr": 1.8}
+        min_conf = _v2_safe_float(thresh.get("min_confidence"), 78)
+        min_tq   = _v2_safe_float(thresh.get("min_tq"), 65)
+        min_rr   = _v2_safe_float(thresh.get("min_rr"), 1.8)
+        insights = (ai_results or {}).get("near_miss_insights", {}) or {}
+
+        # Sort by conf descending
+        near = sorted(near, key=lambda x: _v2_safe_float(
+            x.get("conf", x.get("final_confidence", 0))), reverse=True)
+
+        lines = [f"🟡 <b>CLOSE CALL</b> — {len(near)} stock(s) near-miss", ""]
+        for w in near:
+            sym    = _v2_clean_ticker(w.get("symbol", "?"))
+            sector = _v2_html_esc(w.get("sector", ""))
+            conf   = _v2_safe_float(w.get("conf", w.get("final_confidence", 0)))
+            tq     = _v2_safe_float(w.get("tq", w.get("trade_quality_score", 0)))
+            rr     = _v2_safe_float(w.get("rr_ratio", w.get("rr", 0)))
+            entry  = _v2_safe_float(w.get("entry", 0))
+            stop   = _v2_safe_float(w.get("stop", 0))
+            t1     = _v2_safe_float(w.get("target1", 0))
+            setup  = _v2_html_esc(w.get("setup", "?"))
+            conf_gap = max(0.0, min_conf - conf)
+
+            lines.append(f"  <b>{_v2_html_esc(sym)}</b>  [{sector}]  · Setup: {setup}")
+            lines.append(f"    Price ₹{entry:.1f}  |  Stop ₹{stop:.1f}  |  T1 ₹{t1:.1f}")
+            lines.append(
+                f"    Confidence: <b>{conf:.1f} / {min_conf:.0f}</b> "
+                f"({conf_gap:+.1f} pts shy)"
+            )
+            lines.append(
+                f"    TQ: {tq:.1f} / {min_tq:.0f}  ·  R/R: {rr:.2f}× (need {min_rr:.2f}×)"
+            )
+            # Compact checklist
+            checks = []
+            checks.append(("Confidence", conf >= min_conf, f"{conf:.1f}/{min_conf:.0f}"))
+            checks.append(("TQ",         tq   >= min_tq,   f"{tq:.1f}/{min_tq:.0f}"))
+            checks.append(("R/R",        rr   >= min_rr,   f"{rr:.2f}×"))
+            check_str = "  ".join(
+                f"{'✅' if ok else '❌'} {name} {val}" for name, ok, val in checks
+            )
+            lines.append(f"    {check_str}")
+
+            insight = insights.get(w.get("symbol", ""), "")
+            if insight:
+                lines.append(f"    💡 {_v2_html_esc(insight)}")
+            # Trigger hint
+            if entry > 0:
+                trig = entry * 1.015  # 1.5% above current
+                lines.append(f"    🎯 Trigger: close &gt; ₹{trig:.1f} with vol &gt; 2× avg")
+            lines.append("")
+        return lines
+    except Exception as e:
+        _log(f"[v2] section_close_call crashed: {e}")
+        return []
+
+
+def _v2_section_early_stage(watchlist: list, regime: str) -> list:
+    """DEVELOPING + MONITOR — named list with confidence bars."""
+    try:
+        dev = [w for w in (watchlist or []) if w.get("tier") == "DEVELOPING"]
+        mon = [w for w in (watchlist or []) if w.get("tier") == "MONITOR"]
+        if not dev and not mon:
+            return []
+        try:
+            thresh = REGIME_THRESHOLDS[regime]
+        except Exception:
+            thresh = {"min_confidence": 78}
+        min_conf = _v2_safe_float(thresh.get("min_confidence"), 78)
+
+        lines = [f"🔵 <b>EARLY STAGE</b> — {len(dev) + len(mon)} stock(s) tracked", ""]
+
+        def _render_row(w):
+            sym    = _v2_clean_ticker(w.get("symbol", "?"))
+            setup  = str(w.get("setup", "?"))[:4]  # short: BREA/MOME/PULL/REVE
+            conf   = _v2_safe_float(w.get("conf", w.get("final_confidence", 0)))
+            penalty = _v2_safe_float(w.get("chop_momentum_penalty", 0))
+            bar    = _v2_bar(conf, min_conf * 1.1, width=14)
+            gap    = min_conf - conf
+            pen_note = f" (×0.90 chop)" if penalty > 0 else ""
+            return f"  <code>{_v2_html_esc(sym):<12}</code> {bar} {conf:5.1f}  gap={gap:+.1f}  [{setup}]{pen_note}"
+
+        if dev:
+            lines.append(f"  <b>Developing</b> ({len(dev)}) — 16-25 pts shy of BUY:")
+            for w in sorted(dev, key=lambda x: _v2_safe_float(
+                x.get("conf", x.get("final_confidence", 0))), reverse=True):
+                lines.append(_render_row(w))
+            lines.append("")
+        if mon:
+            lines.append(f"  <b>Monitor</b> ({len(mon)}) — &gt;25 pts shy of BUY:")
+            for w in sorted(mon, key=lambda x: _v2_safe_float(
+                x.get("conf", x.get("final_confidence", 0))), reverse=True):
+                lines.append(_render_row(w))
+            lines.append("")
+        lines.append(f"  <i>Target: {min_conf:.0f} confidence. Bar length is relative to target.</i>")
+        lines.append("")
+        return lines
+    except Exception as e:
+        _log(f"[v2] section_early_stage crashed: {e}")
+        return []
+
+
+def _v2_section_all_breakouts(buys: list, watchlist: list,
+                               rejected: list) -> list:
+    """Every BREAKOUT setup today with verdict + reason."""
+    try:
+        all_stocks = list(buys or []) + list(watchlist or []) + list(rejected or [])
+        breakouts = [s for s in all_stocks
+                     if str(s.get("setup", "")).upper() == "BREAKOUT"]
+        if not breakouts:
+            return []
+        # Determine verdict per stock
+        buy_syms = {s.get("symbol") for s in (buys or [])}
+        wl_syms  = {s.get("symbol"): s.get("tier", "") for s in (watchlist or [])}
+
+        lines = [
+            f"🚀 <b>ALL BREAKOUT SETUPS</b> ({len(breakouts)} today)",
+            "",
+        ]
+        for s in sorted(breakouts, key=lambda x: _v2_safe_float(
+            x.get("final_confidence", 0)), reverse=True):
+            sym  = _v2_clean_ticker(s.get("symbol", "?"))
+            conf = _v2_safe_float(s.get("final_confidence", 0))
+            sy   = s.get("symbol")
+            if sy in buy_syms:
+                verdict = "🟢 BUY"
+            elif sy in wl_syms:
+                tier = wl_syms[sy]
+                tier_emoji = {"NEAR_MISS": "🟡 close",
+                              "DEVELOPING": "🔵 developing",
+                              "MONITOR": "🔵 monitor"}.get(tier, "🔵 watchlist")
+                verdict = tier_emoji
+            else:
+                reason = _v2_primary_reject_label(s)
+                verdict = f"🔴 rejected ({_v2_html_esc(reason)})"
+            lines.append(f"  <code>{_v2_html_esc(sym):<12}</code> conf {conf:5.1f}  →  {verdict}")
+        lines.append("")
+        return lines
+    except Exception as e:
+        _log(f"[v2] section_all_breakouts crashed: {e}")
+        return []
+
+
+def _v2_section_top_momentum(buys: list, watchlist: list, rejected: list,
+                              top_n: int = 10) -> list:
+    """Top-N MOMENTUM stocks by confidence (post-penalty)."""
+    try:
+        all_stocks = list(buys or []) + list(watchlist or []) + list(rejected or [])
+        momentum = [s for s in all_stocks
+                    if str(s.get("setup", "")).upper() == "MOMENTUM"]
+        if not momentum:
+            return []
+        total = len(momentum)
+        momentum_sorted = sorted(momentum, key=lambda x: _v2_safe_float(
+            x.get("final_confidence", 0)), reverse=True)
+        shown = momentum_sorted[:top_n]
+
+        buy_syms = {s.get("symbol") for s in (buys or [])}
+        wl_syms  = {s.get("symbol"): s.get("tier", "") for s in (watchlist or [])}
+
+        lines = [
+            f"📈 <b>TOP {min(top_n, total)} MOMENTUM</b> (of {total} scanned)",
+            "  <i>Score is AFTER chop penalty. Sorted highest first.</i>",
+            "",
+        ]
+        for i, s in enumerate(shown, 1):
+            sym  = _v2_clean_ticker(s.get("symbol", "?"))
+            conf = _v2_safe_float(s.get("final_confidence", 0))
+            sy   = s.get("symbol")
+            if sy in buy_syms:
+                verdict = "🟢 BUY"
+            elif sy in wl_syms:
+                tier = wl_syms[sy]
+                verdict = {"NEAR_MISS": "🟡 close",
+                           "DEVELOPING": "🔵 dev",
+                           "MONITOR": "🔵 monitor"}.get(tier, "🔵 WL")
+            else:
+                reason = _v2_primary_reject_label(s)
+                verdict = f"🔴 {_v2_html_esc(reason)}"
+            lines.append(f"  {i:2}. <code>{_v2_html_esc(sym):<12}</code> {conf:5.1f}  →  {verdict}")
+        if total > top_n:
+            lines.append(f"  <i>… and {total - top_n} more (see CSV attachment)</i>")
+        lines.append("")
+        return lines
+    except Exception as e:
+        _log(f"[v2] section_top_momentum crashed: {e}")
+        return []
+
+
+def _v2_section_closest_rejects(rejected: list, regime: str,
+                                 top_n: int = 15) -> list:
+    """Rejected stocks sorted by proximity to min_conf — tomorrow's candidates."""
+    try:
+        if not rejected:
+            return []
+        try:
+            thresh = REGIME_THRESHOLDS[regime]
+        except Exception:
+            thresh = {"min_confidence": 78}
+        min_conf = _v2_safe_float(thresh.get("min_confidence"), 78)
+
+        # Score by proximity: distance from min_conf, negative = above threshold
+        def _distance(s):
+            return abs(min_conf - _v2_safe_float(s.get("final_confidence", 0)))
+
+        closest = sorted(rejected, key=_distance)[:top_n]
+        if not closest:
+            return []
+
+        lines = [
+            f"🥺 <b>CLOSEST {min(top_n, len(rejected))} REJECTIONS</b> — tomorrow's candidates",
+            "  <i>These almost passed. Worth watching manually.</i>",
+            "",
+        ]
+        for s in closest:
+            sym    = _v2_clean_ticker(s.get("symbol", "?"))
+            setup  = str(s.get("setup", "?"))[:4]
+            conf   = _v2_safe_float(s.get("final_confidence", 0))
+            gap    = min_conf - conf
+            reason = _v2_primary_reject_label(s)
+            lines.append(
+                f"  <code>{_v2_html_esc(sym):<12}</code> {conf:5.1f}  "
+                f"gap={gap:+5.1f}  [{setup}]  → {_v2_html_esc(reason)}"
+            )
+        remaining = len(rejected) - len(closest)
+        if remaining > 0:
+            lines.append(f"  <i>… {remaining} more rejects further away (see CSV)</i>")
+        lines.append("")
+        return lines
+    except Exception as e:
+        _log(f"[v2] section_closest_rejects crashed: {e}")
+        return []
+
+
+def _v2_section_market_weather(regime_data: dict, macro: dict,
+                                nifty_state: dict, thresh: dict) -> list:
+    """Compact market weather / rules block."""
+    try:
+        regime = regime_data.get("regime", "?")
+        score  = _v2_safe_float(regime_data.get("score", 0))
+        vix_in = _v2_safe_float((macro or {}).get("vix_in", 15))
+        nifty  = _v2_safe_float((macro or {}).get("nifty_1d_pct", 0))
+        breadth = _v2_safe_float((nifty_state or {}).get("breadth20", 50))
+
+        weather_emoji = {
+            "STRONG_BULL": "☀️", "BULL": "🌤️", "TRANSITION": "🌫️",
+            "SIDEWAYS": "🌫️", "HIGH_VOLATILITY": "⛈️",
+            "BEAR": "🌧️", "STRONG_BEAR": "🌧️",
+        }.get(regime, "🌤️")
+
+        min_conf = _v2_safe_float((thresh or {}).get("min_confidence"), 78)
+        min_tq   = _v2_safe_float((thresh or {}).get("min_tq"), 65)
+        min_rr   = _v2_safe_float((thresh or {}).get("min_rr"), 1.8)
+
+        lines = [
+            "🌦️ <b>MARKET WEATHER</b>",
+            f"   {weather_emoji} Regime: <b>{_v2_html_esc(regime)}</b>  ·  Score {score:.0f}/100",
+            f"   Nifty {nifty:+.2f}%  ·  VIX-IN {vix_in:.1f}  ·  Breadth {breadth:.0f}%",
+            f"   BUY bar: Conf ≥ <b>{min_conf:.0f}</b>  ·  TQ ≥ <b>{min_tq:.0f}</b>  ·  R/R ≥ <b>{min_rr:.2f}×</b>",
+        ]
+        # Chop-specific rule
+        try:
+            if regime.upper() in ("CHOP", "TRANSITION", "SIDEWAYS"):
+                lines.append("   ⚠️ MOMENTUM penalised ×0.90  ·  PULLBACK / REVERSAL blocked")
+        except Exception:
+            pass
+        lines.append("")
+        return lines
+    except Exception as e:
+        _log(f"[v2] section_market_weather crashed: {e}")
+        return []
+
+
+def _v2_section_universe_breakdown(buys: list, watchlist: list, rejected: list,
+                                    setup_mix: dict, setup_tickers: dict) -> list:
+    """Universe scanned + reject-reason breakdown."""
+    try:
+        from collections import Counter
+        total = len(buys or []) + len(watchlist or []) + len(rejected or [])
+        if total == 0:
+            return []
+
+        # Aggregate reject reasons (primary reason per stock)
+        reason_counter = Counter()
+        for s in (rejected or []):
+            reason_counter[_v2_primary_reject_label(s)] += 1
+
+        lines = [
+            "🔍 <b>UNIVERSE BREAKDOWN</b>",
+            f"   Scanned <b>{total}</b> stocks:",
+        ]
+        # Setup mix
+        if setup_mix:
+            for setup in ("BREAKOUT", "MOMENTUM", "PULLBACK", "REVERSAL", "OTHER"):
+                n = int((setup_mix or {}).get(setup, 0))
+                if n <= 0:
+                    continue
+                pct = int(round(n * 100 / total)) if total > 0 else 0
+                bar = _v2_bar(n, total, width=14)
+                lines.append(f"     {bar} <b>{setup:<9}</b> {n:>3} ({pct}%)")
+        # Reject reasons top 5
+        if reason_counter and rejected:
+            lines.append("")
+            lines.append(f"   Why {len(rejected)} rejected:")
+            for reason, cnt in reason_counter.most_common(5):
+                pct = int(round(cnt * 100 / len(rejected)))
+                bar = _v2_bar(cnt, len(rejected), width=14)
+                lines.append(f"     {bar} <b>{_v2_html_esc(reason):<25}</b> {cnt:>3} ({pct}%)")
+        lines.append("")
+        return lines
+    except Exception as e:
+        _log(f"[v2] section_universe_breakdown crashed: {e}")
+        return []
+
+
+def _v2_section_shadow_log(setup_mix: dict, regime: str, rejected: list) -> list:
+    """Compact shadow-log summary."""
+    try:
+        # We don't have direct shadow_log counts here, but we can approximate
+        # bucket B/C from setup_mix + chop penalty presence in rejects.
+        b_count = sum(1 for s in (rejected or [])
+                      if _v2_safe_float(s.get("chop_momentum_penalty", 0)) > 0)
+        chop_setups = ("PULLBACK", "REVERSAL", "OTHER")
+        c_count = 0
+        for s in (rejected or []):
+            frs = s.get("fail_reasons", []) or []
+            if any("SETUP_EDGE_SKIP" in str(f) for f in frs) and \
+               str(s.get("setup", "")).upper() in chop_setups:
+                c_count += 1
+
+        lines = [
+            "🔬 <b>SHADOW LOG</b> — learning tracker",
+            "   Rejected stocks we still watch to check our filters:",
+            f"     Bucket A (high-quality, risk-gate blocked):  {0:>3}",
+            f"     Bucket B (chop-penalised momentum):          {b_count:>3}",
+            f"     Bucket C (wrong setup for chop):             {c_count:>3}",
+            "   <i>Once we have 30 days of data, we'll know if filters need tuning.</i>",
+            "",
+        ]
+        return lines
+    except Exception as e:
+        _log(f"[v2] section_shadow_log crashed: {e}")
+        return []
+
+
+def _v2_section_tip() -> list:
+    """Daily rotating tip."""
+    try:
+        tip = _v2_get_daily_tip()
+        return [
+            "💡 <b>TIP OF THE DAY</b>",
+            f"   {_v2_html_esc(tip)}",
+            "",
+        ]
+    except Exception:
+        return []
+
+
+def _v2_section_health(macro: dict, regime_data: dict, buys: list,
+                        watchlist: list, rejected: list) -> list:
+    """Pipeline health footer."""
+    try:
+        total = len(buys or []) + len(watchlist or []) + len(rejected or [])
+        dq_bad = (macro or {}).get("dq_status") == "STALE"
+
+        # Freeze status (best-effort — we don't want to hard-code the end date
+        # anywhere else)
+        freeze_line = ""
+        try:
+            freeze_end = os.getenv("FREEZE_END_DATE", "")
+            if freeze_end:
+                freeze_line = f"   📅 Freeze status: until {_v2_html_esc(freeze_end)}"
+        except Exception:
+            pass
+
+        lines = ["🏥 <b>SYSTEM HEALTH</b>"]
+        lines.append(f"   {'⚠️' if dq_bad else '✅'} Data quality: "
+                     f"{'stale' if dq_bad else 'fresh'}  ·  {total} stocks scanned")
+        lines.append(f"   ✅ Regime detect: {_v2_html_esc(regime_data.get('regime', '?'))}")
+        if freeze_line:
+            lines.append(freeze_line)
+        lines.append("")
+        return lines
+    except Exception as e:
+        _log(f"[v2] section_health crashed: {e}")
+        return []
+
+
+def _v2_section_glossary() -> list:
+    """One-liner glossary at the bottom."""
+    try:
+        return [
+            "📖 <b>GLOSSARY</b>",
+            "   • <b>Confidence</b> (0-100): how sure the model is",
+            "   • <b>TQ</b>: Trade Quality — chart pattern strength",
+            "   • <b>R/R</b>: risk-reward ratio (need ≥1.8×)",
+            "   • <b>BREAKOUT</b>: piercing resistance level",
+            "   • <b>MOMENTUM</b>: stock in uptrend",
+            "   • <b>PULLBACK</b>: dip in uptrend (risky in chop)",
+            "   • <b>REVERSAL</b>: direction change (risky in chop)",
+            "   • <b>Chop penalty</b>: -10% conf for MOMENTUM in chop",
+            "   • <b>Shadow log</b>: rejected trades tracked to verify filters",
+            "   ─────────────────",
+            "   ⚠️ Recommendation only. Execute manually.",
+        ]
+    except Exception:
+        return []
+
+
+def _v2_section_footer_csv(csv_path: str) -> list:
+    """Pointer to CSV attachment."""
+    try:
+        if not csv_path or not os.path.exists(csv_path):
+            return []
+        size_kb = os.path.getsize(csv_path) / 1024.0
+        return [
+            "",
+            "📎 <b>FULL UNIVERSE</b> — attached as CSV",
+            f"   <i>{_v2_html_esc(os.path.basename(csv_path))} ({size_kb:.1f} KB) — "
+            f"every stock scanned with score, verdict, reason.</i>",
+        ]
+    except Exception:
+        return []
+
+
+# ── CSV attachment generator ───────────────────────────────────────────────
+
+def _v2_write_daily_csv(buys: list, watchlist: list, rejected: list,
+                        regime: str, timestamp: str,
+                        out_path: str = None) -> str:
+    """Write every evaluated stock to a CSV. Returns path (empty on failure).
+
+    Columns: Ticker, Setup, Sector, Price, MCap_Cr, RawConf, FinalConf, TQ,
+             RR, ROE, DE, Verdict, PrimaryReject, AllRejects, Tier
+    """
+    try:
+        out_path = out_path or TELEGRAM_DAILY_CSV
+        # Add date stamp to filename so history is preserved
+        try:
+            date_str = ist_today().strftime("%Y%m%d")
+            root, ext = os.path.splitext(out_path)
+            out_path = f"{root}_{date_str}{ext or '.csv'}"
+        except Exception:
+            pass
+
+        buy_syms = {s.get("symbol") for s in (buys or [])}
+        wl_map = {s.get("symbol"): s.get("tier", "WATCHLIST")
+                  for s in (watchlist or [])}
+
+        def _row(s, verdict_hint=None):
+            try:
+                sym    = _v2_clean_ticker(s.get("symbol", ""))
+                setup  = str(s.get("setup", "") or "").upper()
+                sector = str(s.get("sector", "") or "")
+                price  = _v2_safe_float(s.get("entry",
+                            s.get("price", s.get("close", 0))))
+                mcap   = _v2_safe_float(s.get("market_cap",
+                            s.get("mcap_cr", 0)))
+                raw_c  = _v2_safe_float(s.get("raw_confidence",
+                            s.get("orig_confidence", s.get("final_confidence", 0))))
+                fin_c  = _v2_safe_float(s.get("final_confidence", 0))
+                tq     = _v2_safe_float(s.get("trade_quality_score", 0))
+                rr     = _v2_safe_float(s.get("rr_ratio", s.get("rr", 0)))
+                roe    = _v2_safe_float(s.get("roe", 0))
+                de     = _v2_safe_float(s.get("de_ratio", 0))
+
+                sy = s.get("symbol")
+                if verdict_hint:
+                    verdict = verdict_hint
+                elif sy in buy_syms:
+                    verdict = "BUY"
+                elif sy in wl_map:
+                    verdict = f"WATCHLIST_{wl_map[sy]}"
+                else:
+                    verdict = "REJECTED"
+
+                primary = _v2_primary_reject_label(s) if verdict == "REJECTED" else ""
+                all_frs = ";".join(str(f) for f in (s.get("fail_reasons") or []))
+                tier    = wl_map.get(sy, "") if verdict.startswith("WATCHLIST") else ""
+
+                return [sym, setup, sector, f"{price:.2f}", f"{mcap:.0f}",
+                        f"{raw_c:.2f}", f"{fin_c:.2f}", f"{tq:.2f}",
+                        f"{rr:.2f}", f"{roe:.2f}", f"{de:.2f}",
+                        verdict, primary, all_frs, tier]
+            except Exception as e:
+                _log(f"[v2] csv row failed for {s.get('symbol')}: {e}")
+                return None
+
+        rows = []
+        for s in (buys or []):
+            r = _row(s, "BUY")
+            if r: rows.append(r)
+        for s in (watchlist or []):
+            r = _row(s)
+            if r: rows.append(r)
+        for s in (rejected or []):
+            r = _row(s, "REJECTED")
+            if r: rows.append(r)
+
+        header = ["Ticker", "Setup", "Sector", "Price", "MCap_Cr", "RawConf",
+                  "FinalConf", "TQ", "RR", "ROE", "DE", "Verdict",
+                  "PrimaryReject", "AllRejects", "Tier"]
+        with open(out_path, "w", newline="", encoding="utf-8") as f:
+            w = csv.writer(f)
+            w.writerow(header)
+            w.writerows(rows)
+        _log(f"[v2] wrote daily CSV: {out_path} ({len(rows)} rows)")
+        return out_path
+    except Exception as e:
+        _log(f"[v2] write_daily_csv failed: {e}")
+        return ""
+
+
+def send_telegram_document(file_path: str, caption: str = "") -> None:
+    """Send a file as a Telegram document to the main channel."""
+    try:
+        if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+            return
+        if not file_path or not os.path.exists(file_path):
+            return
+        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendDocument"
+        with open(file_path, "rb") as f:
+            files = {"document": (os.path.basename(file_path), f)}
+            data  = {"chat_id": TELEGRAM_CHAT_ID}
+            if caption:
+                data["caption"] = caption[:1000]  # Telegram caption limit
+            resp = requests.post(url, data=data, files=files, timeout=30)
+        if resp.status_code != 200:
+            _log(f"[v2] Telegram sendDocument failed: {resp.status_code} {resp.text[:200]}")
+    except Exception as e:
+        _log(f"[v2] send_telegram_document error: {e}")
+
+
+# ── v2 Orchestrator ─────────────────────────────────────────────────────────
+
+def format_telegram_message_v2(
+        regime_data: dict, buys: list, shorts: list,
+        watchlist: list, portfolio_alerts: list,
+        macro: dict, key_levels: dict,
+        upcoming_events: list, timestamp: str,
+        heat: dict = None, platt: dict = None,
+        tracker_v2: dict = None,
+        rejected_stocks: list = None,
+        breadth_20: float = 50.0,
+        nifty_state: dict = None,
+        universe_count: int = 0,
+        tradable_count: int = 0,
+        conf_history: dict = None,
+        gate_memory: dict = None,
+        ai_results: dict = None) -> str:
+    """Build the redesigned Telegram message.
+
+    Each section is independent + wrapped in try/except so one bad section
+    can't kill the whole message. If the whole function raises, the caller
+    catches it and falls back to v1.
+    """
+    lines = []
+    regime = regime_data.get("regime", "SIDEWAYS")
+    try:
+        thresh = REGIME_THRESHOLDS[regime]
+    except Exception:
+        thresh = {"min_confidence": 78, "min_tq": 65, "min_rr": 1.8}
+
+    setup_mix     = regime_data.get("_setup_mix") or {}
+    setup_tickers = regime_data.get("_setup_tickers") or {}
+    prev_state    = _v2_load_prev_state()
+
+    # ─── Compose all sections ───────────────────────────────────────────────
+    _sections = [
+        ("header",           lambda: _v2_section_header(timestamp)),
+        ("one_line",         lambda: _v2_section_one_line_summary(
+                                buys, watchlist, rejected_stocks, regime, setup_mix)),
+        ("verdict",          lambda: _v2_section_verdict(
+                                buys, watchlist, rejected_stocks)),
+        ("vs_yesterday",     lambda: _v2_section_vs_yesterday(
+                                buys, watchlist, rejected_stocks, regime, prev_state)),
+        ("market_weather",   lambda: _v2_section_market_weather(
+                                regime_data, macro, nifty_state, thresh)),
+        ("buys",             lambda: _v2_section_buys(buys, regime, ai_results)),
+        ("close_call",       lambda: _v2_section_close_call(
+                                watchlist, regime, ai_results)),
+        ("early_stage",      lambda: _v2_section_early_stage(watchlist, regime)),
+        ("all_breakouts",    lambda: _v2_section_all_breakouts(
+                                buys, watchlist, rejected_stocks)),
+        ("top_momentum",     lambda: _v2_section_top_momentum(
+                                buys, watchlist, rejected_stocks, top_n=10)),
+        ("closest_rejects",  lambda: _v2_section_closest_rejects(
+                                rejected_stocks, regime, top_n=15)),
+        ("universe",         lambda: _v2_section_universe_breakdown(
+                                buys, watchlist, rejected_stocks,
+                                setup_mix, setup_tickers)),
+        ("shadow_log",       lambda: _v2_section_shadow_log(
+                                setup_mix, regime, rejected_stocks)),
+        ("tip",              lambda: _v2_section_tip()),
+        ("health",           lambda: _v2_section_health(
+                                macro, regime_data, buys, watchlist, rejected_stocks)),
+        ("glossary",         lambda: _v2_section_glossary()),
+    ]
+    for name, builder in _sections:
+        try:
+            lines.extend(builder())
+        except Exception as e:
+            _log(f"[v2] section '{name}' crashed: {e} — skipping")
+
+    # Save today's snapshot so tomorrow's "vs yesterday" works
+    try:
+        _v2_save_prev_state({
+            "date":              str(ist_today()),
+            "buys":              len(buys or []),
+            "watchlist":         len(watchlist or []),
+            "rejected":          len(rejected_stocks or []),
+            "regime":            regime,
+            "watchlist_symbols": [_v2_clean_ticker(w.get("symbol", ""))
+                                  for w in (watchlist or [])],
+        })
+    except Exception as e:
+        _log(f"[v2] prev-state save failed: {e}")
+
+    return "\n".join(lines)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # SECTION 10b — EXCEL RECOMMENDATION TRACKER (PART C)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -13891,7 +14877,12 @@ def _run_pipeline_inner():
         events           = upcoming_events,
     )
 
-    message = format_telegram_message(
+    # ── Telegram message: v2 (redesigned 2026-07-10) with v1 fallback ───────
+    # v2 is a human-friendly redesign (named stocks, ASCII bars, tiered
+    # verdict, CSV attachment). v1 remains the safe fallback if v2 raises
+    # any unexpected exception. Flip NEW_TELEGRAM_FORMAT=false for instant
+    # rollback with zero code changes. See Section 9c for the v2 design notes.
+    _v1_kwargs = dict(
         regime_data      = regime_data,
         buys             = buys,
         shorts           = shorts,
@@ -13913,6 +14904,30 @@ def _run_pipeline_inner():
         gate_memory      = gate_memory,
         ai_results       = ai_results,
     )
+    message = None
+    _csv_path = ""
+    if NEW_TELEGRAM_FORMAT:
+        try:
+            message = format_telegram_message_v2(**_v1_kwargs)
+            _log(f"[telegram] using v2 format ({len(message)} chars)")
+        except Exception as _e_v2:
+            _log(f"[telegram] v2 crashed ({_e_v2!r}) — falling back to v1")
+            message = None
+    if message is None:
+        # v1 path (either feature-flag off, or v2 crashed)
+        message = format_telegram_message(**_v1_kwargs)
+        _log(f"[telegram] using v1 format ({len(message)} chars)")
+
+    # CSV attachment — only when v2 is active AND flag enabled. Non-fatal.
+    if NEW_TELEGRAM_FORMAT and TELEGRAM_ATTACH_CSV:
+        try:
+            _csv_path = _v2_write_daily_csv(
+                buys, watchlist_stocks, rejected, regime, timestamp,
+            )
+        except Exception as _e_csv:
+            _log(f"[telegram] CSV generation failed (non-fatal): {_e_csv}")
+            _csv_path = ""
+
     _log("--- TELEGRAM PREVIEW (first 1500 chars) ---")
     _log(message[:1500])
     _log("--- END PREVIEW ---")
@@ -13925,6 +14940,17 @@ def _run_pipeline_inner():
         )
         message = banner + message
     send_telegram(message)
+    # Send the CSV attachment (v2 only). Non-fatal on failure.
+    if _csv_path:
+        try:
+            _csv_caption = (
+                f"📎 Full universe scan · {os.path.basename(_csv_path)}\n"
+                f"Every stock with score, verdict, reject reason. "
+                f"Open in Excel to sort/filter."
+            )
+            send_telegram_document(_csv_path, caption=_csv_caption)
+        except Exception as _e_doc:
+            _log(f"[telegram] CSV send failed (non-fatal): {_e_doc}")
     # Send BUY signals to dedicated buy channel
     send_buy_telegram(buys, regime, timestamp)
 
