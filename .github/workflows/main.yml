@@ -536,17 +536,18 @@ jobs:
                       buckets = f'A={bc.get(chr(65),0)} B={bc.get(chr(66),0)} C={bc.get(chr(67),0)} D={bc.get(chr(68),0)}'
                   except (ValueError, StopIteration):
                       pass
-              print(f'{n_sheets} sheets · {total_rows} rows total')
+              parts = [f'{n_sheets} sheets - {total_rows} rows total']
               if buckets:
-                  print(buckets)
+                  parts.append(buckets)
+              print(' | '.join(parts))
           except Exception as e:
               print(f'(preview unavailable: {e})')
           ")
 
-          caption="📊 Shadow Master — ${today} (${weekday})
-${summary}
-Size: ${size_human}
-Full 18-sheet workbook — open in Excel for A/B/C/D bucket review, live positions, performance rollup, benchmark curve."
+          # Build caption using printf with %b so \n becomes real newlines.
+          # Keeping this all on ONE printf line avoids breaking YAML block-scalar
+          # indentation (multi-line bash string literals de-indent and confuse YAML).
+          caption=$(printf '%b' "📊 Shadow Master — ${today} (${weekday})\n${summary}\nSize: ${size_human}\nFull 18-sheet workbook — open in Excel for A/B/C/D bucket review, live positions, performance rollup, benchmark curve.")
 
           echo "Sending shadow_master.xlsx (${size_human}) to Telegram..."
           echo "Caption preview:"
