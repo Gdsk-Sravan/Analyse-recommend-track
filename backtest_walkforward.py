@@ -51,6 +51,28 @@ STOCKS_FILE       = os.getenv("STOCKS_FILE", "stocks.txt")
 OUTPUT_DIR        = os.getenv("BACKTEST_OUTPUT_DIR", ".")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
+# Phase C7g (2026-07-10): FRESH_START awareness. Backtest is read-only over
+# historical yfinance data, so it wouldn't corrupt anything, but running it
+# on a fresh-start day wastes 15+ minutes of runner time on a signal that
+# will be overwritten next weekend anyway. Skip cleanly and log.
+FRESH_START = os.getenv("FRESH_START", "false").lower() == "true"
+
+
+def _peek_fresh_start_marker(today_str: str = None) -> bool:
+    """Non-consuming peek of `.fresh_start_marker` written by main.py.
+    Returns True iff a marker for TODAY is present."""
+    marker = ".fresh_start_marker"
+    if not os.path.exists(marker):
+        return False
+    try:
+        with open(marker, "r", encoding="utf-8") as _fm:
+            marker_date = _fm.read().strip()
+    except Exception:
+        return False
+    if today_str is None:
+        today_str = datetime.date.today().isoformat()
+    return marker_date == today_str
+
 # Phase C7 (2026-07-02): Realistic slippage model. Real fills differ from the
 # close by ~10-30bps on entry (chasing on open) and ~15-30bps on exit
 # (stop-hits fill BELOW the stop level, targets fill AT the level, not above).
@@ -431,6 +453,15 @@ def run_backtest():
     print(f"Symbols:    up to {TOP_N_SYMBOLS} from {STOCKS_FILE}")
     print(f"History:    {LOOKBACK_YEARS} years | Max hold: {MAX_HOLD_BARS} bars")
     print("=" * 60)
+
+    # Phase C7g (2026-07-10): skip on fresh-start days — there's no point
+    # regenerating threshold recommendations that will just be committed
+    # over the wiped calibration files.
+    if FRESH_START or _peek_fresh_start_marker():
+        _reason = "explicit FRESH_START env" if FRESH_START else "detected .fresh_start_marker for today"
+        print(f"[FRESH_START] backtest_walkforward: skipping ({_reason})")
+        print("[FRESH_START] backtest_walkforward: will resume on next scheduled run")
+        return
 
     symbols = load_symbols(STOCKS_FILE)
     if not symbols:
