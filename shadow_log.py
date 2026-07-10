@@ -71,7 +71,25 @@ except ImportError:
 
 
 # ─── config ─────────────────────────────────────────────────────────────────
-SHADOW_CSV_PATH = os.getenv("SHADOW_CSV_PATH", "shadow_trades.csv")
+# Pin the CSV next to shadow_master.xlsx at the repo root, regardless of CWD.
+# This mirrors how main.py handles TRACKER_XLSX = "shadow_master.xlsx" (repo root)
+# and matches what the CI workflow (main.yml) expects to git add / upload.
+#
+# Precedence:
+#   1. explicit env var SHADOW_CSV_PATH (absolute or relative — used by CI /
+#      shadow_weekly.yml which sets SHADOW_CSV_PATH=shadow_trades.csv)
+#   2. <this_script_dir>/shadow_trades.csv   (repo root — canonical location)
+#
+# NOTE: results/ is a LOCAL-ONLY convenience folder (not committed to git and
+# not created on CI runners) — do NOT default there or CI will lose the file.
+def _resolve_shadow_csv_path() -> str:
+    _env = os.getenv("SHADOW_CSV_PATH")
+    if _env:
+        return _env
+    _here = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(_here, "shadow_trades.csv")
+
+SHADOW_CSV_PATH = _resolve_shadow_csv_path()
 SHADOW_ENABLED  = os.getenv("PHASE_I_SHADOW_LOG", "true").lower() in ("1", "true", "yes")
 MAX_SHADOW_DAYS = int(os.getenv("MAX_SHADOW_DAYS", "10"))
 TARGET_PCT      = float(os.getenv("SHADOW_TARGET_PCT", "5.0"))
