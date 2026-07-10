@@ -416,16 +416,41 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: recommendation-tracker
+          # Phase C7h (2026-07-10): include every stateful file so the day-30
+          # calibration analyst gets a self-contained zip. Mirrors the git
+          # persist file list — if you add a file there, add it here too.
           path: |
             shadow_master.xlsx
+            shadow_trades.csv
+            shadow_report.xlsx
+            shadow_report_weekly.xlsx
+            recommendation_tracker.xlsx
+            portfolio_state.csv
+            portfolio_status.csv
+            trade_journal.csv
+            reject_outcome_log.csv
+            telegram_daily.csv
+            price_fetch_failures.jsonl
+            tradable_dropouts.jsonl
             trade_tracker.json
+            trade_tracker_v2.json
+            tracker.json
             confidence_history.json
             gate_memory.json
             watchlist_persist.json
             regime_calibration.json
+            reject_watch.json
             sector_rank_history.json
             delivery_cache.json
+            fundamentals_cache.json
+            sector_cache.json
             weekly_metrics.json
+            telegram_prev_state.json
+            intraday_snapshots.json
+            run_health.json
+            last_known_good.json
+            last_tradable.json
+            portfolio.json
           retention-days: 90
           if-no-files-found: warn
 
@@ -451,39 +476,76 @@ jobs:
           # The xlsx + trade_tracker.json + confidence_history.json + gate_memory.json
           # MUST be committed back so the daily append-only history survives across runs
           # (artifacts eventually roll off after 90d; git is the durable store).
+          #
+          # Phase C7h (2026-07-10): expanded to include EVERY file wiped by
+          # FRESH_START, so a fresh-start commit actually reflects the wipe
+          # in the repo (git rm honours the deletion). If it's in main.py's
+          # _fresh_rename_files or _fresh_delete_files, it MUST be here.
           files=(
+            # ── xlsx workbooks ──
+            shadow_master.xlsx
+            shadow_report.xlsx
+            shadow_report_weekly.xlsx
+            recommendation_tracker.xlsx
+            # ── csv accumulators ──
             portfolio_state.csv
             portfolio_status.csv
             trade_journal.csv
-            tracker.json
-            shadow_master.xlsx
+            shadow_trades.csv
+            reject_outcome_log.csv
+            telegram_daily.csv
+            # ── jsonl append-only logs ──
+            price_fetch_failures.jsonl
+            tradable_dropouts.jsonl
+            # ── main.py state (loaded, in-memory guarded) ──
             trade_tracker.json
+            trade_tracker_v2.json
+            tracker.json
             confidence_history.json
             gate_memory.json
             watchlist_persist.json
             regime_calibration.json
+            reject_watch.json
+            # ── caches (delete-on-FRESH_START, still committed for warm start) ──
             sector_rank_history.json
             delivery_cache.json
+            fundamentals_cache.json
+            sector_cache.json
+            # ── auxiliary summaries ──
             weekly_metrics.json
-            reject_watch.json
-            reject_outcome_log.csv
-            run_health.json
-            shadow_trades.csv
-            shadow_report.xlsx
             telegram_prev_state.json
-            portfolio.json
+            intraday_snapshots.json
+            run_health.json
             last_known_good.json
             last_tradable.json
+            # ── user-owned config (safe to commit — never wiped) ──
+            portfolio.json
+            # ── coordination marker ──
             .fresh_start_marker
           )
-          # Phase C7f (2026-07-07): on a FRESH_START run, main.py renamed the
-          # old xlsx to shadow_master.xlsx.stale_<date>. Do NOT commit
-          # that stale sibling to git — it would pollute the durable store and
-          # eventually get restored by a downstream job's checkout. Also drop
-          # any previously-committed .stale_* files so the repo stays clean.
+          # Phase C7f (2026-07-07): on a FRESH_START run, main.py renamed
+          # stateful files to <name>.stale_<date>. Do NOT commit those stale
+          # siblings to git — they would pollute the durable store and
+          # eventually get restored by a downstream job's checkout.
+          #
+          # Phase C7h (2026-07-10): expanded to cover ALL rename patterns
+          # emitted by the full state scrubber (main.py _fresh_rename_files).
           if [ "$FRESH_START" = "true" ]; then
-            echo "[FRESH_START] Purging any .stale_* xlsx siblings from git tracking"
-            git ls-files 'shadow_master.xlsx.stale_*' 2>/dev/null | xargs -r git rm -f || true
+            echo "[FRESH_START] Purging .stale_* siblings from git tracking"
+            _stale_patterns=(
+              'shadow_master.xlsx.stale_*'
+              'shadow_report.xlsx.stale_*'
+              'shadow_report_weekly.xlsx.stale_*'
+              'recommendation_tracker.xlsx.stale_*'
+              'shadow_trades.csv.stale_*'
+              'portfolio_state.csv.stale_*'
+              'telegram_daily.csv.stale_*'
+              'price_fetch_failures.jsonl.stale_*'
+              'tradable_dropouts.jsonl.stale_*'
+            )
+            for _pat in "${_stale_patterns[@]}"; do
+              git ls-files "$_pat" 2>/dev/null | xargs -r git rm -f || true
+            done
           fi
           # Phase C7g (2026-07-10): if main.py's startup deleted a stale
           # .fresh_start_marker (non-consuming peek design), also remove it
