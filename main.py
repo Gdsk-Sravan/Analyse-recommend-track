@@ -12280,6 +12280,45 @@ def _v2_primary_reject_label(stock: dict) -> str:
 # Each returns list[str]; every one is independently wrapped in try/except
 # at the orchestrator level so one broken section can't kill the message.
 
+
+# ── v2 UX helpers: setup tagging + row layout ───────────────────────────────
+# The stock-dict field is `setup_type` (populated by apply_setup_edge upstream).
+# Older code paths read `setup` — always prefer setup_type, fall back to setup.
+_V2_SETUP_SHORT = {
+    "BREAKOUT": "BRK",
+    "MOMENTUM": "MOM",
+    "PULLBACK": "PUL",
+    "REVERSAL": "REV",
+    "OTHER":    "OTH",
+}
+_V2_SETUP_EMOJI = {
+    "BREAKOUT": "🚀",
+    "MOMENTUM": "📈",
+    "PULLBACK": "↩️",
+    "REVERSAL": "🔄",
+    "OTHER":    "·",
+}
+
+def _v2_setup_of(s: dict) -> str:
+    """Return canonical UPPER setup type; empty string if unknown."""
+    try:
+        raw = s.get("setup_type") or s.get("setup") or ""
+        return str(raw).upper().strip()
+    except Exception:
+        return ""
+
+def _v2_setup_tag(s: dict, with_emoji: bool = True) -> str:
+    """Compact human-readable setup tag (e.g. '📈 MOM'). Empty → '—'."""
+    st = _v2_setup_of(s)
+    if not st:
+        return "—"
+    short = _V2_SETUP_SHORT.get(st, st[:3])
+    if with_emoji:
+        emo = _V2_SETUP_EMOJI.get(st, "·")
+        return f"{emo} {short}"
+    return short
+
+
 def _v2_section_header(timestamp: str) -> list:
     """Message header with market close date."""
     try:
@@ -12469,7 +12508,7 @@ def _v2_section_close_call(watchlist: list, regime: str, ai_results: dict) -> li
             entry  = _v2_safe_float(w.get("entry", 0))
             stop   = _v2_safe_float(w.get("stop", 0))
             t1     = _v2_safe_float(w.get("target1", 0))
-            setup  = _v2_html_esc(w.get("setup", "?"))
+            setup  = _v2_html_esc(_v2_setup_of(w) or "—")
             conf_gap = max(0.0, min_conf - conf)
 
             lines.append(f"  <b>{_v2_html_esc(sym)}</b>  [{sector}]  · Setup: {setup}")
@@ -12522,31 +12561,94 @@ def _v2_section_early_stage(watchlist: list, regime: str) -> list:
 
         def _render_row(w):
             sym    = _v2_clean_ticker(w.get("symbol", "?"))
-            setup  = str(w.get("setup", "?"))[:4]  # short: BREA/MOME/PULL/REVE
+            tag    = _v2_setup_tag(w)           # e.g. "📈 MOM" / "🚀 BRK" / "—"
             conf   = _v2_safe_float(w.get("conf", w.get("final_confidence", 0)))
             penalty = _v2_safe_float(w.get("chop_momentum_penalty", 0))
-            bar    = _v2_bar(conf, min_conf * 1.1, width=14)
-            gap    = min_conf - conf
-            pen_note = f" (×0.90 chop)" if penalty > 0 else ""
-            return f"  <code>{_v2_html_esc(sym):<12}</code> {bar} {conf:5.1f}  gap={gap:+.1f}  [{setup}]{pen_note}"
+            bar    = _v2_bar(conf, min_conf * 1.1, width=10)   # narrower for mobile
+            need   = max(0.0, min_conf - conf)                  # always positive
+            pen_note = "  ⚠ chop×0.90" if penalty > 0 else ""
+            # Two-line row: header shows ticker + bar + conf;
+            # detail line shows setup + gap in plain English.
+            # Fits inside ~34 chars on mobile fixed-width.
+            return [
+                f"  <code>{_v2_html_esc(sym):<10}</code> {bar} <b>{conf:5.1f}</b>",
+                f"     {tag}  ·  need <b>+{need:.1f}</b> to BUY{pen_note}",
+            ]
 
         if dev:
             lines.append(f"  <b>Developing</b> ({len(dev)}) — 16-25 pts shy of BUY:")
             for w in sorted(dev, key=lambda x: _v2_safe_float(
                 x.get("conf", x.get("final_confidence", 0))), reverse=True):
-                lines.append(_render_row(w))
+                lines.extend(_render_row(w))
             lines.append("")
         if mon:
             lines.append(f"  <b>Monitor</b> ({len(mon)}) — &gt;25 pts shy of BUY:")
             for w in sorted(mon, key=lambda x: _v2_safe_float(
                 x.get("conf", x.get("final_confidence", 0))), reverse=True):
-                lines.append(_render_row(w))
+                lines.extend(_render_row(w))
             lines.append("")
-        lines.append(f"  <i>Target: {min_conf:.0f} confidence. Bar length is relative to target.</i>")
+        lines.append(f"  <i>Bar shows conf vs target {min_conf:.0f}. Setup: 🚀 BRK · 📈 MOM · ↩️ PUL · 🔄 REV</i>")
         lines.append("")
         return lines
     except Exception as e:
         _log(f"[v2] section_early_stage crashed: {e}")
+        return []
+
+
+def _v2_section_breakout_spotlight(buys: list, watchlist: list,
+                                    rejected: list, regime: str) -> list:
+    """When the universe has exactly 1 BREAKOUT setup, elevate it into its
+    own headline block so the reader immediately sees today's rare event.
+    Emits nothing when there are 0 or 2+ breakouts (the all_breakouts
+    section already covers those cases).
+    """
+    try:
+        all_stocks = list(buys or []) + list(watchlist or []) + list(rejected or [])
+        breakouts = [s for s in all_stocks if _v2_setup_of(s) == "BREAKOUT"]
+        if len(breakouts) != 1:
+            return []
+        s = breakouts[0]
+        sym  = _v2_clean_ticker(s.get("symbol", "?"))
+        conf = _v2_safe_float(s.get("final_confidence", 0))
+        tq   = _v2_safe_float(s.get("trade_quality_score", s.get("tq", 0)))
+        rr   = _v2_safe_float(s.get("rr_ratio", s.get("rr", 0)))
+        sector = _v2_html_esc(s.get("sector", "") or "")
+        try:
+            thresh = REGIME_THRESHOLDS[regime]
+        except Exception:
+            thresh = {"min_confidence": 78}
+        min_conf = _v2_safe_float(thresh.get("min_confidence"), 78)
+
+        # Verdict
+        buy_syms = {b.get("symbol") for b in (buys or [])}
+        wl_syms  = {w.get("symbol"): w.get("tier", "") for w in (watchlist or [])}
+        sy = s.get("symbol")
+        if sy in buy_syms:
+            verdict = "🟢 BUY"
+            tail    = "Passes all gates — see BUYS section."
+        elif sy in wl_syms:
+            tier = wl_syms[sy]
+            verdict = {"NEAR_MISS": "🟡 close call",
+                       "DEVELOPING": "🔵 developing",
+                       "MONITOR": "🔵 monitor"}.get(tier, "🔵 watchlist")
+            tail    = f"On watchlist — need <b>+{max(0.0, min_conf-conf):.1f}</b> conf to BUY."
+        else:
+            reason = _v2_primary_reject_label(s)
+            verdict = "🔴 rejected"
+            tail    = f"Blocked: <b>{_v2_html_esc(reason)}</b>."
+
+        lines = [
+            "🎯 <b>TODAY'S ONLY BREAKOUT</b>",
+            f"   <b>{_v2_html_esc(sym)}</b>"
+            + (f"  <i>[{sector}]</i>" if sector else "")
+            + f"  ·  {verdict}",
+            f"   Conf {conf:.1f} / {min_conf:.0f}  ·  TQ {tq:.1f}  ·  R/R {rr:.2f}×",
+            f"   {tail}",
+            "",
+        ]
+        return lines
+    except Exception as e:
+        _log(f"[v2] section_breakout_spotlight crashed: {e}")
         return []
 
 
@@ -12555,8 +12657,7 @@ def _v2_section_all_breakouts(buys: list, watchlist: list,
     """Every BREAKOUT setup today with verdict + reason."""
     try:
         all_stocks = list(buys or []) + list(watchlist or []) + list(rejected or [])
-        breakouts = [s for s in all_stocks
-                     if str(s.get("setup", "")).upper() == "BREAKOUT"]
+        breakouts = [s for s in all_stocks if _v2_setup_of(s) == "BREAKOUT"]
         if not breakouts:
             return []
         # Determine verdict per stock
@@ -12583,7 +12684,7 @@ def _v2_section_all_breakouts(buys: list, watchlist: list,
             else:
                 reason = _v2_primary_reject_label(s)
                 verdict = f"🔴 rejected ({_v2_html_esc(reason)})"
-            lines.append(f"  <code>{_v2_html_esc(sym):<12}</code> conf {conf:5.1f}  →  {verdict}")
+            lines.append(f"  <code>{_v2_html_esc(sym):<10}</code> {conf:5.1f}  →  {verdict}")
         lines.append("")
         return lines
     except Exception as e:
@@ -12596,8 +12697,7 @@ def _v2_section_top_momentum(buys: list, watchlist: list, rejected: list,
     """Top-N MOMENTUM stocks by confidence (post-penalty)."""
     try:
         all_stocks = list(buys or []) + list(watchlist or []) + list(rejected or [])
-        momentum = [s for s in all_stocks
-                    if str(s.get("setup", "")).upper() == "MOMENTUM"]
+        momentum = [s for s in all_stocks if _v2_setup_of(s) == "MOMENTUM"]
         if not momentum:
             return []
         total = len(momentum)
@@ -12627,7 +12727,7 @@ def _v2_section_top_momentum(buys: list, watchlist: list, rejected: list,
             else:
                 reason = _v2_primary_reject_label(s)
                 verdict = f"🔴 {_v2_html_esc(reason)}"
-            lines.append(f"  {i:2}. <code>{_v2_html_esc(sym):<12}</code> {conf:5.1f}  →  {verdict}")
+            lines.append(f"  {i:2}. <code>{_v2_html_esc(sym):<10}</code> {conf:5.1f}  →  {verdict}")
         if total > top_n:
             lines.append(f"  <i>… and {total - top_n} more (see CSV attachment)</i>")
         lines.append("")
@@ -12639,7 +12739,11 @@ def _v2_section_top_momentum(buys: list, watchlist: list, rejected: list,
 
 def _v2_section_closest_rejects(rejected: list, regime: str,
                                  top_n: int = 15) -> list:
-    """Rejected stocks sorted by proximity to min_conf — tomorrow's candidates."""
+    """Rejected stocks sorted by proximity to min_conf — tomorrow's candidates.
+
+    Grouped by primary reject reason so the reader immediately sees WHY each
+    cohort didn't pass. Within each group, sorted by confidence descending.
+    """
     try:
         if not rejected:
             return []
@@ -12649,7 +12753,7 @@ def _v2_section_closest_rejects(rejected: list, regime: str,
             thresh = {"min_confidence": 78}
         min_conf = _v2_safe_float(thresh.get("min_confidence"), 78)
 
-        # Score by proximity: distance from min_conf, negative = above threshold
+        # Score by proximity: distance from min_conf
         def _distance(s):
             return abs(min_conf - _v2_safe_float(s.get("final_confidence", 0)))
 
@@ -12657,21 +12761,39 @@ def _v2_section_closest_rejects(rejected: list, regime: str,
         if not closest:
             return []
 
+        # Group by reject reason
+        from collections import OrderedDict
+        groups: "OrderedDict[str, list]" = OrderedDict()
+        for s in closest:
+            reason = _v2_primary_reject_label(s)
+            groups.setdefault(reason, []).append(s)
+
         lines = [
-            f"🥺 <b>CLOSEST {min(top_n, len(rejected))} REJECTIONS</b> — tomorrow's candidates",
-            "  <i>These almost passed. Worth watching manually.</i>",
+            f"🥺 <b>CLOSEST {len(closest)} REJECTIONS</b> — tomorrow's candidates",
+            "  <i>Grouped by the primary reason they didn't pass.</i>",
             "",
         ]
-        for s in closest:
-            sym    = _v2_clean_ticker(s.get("symbol", "?"))
-            setup  = str(s.get("setup", "?"))[:4]
-            conf   = _v2_safe_float(s.get("final_confidence", 0))
-            gap    = min_conf - conf
-            reason = _v2_primary_reject_label(s)
-            lines.append(
-                f"  <code>{_v2_html_esc(sym):<12}</code> {conf:5.1f}  "
-                f"gap={gap:+5.1f}  [{setup}]  → {_v2_html_esc(reason)}"
+        for reason, stocks in groups.items():
+            # Sort within group: highest conf first (closest to breaking through)
+            stocks_sorted = sorted(
+                stocks,
+                key=lambda x: _v2_safe_float(x.get("final_confidence", 0)),
+                reverse=True,
             )
+            lines.append(
+                f"  <b>{_v2_html_esc(reason)}</b> ({len(stocks_sorted)})"
+            )
+            for s in stocks_sorted:
+                sym  = _v2_clean_ticker(s.get("symbol", "?"))
+                tag  = _v2_setup_tag(s, with_emoji=False)      # "MOM" / "BRK" / "—"
+                conf = _v2_safe_float(s.get("final_confidence", 0))
+                need = max(0.0, min_conf - conf)
+                lines.append(
+                    f"    <code>{_v2_html_esc(sym):<10}</code> "
+                    f"{conf:5.1f}  need <b>+{need:.1f}</b>  [{tag}]"
+                )
+            lines.append("")
+
         remaining = len(rejected) - len(closest)
         if remaining > 0:
             lines.append(f"  <i>… {remaining} more rejects further away (see CSV)</i>")
@@ -12723,7 +12845,7 @@ def _v2_section_market_weather(regime_data: dict, macro: dict,
 
 def _v2_section_universe_breakdown(buys: list, watchlist: list, rejected: list,
                                     setup_mix: dict, setup_tickers: dict) -> list:
-    """Universe scanned + reject-reason breakdown."""
+    """Universe scanned + reject-reason breakdown, WITH ticker examples per setup."""
     try:
         from collections import Counter
         total = len(buys or []) + len(watchlist or []) + len(rejected or [])
@@ -12737,25 +12859,42 @@ def _v2_section_universe_breakdown(buys: list, watchlist: list, rejected: list,
 
         lines = [
             "🔍 <b>UNIVERSE BREAKDOWN</b>",
-            f"   Scanned <b>{total}</b> stocks:",
+            f"   Scanned <b>{total}</b> stocks by setup type:",
         ]
-        # Setup mix
+        # Setup mix — now with ticker samples so the reader SEES which stocks
+        # are in each bucket (was previously just a bar + count).
         if setup_mix:
+            _tickers_map = setup_tickers or {}
             for setup in ("BREAKOUT", "MOMENTUM", "PULLBACK", "REVERSAL", "OTHER"):
                 n = int((setup_mix or {}).get(setup, 0))
                 if n <= 0:
                     continue
                 pct = int(round(n * 100 / total)) if total > 0 else 0
-                bar = _v2_bar(n, total, width=14)
-                lines.append(f"     {bar} <b>{setup:<9}</b> {n:>3} ({pct}%)")
+                bar = _v2_bar(n, total, width=10)   # narrower for mobile
+                emo = _V2_SETUP_EMOJI.get(setup, "·")
+                # Header row: bar + count
+                lines.append(
+                    f"     {bar}  {emo} <b>{setup:<8}</b> {n:>3} ({pct}%)"
+                )
+                # Sample tickers (up to 5, cleaned)
+                samples = _tickers_map.get(setup) or []
+                if samples:
+                    clean = [_v2_clean_ticker(t) for t in samples[:5]]
+                    more  = len(samples) - len(clean)
+                    joined = ", ".join(clean)
+                    if more > 0:
+                        joined += f", <i>+{more} more</i>"
+                    lines.append(f"        <code>{joined}</code>")
         # Reject reasons top 5
         if reason_counter and rejected:
             lines.append("")
-            lines.append(f"   Why {len(rejected)} rejected:")
+            lines.append(f"   Why {len(rejected)} were rejected:")
             for reason, cnt in reason_counter.most_common(5):
                 pct = int(round(cnt * 100 / len(rejected)))
-                bar = _v2_bar(cnt, len(rejected), width=14)
-                lines.append(f"     {bar} <b>{_v2_html_esc(reason):<25}</b> {cnt:>3} ({pct}%)")
+                bar = _v2_bar(cnt, len(rejected), width=10)
+                lines.append(
+                    f"     {bar}  {_v2_html_esc(reason):<22} {cnt:>3} ({pct}%)"
+                )
         lines.append("")
         return lines
     except Exception as e:
@@ -12775,7 +12914,7 @@ def _v2_section_shadow_log(setup_mix: dict, regime: str, rejected: list) -> list
         for s in (rejected or []):
             frs = s.get("fail_reasons", []) or []
             if any("SETUP_EDGE_SKIP" in str(f) for f in frs) and \
-               str(s.get("setup", "")).upper() in chop_setups:
+               _v2_setup_of(s) in chop_setups:
                 c_count += 1
 
         lines = [
@@ -12981,6 +13120,475 @@ def send_telegram_document(file_path: str, caption: str = "") -> None:
         _log(f"[v2] send_telegram_document error: {e}")
 
 
+# ═════════════════════════════════════════════════════════════════════════════
+# v2.1 CONSOLIDATED SECTIONS — 8-section design (2026-07-10)
+#
+# Design consensus: Retail Investor + Product Designer + Data Analyst +
+# Info Architect. Rules:
+#   1. Each ticker appears in EXACTLY ONE section (`shown_symbols` set)
+#   2. Header format `━━ TITLE ━━` fits Android Telegram 34-char viewport
+#   3. Plain-English tags replace jargon (TQ / R/R / MOM×0.9 → words)
+#   4. Threshold displayed ONCE in HEADER only
+#
+# Sections: HEADER → BUY NOW → ALMOST READY → BY SETUP → YESTERDAY →
+#           UNIVERSE → HEALTH & TIP → GLOSSARY
+# ═════════════════════════════════════════════════════════════════════════════
+
+_V21_REGIME_LABEL = {
+    "STRONG_BULL":     ("☀️", "Strong Bull"),
+    "BULL":            ("🌤️", "Bullish"),
+    "TRANSITION":      ("🌫️", "Transition"),
+    "SIDEWAYS":        ("🌫️", "Sideways / Chop"),
+    "HIGH_VOLATILITY": ("⛈️", "High Volatility"),
+    "BEAR":            ("🌧️", "Bearish"),
+    "STRONG_BEAR":     ("🌧️", "Strong Bear"),
+}
+
+# BY SETUP: fixed display order; OTHER is intentionally excluded
+_V21_SETUP_ORDER = ("BREAKOUT", "MOMENTUM", "PULLBACK", "REVERSAL")
+_V21_SETUP_WORD  = {
+    "BREAKOUT": "Breakout",
+    "MOMENTUM": "Momentum",
+    "PULLBACK": "Pullback",
+    "REVERSAL": "Reversal",
+}
+
+
+def _v21_head(title: str) -> str:
+    """`━━ TITLE ━━` header. Fits 34-char mobile viewport."""
+    return f"━━ {title} ━━"
+
+
+def _v21_english_tag(s: dict, min_conf: float, min_tq: float,
+                     min_rr: float) -> str:
+    """Return a one-word plain-English tag explaining why a stock is not
+    a BUY. Empty string if nothing notable to flag.
+
+    Priority (highest signal first):
+      close    → within 15 pts of the confidence bar
+      TQ low   → trade-quality score below regime bar
+      weak R/R → reward-to-risk below regime bar
+      conf low → confidence >15 pts below bar
+      choppy   → chop-regime momentum penalty was applied
+      ROE low / D/E high / too small → fundamentals gate
+    """
+    try:
+        conf = _v2_safe_float(s.get("final_confidence", s.get("conf", 0)))
+        tq   = _v2_safe_float(s.get("trade_quality_score", s.get("tq", 0)))
+        rr   = _v2_safe_float(s.get("rr_ratio", s.get("rr", 0)))
+        penalty = _v2_safe_float(s.get("chop_momentum_penalty", 0))
+        fails = s.get("fail_reasons", []) or []
+
+        if conf >= min_conf - 15 and conf < min_conf:
+            return "close"
+        if tq > 0 and tq < min_tq:
+            return "TQ low"
+        if rr > 0 and rr < min_rr:
+            return "weak R/R"
+        if conf < min_conf - 15:
+            return "conf low"
+        if penalty > 0:
+            return "choppy"
+        for f in fails:
+            up = str(f).upper()
+            if "ROE" in up:
+                return "ROE low"
+            if "DE_" in up or "D/E" in up:
+                return "D/E high"
+            if "MCAP" in up or "MARKET_CAP" in up:
+                return "too small"
+        return ""
+    except Exception:
+        return ""
+
+
+def _v21_setup_emoji(s: dict) -> str:
+    """Setup emoji for a stock; falls back to `·` for unknown."""
+    return _V2_SETUP_EMOJI.get(_v2_setup_of(s), "·")
+
+
+# ── Section 1: HEADER ──────────────────────────────────────────────────────
+def _v21_section_header(timestamp: str, regime_data: dict, macro: dict,
+                        thresh: dict, buys: list, watchlist: list,
+                        rejected: list) -> list:
+    """Merged banner + quick-glance + market weather."""
+    try:
+        try:
+            market_date = ist_today().strftime("%d %b %Y")
+            dow         = ist_today().strftime("%a")
+        except Exception:
+            market_date, dow = "", ""
+
+        regime = (regime_data or {}).get("regime", "SIDEWAYS")
+        emo, label = _V21_REGIME_LABEL.get(regime, ("🌫️", regime))
+
+        n_buy = len(buys or [])
+        n_wl  = len(watchlist or [])
+        n_rej = len(rejected or [])
+
+        nifty = _v2_safe_float((macro or {}).get("nifty_1d_pct", 0))
+        vix   = _v2_safe_float((macro or {}).get("vix_in", 0))
+
+        min_conf = _v2_safe_float((thresh or {}).get("min_confidence"), 78)
+        min_tq   = _v2_safe_float((thresh or {}).get("min_tq"), 65)
+        min_rr   = _v2_safe_float((thresh or {}).get("min_rr"), 1.8)
+
+        lines = [
+            "━━━━━━━━━━━━━━━━━━━━━━",
+            f"📊 <b>DAILY BRIEF</b> · {_v2_html_esc(market_date)}",
+            f"{_v2_html_esc(dow)} · Regime: {emo} <b>{_v2_html_esc(label)}</b>",
+            f"Nifty {nifty:+.2f}%  ·  VIX {vix:.1f}",
+            f"Today's bar: Conf≥<b>{min_conf:.0f}</b> · "
+            f"TQ≥<b>{min_tq:.0f}</b> · R/R≥<b>{min_rr:.2f}×</b>",
+            f"<b>{n_buy}</b> BUY · <b>{n_wl}</b> watch · <b>{n_rej}</b> rej",
+        ]
+        try:
+            if regime.upper() in ("CHOP", "TRANSITION", "SIDEWAYS"):
+                lines.append("⚠ chop: Momentum penalised ×0.9")
+        except Exception:
+            pass
+        lines.append("━━━━━━━━━━━━━━━━━━━━━━")
+        lines.append("")
+        return lines
+    except Exception as e:
+        _log(f"[v21] header crashed: {e}")
+        return ["━━ DAILY BRIEF ━━", ""]
+
+
+# ── Section 2: BUY NOW ─────────────────────────────────────────────────────
+def _v21_section_buy_now(buys: list, regime: str,
+                         ai_results: dict = None) -> list:
+    """Green-lit actionable picks. Fallback message if empty."""
+    try:
+        header = _v21_head("🎯 BUY NOW")
+        if not buys:
+            return [
+                f"<b>{header}</b>",
+                "",
+                "  <i>No BUYS today.</i>",
+                "  See <b>ALMOST READY</b> below for",
+                "  tomorrow's most likely candidates.",
+                "",
+            ]
+
+        insights = (ai_results or {}).get("insights", {}) or {}
+        buys_sorted = sorted(
+            buys,
+            key=lambda x: _v2_safe_float(x.get("final_confidence", 0)),
+            reverse=True,
+        )
+        lines = [f"<b>{header}</b>", ""]
+        for i, s in enumerate(buys_sorted, 1):
+            sym    = _v2_clean_ticker(s.get("symbol", "?"))
+            setup  = _v2_setup_of(s) or "SETUP"
+            setup_word = _V21_SETUP_WORD.get(setup, setup.title())
+            emo    = _v21_setup_emoji(s)
+            sector = _v2_html_esc(s.get("sector", "") or "")
+            conf   = _v2_safe_float(s.get("final_confidence", 0))
+            tq     = _v2_safe_float(s.get("trade_quality_score", s.get("tq", 0)))
+            rr     = _v2_safe_float(s.get("rr_ratio", s.get("rr", 0)))
+            entry  = _v2_safe_float(s.get("entry", 0))
+            stop   = _v2_safe_float(s.get("stop", 0))
+            t1     = _v2_safe_float(s.get("target1", 0))
+            bar    = _v2_bar(conf, 100.0, width=10)
+            insight = _v2_html_esc(insights.get(s.get("symbol", ""), ""))
+
+            lines.append(
+                f"{i}) <b>{_v2_html_esc(sym)}</b> · {emo} {setup_word}"
+                + (f" · <i>{sector}</i>" if sector else "")
+            )
+            lines.append(f"   Conf {bar} <b>{conf:.0f}</b>")
+            lines.append(
+                f"   Buy <b>{entry:.1f}</b> · SL {stop:.1f} · Tgt {t1:.1f}"
+            )
+            lines.append(f"   R/R <b>{rr:.2f}×</b>  ·  TQ {tq:.0f}")
+            if insight:
+                lines.append(f"   💡 {insight[:80]}")
+            lines.append("")
+        return lines
+    except Exception as e:
+        _log(f"[v21] buy_now crashed: {e}")
+        return []
+
+
+# ── Section 3: ALMOST READY ────────────────────────────────────────────────
+def _v21_section_almost_ready(watchlist: list, regime: str,
+                              shown_symbols: set) -> list:
+    """Merged close_call + developing + monitor. Adds each rendered
+    ticker to `shown_symbols` (mutated) so downstream sections can skip.
+    """
+    try:
+        wl = list(watchlist or [])
+        if not wl:
+            return []
+
+        try:
+            thresh = REGIME_THRESHOLDS[regime]
+        except Exception:
+            thresh = {"min_confidence": 78, "min_tq": 65, "min_rr": 1.8}
+        min_conf = _v2_safe_float(thresh.get("min_confidence"), 78)
+        min_tq   = _v2_safe_float(thresh.get("min_tq"), 65)
+        min_rr   = _v2_safe_float(thresh.get("min_rr"), 1.8)
+
+        wl_sorted = sorted(
+            wl,
+            key=lambda x: _v2_safe_float(
+                x.get("conf", x.get("final_confidence", 0))),
+            reverse=True,
+        )
+
+        header = _v21_head(f"⏳ ALMOST READY ({len(wl_sorted)})")
+        lines = [
+            f"<b>{header}</b>",
+            "  <i>Tomorrow's most likely candidates</i>",
+            "",
+        ]
+        for w in wl_sorted:
+            sym  = _v2_clean_ticker(w.get("symbol", "?"))
+            emo  = _v21_setup_emoji(w)
+            conf = _v2_safe_float(w.get("conf", w.get("final_confidence", 0)))
+            tag  = _v21_english_tag(w, min_conf, min_tq, min_rr)
+            tag_str = f" · <i>{_v2_html_esc(tag)}</i>" if tag else ""
+            lines.append(
+                f"▸ <code>{_v2_html_esc(sym):<10}</code> "
+                f"<b>{conf:.0f}</b> · {emo}{tag_str}"
+            )
+            try:
+                shown_symbols.add(w.get("symbol"))
+            except Exception:
+                pass
+        lines.append("")
+        lines.append(f"  <i>Bar to BUY: {min_conf:.0f} conf</i>")
+        lines.append("")
+        return lines
+    except Exception as e:
+        _log(f"[v21] almost_ready crashed: {e}")
+        return []
+
+
+# ── Section 4: BY SETUP ────────────────────────────────────────────────────
+def _v21_section_by_setup(buys: list, watchlist: list, rejected: list,
+                          shown_symbols: set, regime: str,
+                          setup_mix: dict, top_n_per_setup: int = 3) -> list:
+    """Top rejects grouped by setup type (Breakout / Momentum / Pullback /
+    Reversal). Excludes tickers already in BUY NOW or ALMOST READY. OTHER
+    setup is always dropped. Each setup subgroup shows top-N (default 3).
+
+    Sub-header format: `🚀 Breakout   (top N of TOTAL)` where TOTAL is the
+    full universe count for that setup (from `setup_mix`).
+    """
+    try:
+        try:
+            thresh = REGIME_THRESHOLDS[regime]
+        except Exception:
+            thresh = {"min_confidence": 78, "min_tq": 65, "min_rr": 1.8}
+        min_conf = _v2_safe_float(thresh.get("min_confidence"), 78)
+        min_tq   = _v2_safe_float(thresh.get("min_tq"), 65)
+        min_rr   = _v2_safe_float(thresh.get("min_rr"), 1.8)
+
+        # Full pool = everything minus already-shown tickers
+        pool = []
+        for src in (buys or [], watchlist or [], rejected or []):
+            for s in src:
+                if s.get("symbol") not in shown_symbols:
+                    pool.append(s)
+        if not pool:
+            return []
+
+        # Group by setup
+        by_setup = {k: [] for k in _V21_SETUP_ORDER}
+        for s in pool:
+            st = _v2_setup_of(s)
+            if st in by_setup:  # excludes OTHER + unknown
+                by_setup[st].append(s)
+        # Rank each subgroup by confidence descending
+        for k in by_setup:
+            by_setup[k].sort(
+                key=lambda x: _v2_safe_float(x.get("final_confidence", 0)),
+                reverse=True,
+            )
+
+        # Skip section entirely if every subgroup is empty
+        if not any(by_setup[k] for k in _V21_SETUP_ORDER):
+            return []
+
+        header = _v21_head("📋 BY SETUP")
+        lines = [
+            f"<b>{header}</b>",
+            "  <i>Top rejects grouped by setup type</i>",
+            "",
+        ]
+        for st in _V21_SETUP_ORDER:
+            subgroup = by_setup[st]
+            if not subgroup:
+                continue
+            picks = subgroup[:top_n_per_setup]
+            total_in_universe = int((setup_mix or {}).get(st, len(subgroup)))
+            emo  = _V2_SETUP_EMOJI.get(st, "·")
+            word = _V21_SETUP_WORD.get(st, st.title())
+            lines.append(
+                f"{emo} <b>{word}</b>   "
+                f"<i>(top {len(picks)} of {total_in_universe})</i>"
+            )
+            for i, s in enumerate(picks):
+                sym  = _v2_clean_ticker(s.get("symbol", "?"))
+                conf = _v2_safe_float(s.get("final_confidence", 0))
+                tag  = _v21_english_tag(s, min_conf, min_tq, min_rr) or "rejected"
+                marker = "  ⭐" if i == 0 else "     "
+                lines.append(
+                    f"{marker} <code>{_v2_html_esc(sym):<10}</code> "
+                    f"<b>{conf:.0f}</b> · <i>{_v2_html_esc(tag)}</i>"
+                )
+                try:
+                    shown_symbols.add(s.get("symbol"))
+                except Exception:
+                    pass
+            lines.append("")
+        return lines
+    except Exception as e:
+        _log(f"[v21] by_setup crashed: {e}")
+        return []
+
+
+# ── Section 5: YESTERDAY ───────────────────────────────────────────────────
+def _v21_section_yesterday(buys: list, watchlist: list, rejected: list,
+                           regime: str, prev_state: dict) -> list:
+    """Delta view vs yesterday's saved snapshot."""
+    try:
+        if not prev_state:
+            return []
+        n_buy = len(buys or [])
+        n_wl  = len(watchlist or [])
+        n_rej = len(rejected or [])
+        p_buy = int(prev_state.get("buys", 0))
+        p_wl  = int(prev_state.get("watchlist", 0))
+        p_rej = int(prev_state.get("rejected", 0))
+
+        def _delta(cur, prev):
+            d = cur - prev
+            if d == 0:
+                return "—"
+            return f"{'+' if d > 0 else ''}{d}"
+
+        header = _v21_head("📈 YESTERDAY")
+        return [
+            f"<b>{header}</b>",
+            f"  Buys    {p_buy} → <b>{n_buy}</b>  ({_delta(n_buy, p_buy)})",
+            f"  Watch   {p_wl} → <b>{n_wl}</b>  ({_delta(n_wl, p_wl)})",
+            f"  Rejects {p_rej} → <b>{n_rej}</b>  ({_delta(n_rej, p_rej)})",
+            "",
+        ]
+    except Exception as e:
+        _log(f"[v21] yesterday crashed: {e}")
+        return []
+
+
+# ── Section 6: UNIVERSE STATS ──────────────────────────────────────────────
+def _v21_section_universe_stats(buys: list, watchlist: list,
+                                rejected: list) -> list:
+    """Aggregates only — no ticker names. Setup mix is intentionally
+    omitted because BY SETUP already shows `of TOTAL` counts.
+    """
+    try:
+        from collections import Counter
+        total = len(buys or []) + len(watchlist or []) + len(rejected or [])
+        if total == 0:
+            return []
+
+        header = _v21_head("🔍 UNIVERSE")
+        lines = [
+            f"<b>{header}</b>",
+            f"  Scanned: <b>{total}</b>  ·  "
+            f"BUY: <b>{len(buys or [])}</b>  ·  "
+            f"Watch: <b>{len(watchlist or [])}</b>",
+        ]
+
+        if rejected:
+            reason_counter = Counter()
+            for s in rejected:
+                reason_counter[_v2_primary_reject_label(s)] += 1
+            if reason_counter:
+                top_reason, top_cnt = reason_counter.most_common(1)[0]
+                pct = int(round(top_cnt * 100 / len(rejected)))
+                lines.append(
+                    f"  Top reject: <b>{_v2_html_esc(top_reason)}</b> "
+                    f"— {top_cnt} ({pct}%)"
+                )
+
+        try:
+            b_count = sum(1 for s in (rejected or [])
+                          if _v2_safe_float(s.get("chop_momentum_penalty", 0)) > 0)
+            chop_setups = ("PULLBACK", "REVERSAL", "OTHER")
+            c_count = 0
+            for s in (rejected or []):
+                frs = s.get("fail_reasons", []) or []
+                if any("SETUP_EDGE_SKIP" in str(f) for f in frs) and \
+                   _v2_setup_of(s) in chop_setups:
+                    c_count += 1
+            lines.append(
+                f"  Shadow: A <b>0</b> · B <b>{b_count}</b> · C <b>{c_count}</b>"
+            )
+        except Exception:
+            pass
+        lines.append("")
+        return lines
+    except Exception as e:
+        _log(f"[v21] universe_stats crashed: {e}")
+        return []
+
+
+# ── Section 7: HEALTH & TIP ────────────────────────────────────────────────
+def _v21_section_health_tip(macro: dict, regime_data: dict,
+                            buys: list, watchlist: list,
+                            rejected: list) -> list:
+    """Merged system-health + daily tip."""
+    try:
+        macro_ok  = bool(macro) and \
+                    _v2_safe_float((macro or {}).get("nifty_1d_pct", 0)) is not None
+        regime_ok = bool((regime_data or {}).get("regime"))
+        scan_ok   = (len(buys or []) + len(watchlist or []) +
+                     len(rejected or [])) > 0
+        all_ok = macro_ok and regime_ok and scan_ok
+        status = "🟢 OK" if all_ok else \
+                 ("🟡 partial" if (regime_ok or scan_ok) else "🔴 issue")
+
+        try:
+            tip = _v2_get_daily_tip()
+        except Exception:
+            tip = "Position size is your edge."
+
+        header = _v21_head("💡 HEALTH & TIP")
+        return [
+            f"<b>{header}</b>",
+            f"  System: {status}",
+            f"  <b>Tip:</b> <i>{_v2_html_esc(tip)[:180]}</i>",
+            "",
+        ]
+    except Exception as e:
+        _log(f"[v21] health_tip crashed: {e}")
+        return []
+
+
+# ── Section 8: GLOSSARY ────────────────────────────────────────────────────
+def _v21_section_glossary_mini() -> list:
+    """Only the 6 terms actually used above."""
+    try:
+        header = _v21_head("📖 GLOSSARY")
+        return [
+            f"<b>{header}</b>",
+            "  🚀 Breakout · 📈 Momentum",
+            "  ↩️ Pullback · 🔄 Reversal",
+            "  <b>Conf</b> = model confidence 0-100",
+            "  <b>R/R</b>  = reward per ₹ risked",
+            "  <b>close</b> = ≤15 pts from BUY bar",
+            "  <b>choppy</b> = chop penalty applied",
+            "",
+        ]
+    except Exception as e:
+        _log(f"[v21] glossary crashed: {e}")
+        return []
+
+
 # ── v2 Orchestrator ─────────────────────────────────────────────────────────
 
 def format_telegram_message_v2(
@@ -13015,42 +13623,44 @@ def format_telegram_message_v2(
     setup_tickers = regime_data.get("_setup_tickers") or {}
     prev_state    = _v2_load_prev_state()
 
-    # ─── Compose all sections ───────────────────────────────────────────────
+    # v2.1: strict one-ticker-one-section tracking. Pre-populate with BUY
+    # symbols so BY_SETUP filters them out (ALMOST_READY and BY_SETUP both
+    # mutate this set as they render).
+    shown_symbols = set()
+    for _b in (buys or []):
+        try:
+            shown_symbols.add(_b.get("symbol"))
+        except Exception:
+            pass
+
+    # ─── Compose all sections (v2.1: 8 consolidated) ───────────────────────
     _sections = [
-        ("header",           lambda: _v2_section_header(timestamp)),
-        ("one_line",         lambda: _v2_section_one_line_summary(
-                                buys, watchlist, rejected_stocks, regime, setup_mix)),
-        ("verdict",          lambda: _v2_section_verdict(
-                                buys, watchlist, rejected_stocks)),
-        ("vs_yesterday",     lambda: _v2_section_vs_yesterday(
-                                buys, watchlist, rejected_stocks, regime, prev_state)),
-        ("market_weather",   lambda: _v2_section_market_weather(
-                                regime_data, macro, nifty_state, thresh)),
-        ("buys",             lambda: _v2_section_buys(buys, regime, ai_results)),
-        ("close_call",       lambda: _v2_section_close_call(
-                                watchlist, regime, ai_results)),
-        ("early_stage",      lambda: _v2_section_early_stage(watchlist, regime)),
-        ("all_breakouts",    lambda: _v2_section_all_breakouts(
-                                buys, watchlist, rejected_stocks)),
-        ("top_momentum",     lambda: _v2_section_top_momentum(
-                                buys, watchlist, rejected_stocks, top_n=10)),
-        ("closest_rejects",  lambda: _v2_section_closest_rejects(
-                                rejected_stocks, regime, top_n=15)),
-        ("universe",         lambda: _v2_section_universe_breakdown(
-                                buys, watchlist, rejected_stocks,
-                                setup_mix, setup_tickers)),
-        ("shadow_log",       lambda: _v2_section_shadow_log(
-                                setup_mix, regime, rejected_stocks)),
-        ("tip",              lambda: _v2_section_tip()),
-        ("health",           lambda: _v2_section_health(
-                                macro, regime_data, buys, watchlist, rejected_stocks)),
-        ("glossary",         lambda: _v2_section_glossary()),
+        ("header",         lambda: _v21_section_header(
+                              timestamp, regime_data, macro, thresh,
+                              buys, watchlist, rejected_stocks)),
+        ("buy_now",        lambda: _v21_section_buy_now(
+                              buys, regime, ai_results)),
+        ("almost_ready",   lambda: _v21_section_almost_ready(
+                              watchlist, regime, shown_symbols)),
+        ("by_setup",       lambda: _v21_section_by_setup(
+                              buys, watchlist, rejected_stocks,
+                              shown_symbols, regime, setup_mix,
+                              top_n_per_setup=3)),
+        ("yesterday",      lambda: _v21_section_yesterday(
+                              buys, watchlist, rejected_stocks,
+                              regime, prev_state)),
+        ("universe",       lambda: _v21_section_universe_stats(
+                              buys, watchlist, rejected_stocks)),
+        ("health_tip",     lambda: _v21_section_health_tip(
+                              macro, regime_data, buys, watchlist,
+                              rejected_stocks)),
+        ("glossary",       lambda: _v21_section_glossary_mini()),
     ]
     for name, builder in _sections:
         try:
             lines.extend(builder())
         except Exception as e:
-            _log(f"[v2] section '{name}' crashed: {e} — skipping")
+            _log(f"[v21] section '{name}' crashed: {e} — skipping")
 
     # Save today's snapshot so tomorrow's "vs yesterday" works
     try:
