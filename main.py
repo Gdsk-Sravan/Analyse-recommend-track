@@ -13292,16 +13292,35 @@ def _v21_head(title: str) -> str:
     return f"━━ {title} ━━"
 
 
+# ── Phase v21-Close-Tag-v2 (2026-07-10): tighten "close" tag ──────────────
+# The "close" label used to fire whenever conf was within 15 pts of the bar,
+# regardless of TQ / R/R gates. This produced misleading output like
+# `IKS 77 · close` when IKS was actually rejected on TQ, not on confidence.
+#
+# New rule:  "close" = (conf gap ≤ CLOSE_LABEL_MAX_GAP) AND TQ within 5% of
+#            bar AND R/R within 10% of bar. Otherwise fall through to the
+#            more specific tag (TQ low / weak R/R / conf low).
+#
+# Overrides:  CLOSE_LABEL_MAX_GAP env var (default 8 pts). Set to 15 to
+#             restore old behaviour if a downstream consumer breaks.
+try:
+    _CLOSE_LABEL_MAX_GAP = float(os.getenv("CLOSE_LABEL_MAX_GAP", "8") or 8)
+except Exception:
+    _CLOSE_LABEL_MAX_GAP = 8.0
+
+
 def _v21_english_tag(s: dict, min_conf: float, min_tq: float,
                      min_rr: float) -> str:
     """Return a one-word plain-English tag explaining why a stock is not
     a BUY. Empty string if nothing notable to flag.
 
     Priority (highest signal first):
-      close    → within 15 pts of the confidence bar
+      close    → conf_gap ≤ CLOSE_LABEL_MAX_GAP AND TQ ≥ 95% of bar AND
+                 R/R ≥ 90% of bar (i.e. only the confidence gate is holding
+                 it back). Default max gap = 8 pts.
       TQ low   → trade-quality score below regime bar
       weak R/R → reward-to-risk below regime bar
-      conf low → confidence >15 pts below bar
+      conf low → confidence gap > CLOSE_LABEL_MAX_GAP
       choppy   → chop-regime momentum penalty was applied
       ROE low / D/E high / too small → fundamentals gate
     """
@@ -13312,13 +13331,18 @@ def _v21_english_tag(s: dict, min_conf: float, min_tq: float,
         penalty = _v2_safe_float(s.get("chop_momentum_penalty", 0))
         fails = s.get("fail_reasons", []) or []
 
-        if conf >= min_conf - 15 and conf < min_conf:
+        # "close" only when the ONLY blocker is a small confidence gap.
+        # Guarantees: IKS at 77 conf with TQ<min_tq → "TQ low" (not "close").
+        conf_close = (min_conf - _CLOSE_LABEL_MAX_GAP) <= conf < min_conf
+        tq_ok      = (tq <= 0) or (tq >= min_tq * 0.95)
+        rr_ok      = (rr <= 0) or (rr >= min_rr * 0.90)
+        if conf_close and tq_ok and rr_ok:
             return "close"
         if tq > 0 and tq < min_tq:
             return "TQ low"
         if rr > 0 and rr < min_rr:
             return "weak R/R"
-        if conf < min_conf - 15:
+        if conf < min_conf - _CLOSE_LABEL_MAX_GAP:
             return "conf low"
         if penalty > 0:
             return "choppy"
@@ -13445,10 +13469,59 @@ def _v21_section_buy_now(buys: list, regime: str,
 
 
 # ── Section 3: ALMOST READY ────────────────────────────────────────────────
+# Phase v21-AlmostReady-v2 (2026-07-10): honest "tomorrow candidates" gate.
+#
+# The old implementation rendered EVERY stock on the watchlist regardless
+# of how far it was from the BUY bar. The watchlist is populated upstream
+# by a generous "developing setup" filter (conf ≥ ~45) meant to TRACK
+# stocks over weeks, not "tomorrow candidates."
+#
+# Result: entries like `ORCHPHARMA 48 · TQ low` in an ALMOST READY section
+# whose subtitle promises "Tomorrow's most likely candidates" — with a
+# 35-point gap it would take 3-5 weeks at 1-2 pts/day of natural drift.
+#
+# Phase v21-AlmostReady-v2.1 (2026-07-10 pm): keep individual names in
+# Tier 2 but explain WHY each is shown via a bracketed reason. Rolling
+# them up into a single "Watching N more" line hid actionable per-stock
+# context (which sector, which setup) that the user wants to see.
+#
+# New tiered rendering (all thresholds env-overridable):
+#   • Tier 1 — ALMOST READY  : conf_gap ≤ ALMOST_READY_MAX_GAP (default 12)
+#                              rendered in full with setup emoji + short tag
+#                              (close / TQ low / weak R/R / conf low)
+#   • Tier 2 — Watching      : ALMOST_READY_MAX_GAP < conf_gap ≤
+#                              WATCHING_MAX_GAP (default 30) — each stock
+#                              rendered individually under a "Watching"
+#                              sub-header with a bracketed reason showing
+#                              exactly how far the conf gap is. Example:
+#                                ▸ MIDGAP1  65 · 📈  (needs +18 conf)
+#   • Tier 3 — Long-tail     : conf_gap > WATCHING_MAX_GAP — dropped from
+#                              the message entirely (still in CSV and in
+#                              shadow_master.xlsx bucket B/C for the day-30
+#                              analyst; these are 3+ weeks away from BUY).
+# If BOTH Tier 1 and Tier 2 are empty, the whole section is skipped
+# (no empty header). If only Tier 2 has entries, we still render the
+# section — the reader wants to see the developing pipeline even when
+# nothing is imminently ready.
+try:
+    _ALMOST_READY_MAX_GAP = float(os.getenv("ALMOST_READY_MAX_GAP", "12") or 12)
+except Exception:
+    _ALMOST_READY_MAX_GAP = 12.0
+try:
+    _WATCHING_MAX_GAP = float(os.getenv("WATCHING_MAX_GAP", "30") or 30)
+except Exception:
+    _WATCHING_MAX_GAP = 30.0
+
+
 def _v21_section_almost_ready(watchlist: list, regime: str,
                               shown_symbols: set) -> list:
-    """Merged close_call + developing + monitor. Adds each rendered
-    ticker to `shown_symbols` (mutated) so downstream sections can skip.
+    """Filtered ALMOST READY — Tier 1 = tomorrow candidates (conf_gap ≤ 12),
+    Tier 2 = individually-named watching list with bracketed reason
+    (gap 13-30), Tier 3 = drop.
+
+    Adds every rendered ticker (Tier 1 AND Tier 2) to `shown_symbols` so
+    BY SETUP does not re-print them. Tier 3 stocks stay in the pool so
+    BY SETUP can still show them if they're top rejects in their setup.
     """
     try:
         wl = list(watchlist or [])
@@ -13463,20 +13536,38 @@ def _v21_section_almost_ready(watchlist: list, regime: str,
         min_tq   = _v2_safe_float(thresh.get("min_tq"), 65)
         min_rr   = _v2_safe_float(thresh.get("min_rr"), 1.8)
 
-        wl_sorted = sorted(
-            wl,
-            key=lambda x: _v2_safe_float(
-                x.get("conf", x.get("final_confidence", 0))),
-            reverse=True,
-        )
+        # Compute gap once and bucket into tiers
+        tier1 = []   # conf_gap ≤ _ALMOST_READY_MAX_GAP
+        tier2 = []   # _ALMOST_READY_MAX_GAP < gap ≤ _WATCHING_MAX_GAP
+        for w in wl:
+            c = _v2_safe_float(w.get("conf", w.get("final_confidence", 0)))
+            gap = max(0.0, min_conf - c)
+            if gap <= _ALMOST_READY_MAX_GAP:
+                tier1.append((gap, w))
+            elif gap <= _WATCHING_MAX_GAP:
+                tier2.append((gap, w))
+            # tier3 (gap > WATCHING_MAX_GAP) intentionally not rendered here
 
-        header = _v21_head(f"⏳ ALMOST READY ({len(wl_sorted)})")
+        # If NEITHER tier has candidates, skip the whole section.
+        # Do NOT print a header with 0 entries — misleading.
+        if not tier1 and not tier2:
+            return []
+
+        # Sort each tier by gap ascending (closest to BUY first)
+        tier1.sort(key=lambda gw: gw[0])
+        tier2.sort(key=lambda gw: gw[0])
+
+        # Header count reflects the ACTIONABLE Tier 1 count; Tier 2 is a
+        # developing list shown for context.
+        header = _v21_head(f"⏳ ALMOST READY ({len(tier1)})")
         lines = [
             f"<b>{header}</b>",
             "  <i>Tomorrow's most likely candidates</i>",
             "",
         ]
-        for w in wl_sorted:
+
+        # ── Tier 1 rendering ──
+        for gap, w in tier1:
             sym  = _v2_clean_ticker(w.get("symbol", "?"))
             emo  = _v21_setup_emoji(w)
             conf = _v2_safe_float(w.get("conf", w.get("final_confidence", 0)))
@@ -13490,6 +13581,46 @@ def _v21_section_almost_ready(watchlist: list, regime: str,
                 shown_symbols.add(w.get("symbol"))
             except Exception:
                 pass
+
+        # ── Tier 2 rendering — named list with per-stock bracketed reason ──
+        if tier2:
+            lines.append("")
+            lines.append("  <i>Watching (developing — not ready tomorrow):</i>")
+            for gap, w in tier2:
+                sym  = _v2_clean_ticker(w.get("symbol", "?"))
+                emo  = _v21_setup_emoji(w)
+                conf = _v2_safe_float(
+                    w.get("conf", w.get("final_confidence", 0)))
+                # Build the bracketed reason. Prefer the most-specific
+                # gate that is failing. Order matches _v21_english_tag
+                # priority so BY SETUP and ALMOST READY tell the same
+                # story about a stock.
+                reason_parts = []
+                gap_pts = int(round(gap))
+                if gap_pts > 0:
+                    reason_parts.append(f"needs +{gap_pts} conf")
+                tq_val = _v2_safe_float(
+                    w.get("trade_quality_score", w.get("tq", 0)))
+                rr_val = _v2_safe_float(
+                    w.get("rr_ratio", w.get("rr", 0)))
+                if tq_val > 0 and tq_val < min_tq:
+                    reason_parts.append(
+                        f"TQ {tq_val:.0f}<{min_tq:.0f}")
+                if rr_val > 0 and rr_val < min_rr:
+                    reason_parts.append(
+                        f"R/R {rr_val:.1f}<{min_rr:.1f}")
+                reason = ", ".join(reason_parts) if reason_parts \
+                    else "under review"
+                lines.append(
+                    f"▸ <code>{_v2_html_esc(sym):<10}</code> "
+                    f"<b>{conf:.0f}</b> · {emo} "
+                    f"<i>({_v2_html_esc(reason)})</i>"
+                )
+                try:
+                    shown_symbols.add(w.get("symbol"))
+                except Exception:
+                    pass
+
         lines.append("")
         lines.append(f"  <i>Bar to BUY: {min_conf:.0f} conf</i>")
         lines.append("")
@@ -13500,16 +13631,56 @@ def _v21_section_almost_ready(watchlist: list, regime: str,
 
 
 # ── Section 4: BY SETUP ────────────────────────────────────────────────────
+# Phase v21-BySetup-v2 (2026-07-10): show ALL rejects per setup (was top-3).
+#
+# The old top-3 cap was hiding legitimate candidates behind the scenes.
+# The reader was seeing `(top 3 of 47)` and had NO way to know what the
+# other 44 were — even though many might be equally or more actionable
+# than the top-3 shown. The counter-argument is Telegram's 4096-char body
+# limit, but a realistic run has 5-20 rejects per setup category (not
+# hundreds), which fits comfortably.
+#
+# New behavior:
+#   • Default cap raised 3 → 8 per setup (env: BY_SETUP_MAX_PER_SETUP)
+#   • If a subgroup HAS more than the cap, add an honest overflow line
+#     that NAMES the extra symbols (up to 12) rather than hiding them:
+#       `... and 5 more: SYM1, SYM2, SYM3, SYM4, SYM5 (see CSV)`
+#   • When the overflow tail is > 12 symbols, name the first 12 and
+#     summarize the remainder with a count: `... +N more (see CSV)`
+#   • All extras get registered in shown_symbols so downstream sections
+#     don't repeat them.
+try:
+    _BY_SETUP_MAX_PER_SETUP = int(
+        os.getenv("BY_SETUP_MAX_PER_SETUP", "8") or 8)
+except Exception:
+    _BY_SETUP_MAX_PER_SETUP = 8
+try:
+    # Cap on how many extras get NAMED in the overflow line. Above this,
+    # we fall back to a numeric summary to keep the message under 4096.
+    _BY_SETUP_MAX_NAMED_EXTRAS = int(
+        os.getenv("BY_SETUP_MAX_NAMED_EXTRAS", "12") or 12)
+except Exception:
+    _BY_SETUP_MAX_NAMED_EXTRAS = 12
+
+
 def _v21_section_by_setup(buys: list, watchlist: list, rejected: list,
                           shown_symbols: set, regime: str,
-                          setup_mix: dict, top_n_per_setup: int = 3) -> list:
-    """Top rejects grouped by setup type (Breakout / Momentum / Pullback /
+                          setup_mix: dict,
+                          top_n_per_setup: int = None) -> list:
+    """Rejects grouped by setup type (Breakout / Momentum / Pullback /
     Reversal). Excludes tickers already in BUY NOW or ALMOST READY. OTHER
-    setup is always dropped. Each setup subgroup shows top-N (default 3).
+    setup is always dropped.
 
-    Sub-header format: `🚀 Breakout   (top N of TOTAL)` where TOTAL is the
-    full universe count for that setup (from `setup_mix`).
+    Renders top-N per subgroup (N = ``top_n_per_setup`` or
+    ``_BY_SETUP_MAX_PER_SETUP``, default 8) with a one-line honest
+    overflow that NAMES the extras when there are more than N.
+
+    Sub-header format: `🚀 Breakout   (showing N of TOTAL)` where TOTAL is
+    the full universe count for that setup (from `setup_mix`).
     """
+    # Resolve cap: explicit arg > env-var default
+    cap = top_n_per_setup if top_n_per_setup is not None \
+        else _BY_SETUP_MAX_PER_SETUP
     try:
         try:
             thresh = REGIME_THRESHOLDS[regime]
@@ -13548,25 +13719,28 @@ def _v21_section_by_setup(buys: list, watchlist: list, rejected: list,
         header = _v21_head("📋 BY SETUP")
         lines = [
             f"<b>{header}</b>",
-            "  <i>Top rejects grouped by setup type</i>",
+            "  <i>Rejects grouped by setup type</i>",
             "",
         ]
         for st in _V21_SETUP_ORDER:
             subgroup = by_setup[st]
             if not subgroup:
                 continue
-            picks = subgroup[:top_n_per_setup]
-            total_in_universe = int((setup_mix or {}).get(st, len(subgroup)))
+            picks = subgroup[:cap]
+            extras = subgroup[cap:]
+            total_in_universe = int(
+                (setup_mix or {}).get(st, len(subgroup)))
             emo  = _V2_SETUP_EMOJI.get(st, "·")
             word = _V21_SETUP_WORD.get(st, st.title())
             lines.append(
                 f"{emo} <b>{word}</b>   "
-                f"<i>(top {len(picks)} of {total_in_universe})</i>"
+                f"<i>(showing {len(picks)} of {total_in_universe})</i>"
             )
             for i, s in enumerate(picks):
                 sym  = _v2_clean_ticker(s.get("symbol", "?"))
                 conf = _v2_safe_float(s.get("final_confidence", 0))
-                tag  = _v21_english_tag(s, min_conf, min_tq, min_rr) or "rejected"
+                tag  = _v21_english_tag(
+                    s, min_conf, min_tq, min_rr) or "rejected"
                 marker = "  ⭐" if i == 0 else "     "
                 lines.append(
                     f"{marker} <code>{_v2_html_esc(sym):<10}</code> "
@@ -13576,6 +13750,33 @@ def _v21_section_by_setup(buys: list, watchlist: list, rejected: list,
                     shown_symbols.add(s.get("symbol"))
                 except Exception:
                     pass
+
+            # Honest overflow: NAME the extras instead of hiding them.
+            if extras:
+                named = extras[:_BY_SETUP_MAX_NAMED_EXTRAS]
+                remaining = len(extras) - len(named)
+                names_txt = ", ".join(
+                    _v2_clean_ticker(x.get("symbol", "?"))
+                    for x in named
+                )
+                if remaining > 0:
+                    lines.append(
+                        f"     <i>... and {len(extras)} more: "
+                        f"{_v2_html_esc(names_txt)}, "
+                        f"+{remaining} more (see CSV)</i>"
+                    )
+                else:
+                    lines.append(
+                        f"     <i>... and {len(extras)} more: "
+                        f"{_v2_html_esc(names_txt)} (see CSV)</i>"
+                    )
+                # Register EVERY extra so downstream sections
+                # don't accidentally re-print them
+                for x in extras:
+                    try:
+                        shown_symbols.add(x.get("symbol"))
+                    except Exception:
+                        pass
             lines.append("")
         return lines
     except Exception as e:
@@ -13775,10 +13976,13 @@ def format_telegram_message_v2(
                               buys, regime, ai_results)),
         ("almost_ready",   lambda: _v21_section_almost_ready(
                               watchlist, regime, shown_symbols)),
+        # Phase v21-BySetup-v2 (2026-07-10): pass None so the env-var
+        # default (_BY_SETUP_MAX_PER_SETUP, default 8) takes effect.
+        # Overrides via the BY_SETUP_MAX_PER_SETUP env var.
         ("by_setup",       lambda: _v21_section_by_setup(
                               buys, watchlist, rejected_stocks,
                               shown_symbols, regime, setup_mix,
-                              top_n_per_setup=3)),
+                              top_n_per_setup=None)),
         ("yesterday",      lambda: _v21_section_yesterday(
                               buys, watchlist, rejected_stocks,
                               regime, prev_state)),
@@ -13856,19 +14060,50 @@ def _create_excel_workbook():
         ws3 = wb.create_sheet("Performance Summary")
         ws3.append(["Metric", "Value"])
 
-        for name in ["Confidence Analysis", "TQ Analysis", "Opp Score Analysis",
-                     "Sector Analysis", "Regime Analysis", "Monthly Report",
-                     # v2 research sheets (auto-populated by research_job.py)
-                     "Weekday Analysis", "Holding Period Analysis",
-                     "Category Comparison", "Conf x TQ Matrix",
-                     "Catalyst Analysis", "Fail Reason Analysis",
-                     "Regime x Sector", "Confidence Trajectory",
-                     # Phase Shadow-XLSX (2026-07-10): shadow_trades.csv mirror
-                     # so users can see A/B/C/D bucket accumulation without
-                     # opening a separate file. Populated by
-                     # _sync_shadow_buckets_to_xlsx() at end of every scan.
-                     "Shadow Buckets", "Shadow Summary"]:
-            wb.create_sheet(name)
+        # Phase Bucket-Direct (2026-07-10): The 4 shadow bucket sheets are the
+        # primary daily record of every stock we saw — replaces the older
+        # "Shadow Buckets" / "Shadow Summary" pair which relied on a fragile
+        # shadow_trades.csv side-file. Populated directly by
+        # _write_bucket_sheets_from_run() at save time. Preserves history:
+        # today's rows are appended, previous days stay untouched.
+        #
+        # NOTE (2026-07-10): the 14 "*Analysis" / "Monthly Report" pivot
+        # sheets were removed from this workbook constructor. They were
+        # placeholder tabs that only research_job.py (a separate manual
+        # workflow) ever populates — they wasted space in the daily xlsx
+        # sent to Telegram. research_job.py's _ensure_sheets() creates
+        # them on demand when it actually runs.
+        for _bucket_sheet, _accent in [
+            ("A_TAKEN", "C6EFCE"),          # green
+            ("B_WATCH_ME", "FFEB9C"),       # amber
+            ("C_NOT_MY_STYLE", "D9D9D9"),   # gray
+            ("D_SO_CLOSE", "FFCC99"),       # orange
+        ]:
+            ws_b = wb.create_sheet(_bucket_sheet)
+            ws_b.append([
+                "Date", "Ticker", "Company", "Bucket", "Setup", "Regime",
+                "Confidence", "TQ", "R/R", "Opp Score",
+                "Entry", "Stop", "T1", "T2",
+                "Sector", "Pledge%", "ROE", "D/E",
+                "Catalysts", "Reason", "Status",
+            ])
+            _fill = PatternFill(start_color=_accent, end_color=_accent,
+                                fill_type="solid")
+            for _cell in ws_b[1]:
+                _cell.font = Font(bold=True, color="000000")
+                _cell.fill = _fill
+
+        # Shadow Summary rollup — per-bucket win-rate / expectancy view
+        ws_sum = wb.create_sheet("Shadow Summary")
+        ws_sum.append([
+            "Bucket", "Bucket Name", "Total Ever", "Today", "This Week",
+            "This Month", "Expected WR %", "Latest Run",
+        ])
+        _sum_fill = PatternFill(start_color="B4C7E7", end_color="B4C7E7",
+                                fill_type="solid")
+        for _cell in ws_sum[1]:
+            _cell.font = Font(bold=True, color="000000")
+            _cell.fill = _sum_fill
 
         return wb
     except ImportError:
@@ -14126,20 +14361,33 @@ def save_recommendations_to_excel(buys: list, watchlist: list,
             except Exception as _rej_exc:
                 _log(f"[WARN] Could not write Rejected sheet: {_rej_exc}")
 
+        # Phase Bucket-Direct (2026-07-10): write today's A/B/C/D bucket rows
+        # BEFORE saving so they land in the same wb.save() call. Preserves
+        # previous-day rows (append semantics with (Date,Ticker) dedupe) and
+        # drops the 14 legacy empty pivot sheets on first write.
+        try:
+            _bkt_counts = _write_bucket_sheets_from_run(
+                wb, buys, watchlist, rejected or [], regime_data, today_str)
+            _log(f"[shadow-xlsx] Bucket rows added today: "
+                 f"A={_bkt_counts['A']} B={_bkt_counts['B']} "
+                 f"C={_bkt_counts['C']} D={_bkt_counts['D']}")
+        except Exception as _bk_exc:
+            _log(f"[WARN] Direct bucket write failed: {_bk_exc}")
+
         wb.save(TRACKER_XLSX)
         if rejected_written:
             _log(f"[INFO] Saved {len(all_stocks)} recommendations + {rejected_written} rejects to {TRACKER_XLSX}")
         else:
             _log(f"[INFO] Saved {len(all_stocks)} recommendations to {TRACKER_XLSX}")
 
-        # Phase Shadow-XLSX (2026-07-10): mirror shadow_trades.csv into
-        # dedicated sheets so users see A/B/C/D buckets alongside the main
-        # Recommendations / Rejected data. Best-effort; never fails the
-        # main tracker save.
+        # Phase Bucket-Direct (2026-07-10): refresh Shadow Summary rollup
+        # after the main save so it always reflects today's counts. Runs on
+        # the newly-saved file (loads it back), keeping the main save path
+        # simple. Best-effort; never fails the pipeline.
         try:
-            _sync_shadow_buckets_to_xlsx()
+            _refresh_bucket_summary()
         except Exception as _sx_exc:
-            _log(f"[WARN] shadow-bucket sync to xlsx failed: {_sx_exc}")
+            _log(f"[WARN] Shadow Summary refresh failed: {_sx_exc}")
 
     except Exception as e:
         _log(f"[WARN] Excel save failed: {e}")
@@ -14147,149 +14395,333 @@ def save_recommendations_to_excel(buys: list, watchlist: list,
 
 def _sync_shadow_buckets_to_xlsx() -> None:
     """
-    Phase Shadow-XLSX (2026-07-10): Mirror shadow_trades.csv into two sheets
-    inside shadow_master.xlsx:
-
-      • "Shadow Buckets"  — full row-level dump of every shadow trade
-                            (date_added, symbol, bucket, setup, regime, conf,
-                            entry, target_1, stop_loss, status, exit_date,
-                            exit_price, r_multiple, days_held, note)
-      • "Shadow Summary"  — per-bucket rollup with win-rate + expectancy
-                            + calibration verdict vs backtest prediction
-
-    This makes the buckets first-class citizens of the Excel tracker so users
-    don't need to open shadow_trades.csv separately. Idempotent: rewrites both
-    sheets from the CSV each call (CSV is the source of truth).
-
-    Silent no-op if:
-      • openpyxl unavailable
-      • shadow_log module missing
-      • shadow_trades.csv doesn't exist yet
-      • shadow_master.xlsx doesn't exist yet
+    Phase Bucket-Direct (2026-07-10): thin compatibility shim that delegates
+    to _refresh_bucket_summary(). Kept as a named function so any external
+    caller / older code path still resolves. The heavy lifting now happens
+    inside save_recommendations_to_excel() → _write_bucket_sheets_from_run(),
+    which no longer depends on shadow_trades.csv existing.
     """
-    if not _SHADOW_LOG_OK:
-        return
+    try:
+        _refresh_bucket_summary()
+    except Exception as e:
+        _log(f"[WARN] Shadow Summary refresh failed: {e}")
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Phase Bucket-Direct (2026-07-10): direct-from-run bucket writer + summary
+# ═════════════════════════════════════════════════════════════════════════════
+# Design decision: main.py owns the daily write to A_TAKEN / B_WATCH_ME /
+# C_NOT_MY_STYLE / D_SO_CLOSE. Removes the dependency on shadow_master_job.py
+# (which was silently no-op'ing when shadow_trades.csv was empty) and makes
+# the bucket sheets a first-class daily artifact.
+#
+# History is preserved: today's rows are APPENDED, previous days stay. A
+# (Date, Ticker) dedupe check prevents duplicates on same-day re-runs.
+
+_BUCKET_SHEET_MAP = {
+    "A": "A_TAKEN",
+    "B": "B_WATCH_ME",
+    "C": "C_NOT_MY_STYLE",
+    "D": "D_SO_CLOSE",
+}
+_BUCKET_ACCENTS = {
+    "A_TAKEN": "C6EFCE",         # green
+    "B_WATCH_ME": "FFEB9C",      # amber
+    "C_NOT_MY_STYLE": "D9D9D9",  # gray
+    "D_SO_CLOSE": "FFCC99",      # orange
+}
+_BUCKET_HEADER = [
+    "Date", "Ticker", "Company", "Bucket", "Setup", "Regime",
+    "Confidence", "TQ", "R/R", "Opp Score",
+    "Entry", "Stop", "T1", "T2",
+    "Sector", "Pledge%", "ROE", "D/E",
+    "Catalysts", "Reason", "Status",
+]
+_BUCKET_EXPECTED_WR = {"A": 48.0, "B": 35.0, "C": 25.0, "D": 40.0}
+_BUCKET_LONG_NAMES = {
+    "A_TAKEN": "A · TAKEN",
+    "B_WATCH_ME": "B · WATCH_ME",
+    "C_NOT_MY_STYLE": "C · NOT_MY_STYLE",
+    "D_SO_CLOSE": "D · SO_CLOSE",
+}
+
+# 14 legacy pivot sheets from the pre-2026-07-10 workbook constructor. They
+# were placeholders only ever populated by research_job.py (separate manual
+# workflow). We drop them from any existing xlsx on first write so daily
+# users don't see empty tabs.
+_LEGACY_EMPTY_SHEETS = (
+    "Confidence Analysis", "TQ Analysis", "Opp Score Analysis",
+    "Sector Analysis", "Regime Analysis", "Monthly Report",
+    "Weekday Analysis", "Holding Period Analysis",
+    "Category Comparison", "Conf x TQ Matrix",
+    "Catalyst Analysis", "Fail Reason Analysis",
+    "Regime x Sector", "Confidence Trajectory",
+    # older "Shadow Buckets" was the aggregate view — now redundant with
+    # per-bucket sheets + Shadow Summary rollup.
+    "Shadow Buckets",
+)
+
+
+def _classify_stock_bucket(stock: dict, is_buy: bool, min_conf_bar: float = 83.0,
+                            near_miss_band: float = 10.0) -> str:
+    """
+    Map a stock dict to one of A/B/C/D:
+      A = TAKEN            — passed all gates (BUY)
+      B = WATCH_ME         — BREAKOUT/MOMENTUM setup, rejected by regime/other
+      C = NOT_MY_STYLE     — PULLBACK/REVERSAL/OTHER, rejected
+      D = SO_CLOSE         — right setup + conf within near_miss_band of bar
+    """
+    if is_buy:
+        return "A"
+    setup = str(stock.get("setup_type") or stock.get("setup") or "OTHER").upper()
+    conf  = float(stock.get("final_confidence", 0) or 0)
+    if setup in ("BREAKOUT", "MOMENTUM"):
+        # Near-miss on conf → D takes priority over B
+        gap = min_conf_bar - conf
+        if 0 < gap <= near_miss_band:
+            return "D"
+        return "B"
+    return "C"
+
+
+def _existing_bucket_keys(wb, sheet_name: str) -> set:
+    """Return set of (date, ticker) tuples already present in a bucket sheet."""
+    keys = set()
+    if sheet_name not in wb.sheetnames:
+        return keys
+    ws = wb[sheet_name]
+    try:
+        for row in ws.iter_rows(min_row=2, max_col=2, values_only=True):
+            if row and len(row) >= 2 and row[0] and row[1]:
+                keys.add((str(row[0]), str(row[1])))
+    except Exception:
+        pass
+    return keys
+
+
+def _ensure_bucket_sheet(wb, sheet_name: str):
+    """Ensure a bucket sheet exists with the correct header + accent."""
+    try:
+        from openpyxl.styles import Font, PatternFill
+    except ImportError:
+        Font = PatternFill = None
+    if sheet_name in wb.sheetnames:
+        ws = wb[sheet_name]
+        # If it exists but is empty/wrong-header, keep as-is (don't destroy
+        # user data). Only add the header if truly blank.
+        try:
+            first_row = next(ws.iter_rows(min_row=1, max_row=1, values_only=True), None)
+            if not first_row or all(v is None or v == "" for v in first_row):
+                ws.append(_BUCKET_HEADER)
+                if Font and PatternFill:
+                    accent = _BUCKET_ACCENTS.get(sheet_name, "D9D9D9")
+                    _fill = PatternFill(start_color=accent, end_color=accent,
+                                        fill_type="solid")
+                    for cell in ws[1]:
+                        cell.font = Font(bold=True, color="000000")
+                        cell.fill = _fill
+        except Exception:
+            pass
+        return ws
+    ws = wb.create_sheet(sheet_name)
+    ws.append(_BUCKET_HEADER)
+    if Font and PatternFill:
+        accent = _BUCKET_ACCENTS.get(sheet_name, "D9D9D9")
+        _fill = PatternFill(start_color=accent, end_color=accent,
+                            fill_type="solid")
+        for cell in ws[1]:
+            cell.font = Font(bold=True, color="000000")
+            cell.fill = _fill
+    return ws
+
+
+def _bucket_row_for_stock(stock: dict, bucket: str, regime_str: str,
+                           today_str: str, is_buy: bool) -> list:
+    """Build a single 21-column bucket row from a stock dict."""
+    sym = stock.get("symbol", "") or ""
+    fr  = stock.get("fail_reasons", []) or []
+    if is_buy:
+        reason = "TAKEN — all gates passed"
+    else:
+        reason = _classify_reject_reason(fr) if fr else "UNKNOWN"
+    return [
+        today_str,
+        sym,
+        sym.replace(".NS", ""),
+        _BUCKET_LONG_NAMES.get(_BUCKET_SHEET_MAP.get(bucket, ""), bucket),
+        str(stock.get("setup_type") or stock.get("setup") or "OTHER").upper(),
+        regime_str,
+        stock.get("final_confidence", 0),
+        stock.get("trade_quality_score", 0),
+        stock.get("rr_ratio", stock.get("rr", 0)),
+        stock.get("opportunity_score", 0),
+        stock.get("entry", 0),
+        stock.get("stop", 0),
+        stock.get("target1", 0),
+        stock.get("target2", 0),
+        get_sector(sym) if sym else "",
+        stock.get("promoter_pledge_pct", 0),
+        stock.get("roe", 0),
+        stock.get("de_ratio", 0),
+        ", ".join(stock.get("catalysts", []) or []),
+        reason,
+        "TAKEN" if is_buy else "REJECTED",
+    ]
+
+
+def _write_bucket_sheets_from_run(wb, buys: list, watchlist: list,
+                                   rejected: list, regime_data: dict,
+                                   today_str: str) -> dict:
+    """
+    Append today's rows to A_TAKEN / B_WATCH_ME / C_NOT_MY_STYLE / D_SO_CLOSE.
+    Preserves all previous-day rows. Deduplicates by (Date, Ticker).
+
+    Returns a per-bucket counter dict: {"A": n_a, "B": n_b, "C": n_c, "D": n_d}.
+    """
+    regime_str = str(regime_data.get("regime", "") or "")
+    counters = {"A": 0, "B": 0, "C": 0, "D": 0}
+
+    # Ensure all 4 bucket sheets exist with headers
+    for sn in _BUCKET_SHEET_MAP.values():
+        _ensure_bucket_sheet(wb, sn)
+
+    # Build per-bucket dedupe key sets
+    existing = {b: _existing_bucket_keys(wb, _BUCKET_SHEET_MAP[b])
+                for b in ("A", "B", "C", "D")}
+
+    # ── A: BUYs ──
+    for s in (buys or []):
+        b = "A"
+        sym = s.get("symbol", "")
+        if (today_str, sym) in existing[b]:
+            continue
+        wb[_BUCKET_SHEET_MAP[b]].append(
+            _bucket_row_for_stock(s, b, regime_str, today_str, is_buy=True))
+        existing[b].add((today_str, sym))
+        counters[b] += 1
+
+    # ── B/C/D: rejects (watchlist rows are still "monitor-tier" recs, not
+    # rejects — they belong in the Recommendations sheet, so we don't
+    # re-bucket them here). Only iterate `rejected`.
+    for s in (rejected or []):
+        b = _classify_stock_bucket(s, is_buy=False)
+        sym = s.get("symbol", "")
+        if (today_str, sym) in existing[b]:
+            continue
+        wb[_BUCKET_SHEET_MAP[b]].append(
+            _bucket_row_for_stock(s, b, regime_str, today_str, is_buy=False))
+        existing[b].add((today_str, sym))
+        counters[b] += 1
+
+    # ── Drop legacy empty pivot sheets on first write ──
+    dropped = 0
+    for legacy in _LEGACY_EMPTY_SHEETS:
+        if legacy in wb.sheetnames:
+            ws = wb[legacy]
+            # Only drop if truly empty (1x1 or header-only, no data rows)
+            try:
+                empty = (ws.max_row <= 1 and ws.max_column <= 1)
+                if empty:
+                    del wb[legacy]
+                    dropped += 1
+            except Exception:
+                pass
+    if dropped:
+        _log(f"[shadow-xlsx] Dropped {dropped} empty legacy sheets")
+
+    return counters
+
+
+def _refresh_bucket_summary() -> None:
+    """
+    Rebuild the "Shadow Summary" sheet by counting rows across the 4 bucket
+    sheets. Runs after every save so today's data is always reflected.
+    Silent no-op if xlsx doesn't exist.
+    """
     try:
         import openpyxl
+        from openpyxl.styles import Font, PatternFill
     except ImportError:
         return
-
     if not os.path.exists(TRACKER_XLSX):
         return
-    csv_path = getattr(shadow_log, "SHADOW_CSV_PATH", None)
-    if not csv_path or not os.path.exists(csv_path):
-        return
-
-    try:
-        rows = shadow_log._read_all()
-    except Exception:
-        rows = []
-
     try:
         wb = openpyxl.load_workbook(TRACKER_XLSX)
     except Exception as e:
-        _log(f"[WARN] shadow-sync: cannot open {TRACKER_XLSX}: {e}")
+        _log(f"[WARN] summary-refresh: cannot open {TRACKER_XLSX}: {e}")
         return
 
-    # ── Sheet 1: Shadow Buckets (full detail) ──
-    if "Shadow Buckets" in wb.sheetnames:
-        del wb["Shadow Buckets"]
-    ws_b = wb.create_sheet("Shadow Buckets")
-    _SHADOW_COLS = [
-        "date_added", "symbol", "bucket", "bucket_name", "setup", "regime",
-        "conf", "entry", "target_1", "stop_loss", "status", "exit_date",
-        "exit_price", "r_multiple", "days_held", "note",
-    ]
-    ws_b.append(_SHADOW_COLS)
+    # Compute per-bucket counts (total ever + today + this week + this month)
+    from datetime import date, timedelta
+    today = date.today()
+    week_ago = today - timedelta(days=7)
+    month_ago = today - timedelta(days=30)
 
-    _BUCKET_NAMES = {
-        "A": "A · TAKEN",
-        "B": "B · WATCH_ME",
-        "C": "C · NOT_MY_STYLE",
-        "D": "D · SO_CLOSE",
-    }
-    for r in rows:
-        b = r.get("bucket", "")
-        ws_b.append([
-            r.get("date_added", ""),
-            r.get("symbol", ""),
-            b,
-            _BUCKET_NAMES.get(b, b),
-            r.get("setup", ""),
-            r.get("regime", ""),
-            r.get("conf", ""),
-            r.get("entry", ""),
-            r.get("target_1", ""),
-            r.get("stop_loss", ""),
-            r.get("status", ""),
-            r.get("exit_date", ""),
-            r.get("exit_price", ""),
-            r.get("r_multiple", ""),
-            r.get("days_held", ""),
-            r.get("note", ""),
-        ])
+    def _count_since(sheet_name: str, cutoff):
+        if sheet_name not in wb.sheetnames:
+            return (0, 0, 0, 0, "")
+        ws = wb[sheet_name]
+        total = 0
+        today_n = 0
+        wk_n = 0
+        mo_n = 0
+        latest = ""
+        for row in ws.iter_rows(min_row=2, max_col=1, values_only=True):
+            if not row or not row[0]:
+                continue
+            total += 1
+            d_str = str(row[0])
+            latest = d_str if not latest or d_str > latest else latest
+            try:
+                from datetime import datetime as _dt
+                d = _dt.fromisoformat(d_str).date()
+                if d == today:  today_n += 1
+                if d >= week_ago:  wk_n += 1
+                if d >= month_ago: mo_n += 1
+            except Exception:
+                pass
+        return (total, today_n, wk_n, mo_n, latest)
 
-    # ── Sheet 2: Shadow Summary (per-bucket rollup) ──
+    # (Re)create Shadow Summary
     if "Shadow Summary" in wb.sheetnames:
         del wb["Shadow Summary"]
     ws_s = wb.create_sheet("Shadow Summary")
     ws_s.append([
-        "Bucket", "Bucket Name", "Total", "Pending", "Resolved",
-        "Wins", "Losses", "Time Exits", "Win Rate %", "Expected WR %",
-        "Avg R Multiple", "Calibration Verdict",
+        "Bucket", "Bucket Name", "Total Ever", "Today", "This Week",
+        "This Month", "Expected WR %", "Latest Run",
     ])
+    _fill = PatternFill(start_color="B4C7E7", end_color="B4C7E7",
+                        fill_type="solid")
+    for cell in ws_s[1]:
+        cell.font = Font(bold=True, color="000000")
+        cell.fill = _fill
 
-    from collections import Counter
-    for bucket in ("A", "B", "C", "D"):
-        try:
-            s = shadow_log._bucket_stats(rows, bucket)
-        except Exception:
-            continue
-        if s["total"] == 0:
-            continue
-        expected_wr = shadow_log._BUCKET_EXPECTED_WR.get(bucket, 0.0)
-        try:
-            verdict = shadow_log._bucket_verdict(
-                s["wr"], expected_wr, s["resolved"])
-        except Exception:
-            verdict = ""
-        # Strip HTML/emoji for xlsx cleanliness (keep just the text meaning)
-        _v = verdict.replace("✅", "OK").replace("⚠️", "WARN").replace("⏳", "PENDING")
+    for bucket_key in ("A", "B", "C", "D"):
+        sn = _BUCKET_SHEET_MAP[bucket_key]
+        total, today_n, wk_n, mo_n, latest = _count_since(sn, today)
         ws_s.append([
-            bucket,
-            _BUCKET_NAMES.get(bucket, bucket),
-            s["total"],
-            s["pending"],
-            s["resolved"],
-            s["wins"],
-            s["losses"],
-            s["time_exits"],
-            round(s["wr"], 2) if s["resolved"] >= 1 else "",
-            expected_wr,
-            round(s["exp_r"], 3) if s["resolved"] >= 1 else "",
-            _v,
+            bucket_key,
+            _BUCKET_LONG_NAMES.get(sn, bucket_key),
+            total, today_n, wk_n, mo_n,
+            _BUCKET_EXPECTED_WR.get(bucket_key, ""),
+            latest,
         ])
 
     # Aggregate row
-    total = len(rows)
-    pending = sum(1 for r in rows if r.get("status") == "PENDING")
-    wins = sum(1 for r in rows if r.get("status") == "WIN")
-    losses = sum(1 for r in rows if r.get("status") == "LOSS")
-    tex = sum(1 for r in rows if r.get("status") == "TIME_EXIT")
-    resolved = wins + losses + tex
+    tot_all = sum(_count_since(_BUCKET_SHEET_MAP[b], today)[0]
+                  for b in ("A", "B", "C", "D"))
+    today_all = sum(_count_since(_BUCKET_SHEET_MAP[b], today)[1]
+                    for b in ("A", "B", "C", "D"))
     ws_s.append([])
-    ws_s.append([
-        "ALL", "All buckets combined", total, pending, resolved,
-        wins, losses, tex,
-        round(wins / resolved * 100, 2) if resolved >= 1 else "",
-        "", "", "",
-    ])
+    ws_s.append(["ALL", "All buckets combined", tot_all, today_all,
+                 "", "", "", ""])
 
     try:
         wb.save(TRACKER_XLSX)
-        _log(f"[shadow-xlsx] Synced {len(rows)} shadow rows to Shadow Buckets/Summary sheets")
+        _log(f"[shadow-xlsx] Refreshed Shadow Summary "
+             f"(total={tot_all}, today={today_all})")
     except Exception as e:
-        _log(f"[WARN] shadow-xlsx save failed: {e}")
+        _log(f"[WARN] Shadow Summary save failed: {e}")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
