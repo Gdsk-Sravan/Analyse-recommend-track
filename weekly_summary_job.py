@@ -23,6 +23,38 @@ FRESH_START        = os.getenv("FRESH_START", "false").lower() == "true"
 WEEKLY_METRICS_FILE = os.getenv("WEEKLY_METRICS_FILE", "weekly_metrics.json")
 
 
+# ─── Phase C7g (2026-07-10): cross-workflow FRESH_START marker ─────────────
+# See research_job.py for full rationale. weekly_summary runs on Saturdays via
+# a separate workflow, so it can't rely on the env var; the committed marker
+# is the only reliable signal. Non-consuming peek — main.py cleans up.
+def _peek_fresh_start_marker(today_str: str = None) -> bool:
+    marker = ".fresh_start_marker"
+    if not os.path.exists(marker):
+        return False
+    try:
+        with open(marker, "r", encoding="utf-8") as _fm:
+            marker_date = _fm.read().strip()
+    except Exception:
+        return False
+    if today_str is None:
+        today_str = datetime.now().strftime("%Y-%m-%d")
+    return marker_date == today_str
+
+
+def _weekly_wipe_stale_metrics_if_fresh() -> None:
+    """On a fresh-start day, delete weekly_metrics.json so we don't emit stale
+    week-over-week deltas. Belt-and-braces: main.py Edit #3 already does this,
+    but weekly_summary runs on a different runner where main.py never touched."""
+    if not (FRESH_START or _peek_fresh_start_marker()):
+        return
+    try:
+        if os.path.exists(WEEKLY_METRICS_FILE):
+            os.remove(WEEKLY_METRICS_FILE)
+            print(f"[FRESH_START] weekly_summary: deleted stale {WEEKLY_METRICS_FILE}")
+    except Exception as _e:
+        print(f"[FRESH_START] weekly_summary: could not delete {WEEKLY_METRICS_FILE}: {_e}")
+
+
 # ── Phase C7e (2026-07-02): dynamic sector universe ──
 # Kill the hardcoded 8-sector map — derive the sector list from sector_master.csv
 # (columns: symbol,sector,industry) by picking the first symbol in each sector
@@ -539,6 +571,15 @@ def run_weekly_summary():
     week_end   = today.strftime("%b %d, %Y")
     print(f"=== WEEKLY SUMMARY: {week_start} \u2014 {week_end} ===")
 
+    # Phase C7g (2026-07-10): honour cross-workflow FRESH_START marker.
+    _today_iso = today.strftime("%Y-%m-%d")
+    _marker_detected = _peek_fresh_start_marker(_today_iso)
+    _is_fresh = FRESH_START or _marker_detected
+    if _is_fresh:
+        _reason = "explicit FRESH_START env" if FRESH_START else "detected .fresh_start_marker for today"
+        print(f"[FRESH_START] weekly_summary: fresh-start day ({_reason}) — no historical baseline")
+        _weekly_wipe_stale_metrics_if_fresh()
+
     # Write the factor-summary sheet into the xlsx first (best-effort)
     try:
         write_weekly_factor_summary(week_start, week_end)
@@ -547,7 +588,7 @@ def run_weekly_summary():
 
     # Load tracker
     tracker = {}
-    if FRESH_START:
+    if _is_fresh:
         print("[FRESH_START] weekly_summary: ignoring old trade_tracker.json")
     else:
         try:
