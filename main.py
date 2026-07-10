@@ -405,43 +405,176 @@ IS_SCHEDULED        = os.getenv("SCHEDULED_RUN", "false").lower() == "true"
 # ─── Phase C7c (2026-07-02): FRESH_START switch ─────────────────────────────
 # Set FRESH_START=true in the GitHub Actions env (or as a workflow_dispatch
 # input) for ONE run to wipe all decision-tainted state and start clean.
-# What it does on that single run:
-#   • load_tracker(), load_tracker_v2()         → return empty (skips old trades)
-#   • initialize_tracker_if_new()               → skips Jun 25 seed data
-#   • load_gate_memory()                        → returns {} (no stale 5d window)
-#   • load_regime_calibration()                 → returns {} (no stale deltas)
-#   • load_watchlist_persist() / conf_history   → return empty
-#   • shadow_master.xlsx                        → renamed to .stale_<date>
-#   • decision_audit_*.jsonl                    → new file naturally (date-suffixed)
-# What it does NOT touch (rebuild-cost is high, not decision-tainted):
-#   • sector_master.csv, nse_all_symbols.csv, events_config.json
-#   • vix_history_cache.json
 #
-# Phase C7g (2026-07-10): Extended FRESH_START coverage so downloaded artifact
-# from a fresh-start run contains ONLY today's dates. Previous versions leaked
-# stale dates via three unguarded loaders and one auxiliary metrics file.
-# Now also wiped on FRESH_START:
-#   • sector_rank_history.json  — was leaking 5d/7d/9d date keys
-#   • delivery_cache.json       — was serving yesterday's per-stock bhavcopy
-#   • fundamentals_cache.json   — was serving yesterday's ROE/D/E
-#   • weekly_metrics.json       — was showing last week's week_end date
-# After the fresh run creates new (empty-ish) state files, unset FRESH_START
-# for subsequent runs — they'll build on the clean baseline naturally.
+# ═══════════════════════════════════════════════════════════════════════════
+# Phase C7h (2026-07-10): FULL STATE SCRUBBER — every stateful file resets.
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# WHAT GETS WIPED (categorised — see wipe block below for the authoritative
+# lists):
+#
+#   RENAMED to <name>.stale_<date> (post-mortem preserved):
+#     • shadow_master.xlsx, shadow_report.xlsx, shadow_report_weekly.xlsx
+#     • recommendation_tracker.xlsx (legacy v1 workbook)
+#     • shadow_trades.csv, portfolio_state.csv, telegram_daily.csv
+#     • price_fetch_failures.jsonl, tradable_dropouts.jsonl
+#
+#   DELETED outright (regenerated automatically):
+#     • trade_tracker.json, trade_tracker_v2.json, tracker.json
+#     • gate_memory.json, regime_calibration.json, watchlist_persist.json
+#     • confidence_history.json, reject_watch.json
+#     • sector_rank_history.json, delivery_cache.json, fundamentals_cache.json
+#     • sector_cache.json, weekly_metrics.json, telegram_prev_state.json
+#     • intraday_snapshots.json, last_known_good.json, last_tradable.json
+#     • run_health.json
+#
+#   PRESERVED (user-owned config or expensive metadata — see documented
+#   exclusion list inline in the wipe block):
+#     • portfolio.json, events_config.json, stocks.txt, blocklists
+#     • nse_all_symbols.csv, sector_master.csv, market_calendars.json
+#     • vix_history_cache.json, run_log_*.txt
+#
+# Load-time skips (in-memory return {} / [] even if disk copy survives)
+# still fire for defence-in-depth on downstream runners:
+#   • load_tracker(), load_tracker_v2(), initialize_tracker_if_new()
+#   • load_gate_memory(), load_regime_calibration()
+#   • load_watchlist_persist(), load_confidence_history()
+#   • load_reject_watch()
+#   • decision_audit_*.jsonl — new file naturally (date-suffixed)
+#
+# After a FRESH_START run persists to git, unset FRESH_START for subsequent
+# runs — they'll build on the clean baseline naturally.
 FRESH_START = os.getenv("FRESH_START", "false").lower() == "true"
 if FRESH_START:
     print("[FRESH_START] Enabled — old tracker/audit/memory state will be ignored this run")
-    # Phase C7g (2026-07-10): pre-wipe auxiliary files that are written by
-    # OTHER jobs (not main.py) and therefore don't hit a load-time FRESH_START
-    # guard. These are safe to delete — they're pure output/summary artifacts
-    # regenerated from trade_tracker.json / shadow_master.xlsx on the next run.
-    _fresh_wipe_files = ["weekly_metrics.json"]
-    for _fw in _fresh_wipe_files:
+
+    # ─────────────────────────────────────────────────────────────────────
+    # Phase C7h (2026-07-10): FULL STATE SCRUBBER
+    # ─────────────────────────────────────────────────────────────────────
+    # Previous versions only wiped a subset (main.py-owned loaders + a
+    # single weekly_metrics.json delete). That left ~9 state files on disk
+    # that leaked stale data into supposedly-fresh runs.
+    #
+    # Now: every stateful/history file gets reset in a single deterministic
+    # pass here, so the ONE FRESH_START run produces a truly clean baseline.
+    #
+    # Three action types:
+    #   RENAME  — big files where post-mortem value is real (xlsx, shadow_trades)
+    #             → renamed to <name>.stale_<date> so you can zip & compare later
+    #   DELETE  — small transient JSON caches/summaries (regenerated on demand)
+    #             → deleted outright to keep the repo tidy
+    #   PRESERVE — user-owned config or expensive universe metadata
+    #             → NOT touched. Documented exclusion list below.
+    #
+    # If you add a NEW stateful file to the pipeline, add it to ONE of the
+    # three sections below. That's the single source of truth for what a
+    # fresh start means in this repo.
+    # ─────────────────────────────────────────────────────────────────────
+    _fresh_today = datetime.datetime.now().strftime("%Y-%m-%d")
+
+    # (A) Files to RENAME to <name>.stale_<date>. Preserves the raw data for
+    # post-mortem/comparison but keeps the "live" filename empty so the
+    # pipeline creates a fresh one on first write.
+    _fresh_rename_files = [
+        # xlsx workbooks (rebuild cost high, but data valuable for audit)
+        "shadow_master.xlsx",            # main shadow log workbook
+        "shadow_report.xlsx",             # weekly rollup workbook
+        "shadow_report_weekly.xlsx",      # alternate weekly xlsx name
+        "recommendation_tracker.xlsx",    # legacy v1 tracker (no code path but user-visible)
+        # csv accumulators (append-only history files)
+        "shadow_trades.csv",              # 4-bucket A/B/C/D shadow rows
+        "portfolio_state.csv",            # portfolio snapshot log
+        "telegram_daily.csv",             # per-day telegram audit trail
+        # jsonl append-only logs
+        "price_fetch_failures.jsonl",     # yfinance failure log
+        "tradable_dropouts.jsonl",         # symbols that stopped trading
+    ]
+
+    # (B) Files to DELETE outright. All are small (<50 KB), regenerated
+    # automatically by their owning loader/job on next run, and have no
+    # post-mortem value beyond what's already in trade_tracker.json.
+    _fresh_delete_files = [
+        # main.py-owned state (also load-guarded, but wipe the disk copy
+        # so downstream jobs on separate runners see the fresh state too)
+        "trade_tracker.json",
+        "trade_tracker_v2.json",
+        "tracker.json",                    # tracker_job.py / morning_check.py
+        "gate_memory.json",
+        "regime_calibration.json",
+        "watchlist_persist.json",
+        "confidence_history.json",
+        "reject_watch.json",
+        # C7g caches (already covered — kept here for single-source-of-truth)
+        "sector_rank_history.json",
+        "delivery_cache.json",
+        "fundamentals_cache.json",
+        # sector cache (auto-rebuilt on first sector lookup)
+        "sector_cache.json",
+        # weekly summary output
+        "weekly_metrics.json",
+        # telegram diff state (yesterday-vs-today Telegram formatting)
+        "telegram_prev_state.json",
+        # intraday snapshot store (rebuilt from live prices)
+        "intraday_snapshots.json",
+        # health/liveness checkpoints (rebuilt on first successful pass)
+        "last_known_good.json",
+        "last_tradable.json",
+        "run_health.json",
+    ]
+
+    # (C) DOCUMENTED PRESERVATION LIST — files that FRESH_START explicitly
+    # does NOT touch. If you're wondering why file X survived a fresh start,
+    # it should be here (with rationale). This is enforced by convention
+    # only; add to _fresh_rename_files or _fresh_delete_files to wipe.
+    #
+    #   portfolio.json          — USER-OWNED positions, never auto-wiped
+    #   events_config.json      — USER-OWNED event calendar config
+    #   stocks.txt              — USER-OWNED custom universe
+    #   high_pledge_stocks.txt  — USER-OWNED manual blocklist
+    #   asm_gsm_blocklist.txt   — USER-OWNED manual blocklist
+    #   requirements.txt        — code (Python deps), not state
+    #   nse_all_symbols.csv     — REBUILD-COST high (NSE fetch), not decision-tainted
+    #   sector_master.csv       — REBUILD-COST high (static sector map)
+    #   market_calendars.json   — METADATA (NSE holidays), not decision-tainted
+    #   vix_history_cache.json  — METADATA (long-term market context, ~5y)
+    #   run_log_*.txt           — HISTORICAL audit trail (date-suffixed logs)
+
+    _renamed = 0
+    _deleted = 0
+    _skipped = 0
+
+    for _fname in _fresh_rename_files:
         try:
-            if os.path.exists(_fw):
-                os.remove(_fw)
-                print(f"[FRESH_START] Deleted stale {_fw} (will be regenerated by owning job)")
-        except Exception as _e_fw:
-            print(f"[FRESH_START] Could not delete {_fw}: {_e_fw} — non-fatal")
+            if not os.path.exists(_fname):
+                _skipped += 1
+                continue
+            _stale = f"{_fname}.stale_{_fresh_today}"
+            # If a stale-file for today already exists (re-run same day),
+            # tack on a millisecond suffix to avoid clobber.
+            if os.path.exists(_stale):
+                import time as _t_fs
+                _stale = f"{_stale}_{int(_t_fs.time()*1000) % 100000}"
+            os.rename(_fname, _stale)
+            _renamed += 1
+            print(f"[FRESH_START] RENAMED  {_fname} → {os.path.basename(_stale)}")
+        except Exception as _e_r:
+            print(f"[FRESH_START] Could not rename {_fname}: {_e_r} — non-fatal")
+
+    for _fname in _fresh_delete_files:
+        try:
+            if not os.path.exists(_fname):
+                _skipped += 1
+                continue
+            os.remove(_fname)
+            _deleted += 1
+            print(f"[FRESH_START] DELETED  {_fname} (will be regenerated by owning job)")
+        except Exception as _e_d:
+            print(f"[FRESH_START] Could not delete {_fname}: {_e_d} — non-fatal")
+
+    print(f"[FRESH_START] Summary: renamed={_renamed}, deleted={_deleted}, "
+          f"absent={_skipped}, preserved={11}")
+    print(f"[FRESH_START] Clean baseline ready — remember to unset FRESH_START "
+          f"for tomorrow's run.")
 else:
     # Phase C7g (2026-07-10): NON-CONSUMING marker design cleanup step.
     # main.py writes `.fresh_start_marker` when FRESH_START=true so that
@@ -13867,6 +14000,32 @@ def save_recommendations_to_excel(buys: list, watchlist: list,
                 _log(f"[FRESH_START] Renamed old {TRACKER_XLSX} → {stale_name} (fresh workbook will be created)")
             except Exception as _e:
                 _log(f"[FRESH_START] Could not rename {TRACKER_XLSX}: {_e} — will overwrite instead")
+
+        # Phase Shadow-FreshStart (2026-07-10): FRESH_START also resets
+        # shadow_trades.csv so it stays symmetric with shadow_master.xlsx.
+        # Without this, on a FRESH_START run the xlsx starts empty but the
+        # CSV keeps all pre-wipe A/B/C/D rows and appends today on top —
+        # leaving the two files inconsistent and polluting the 30-day
+        # calibration analysis. Same "rename aside, don't delete" pattern
+        # as the xlsx above so the old CSV is still available for post-mortem
+        # AND is picked up by the recommendation-tracker artifact upload.
+        #
+        # shadow_log._ensure_csv() will auto-recreate an empty CSV (header
+        # only) the next time record_shadow_trade() fires this run.
+        try:
+            import shadow_log as _sl_reset
+            _shadow_csv_path = _sl_reset.SHADOW_CSV_PATH
+        except Exception:
+            _shadow_csv_path = "shadow_trades.csv"  # repo-root fallback
+        if FRESH_START and os.path.exists(_shadow_csv_path):
+            _shadow_stale = f"{_shadow_csv_path}.stale_{today_str}"
+            try:
+                if os.path.exists(_shadow_stale):
+                    os.remove(_shadow_stale)
+                os.rename(_shadow_csv_path, _shadow_stale)
+                _log(f"[FRESH_START] Renamed old shadow_trades.csv → {os.path.basename(_shadow_stale)} (fresh CSV will be created on first shadow_log write)")
+            except Exception as _e_sh:
+                _log(f"[FRESH_START] Could not rename shadow_trades.csv: {_e_sh} — will keep appending (non-fatal)")
 
         # Phase C7f (2026-07-07): drop a sentinel that downstream jobs
         # (tracker_job.py, weekly_summary_job.py, research_job.py) read to
