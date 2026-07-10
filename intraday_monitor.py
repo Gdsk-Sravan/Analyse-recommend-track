@@ -74,6 +74,24 @@ TELEGRAM_MAX = 4000
 FRESH_START  = os.getenv("FRESH_START", "false").lower() == "true"
 
 
+# ─── Phase C7g (2026-07-10): cross-workflow FRESH_START marker ─────────────
+# intraday_monitor runs multiple times per day on its own workflow, so it can't
+# rely on the env var set by main.py. The committed `.fresh_start_marker` is
+# the only reliable signal that main.py wiped state earlier today.
+def _peek_fresh_start_marker(today_str: str = None) -> bool:
+    marker = ".fresh_start_marker"
+    if not os.path.exists(marker):
+        return False
+    try:
+        with open(marker, "r", encoding="utf-8") as _fm:
+            marker_date = _fm.read().strip()
+    except Exception:
+        return False
+    if today_str is None:
+        today_str = date.today().isoformat()
+    return marker_date == today_str
+
+
 # ─── Persistence ──────────────────────────────────────────────────────────
 def _load_state() -> dict:
     """Load per-symbol last-seen event set. Auto-resets on new calendar day."""
@@ -100,8 +118,9 @@ def _save_state(state: dict) -> None:
 
 
 def _load_open_positions() -> list:
-    if FRESH_START:
-        print("[FRESH_START] intraday_monitor: skipping — main.py wiped state this run")
+    if FRESH_START or _peek_fresh_start_marker():
+        _reason = "explicit FRESH_START env" if FRESH_START else "detected .fresh_start_marker for today"
+        print(f"[FRESH_START] intraday_monitor: skipping ({_reason}) — main.py wiped state this run")
         return []
     if not os.path.exists(TRACKER_FILE):
         return []
