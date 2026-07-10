@@ -13729,7 +13729,12 @@ def _create_excel_workbook():
                      "Weekday Analysis", "Holding Period Analysis",
                      "Category Comparison", "Conf x TQ Matrix",
                      "Catalyst Analysis", "Fail Reason Analysis",
-                     "Regime x Sector", "Confidence Trajectory"]:
+                     "Regime x Sector", "Confidence Trajectory",
+                     # Phase Shadow-XLSX (2026-07-10): shadow_trades.csv mirror
+                     # so users can see A/B/C/D bucket accumulation without
+                     # opening a separate file. Populated by
+                     # _sync_shadow_buckets_to_xlsx() at end of every scan.
+                     "Shadow Buckets", "Shadow Summary"]:
             wb.create_sheet(name)
 
         return wb
@@ -13968,8 +13973,164 @@ def save_recommendations_to_excel(buys: list, watchlist: list,
         else:
             _log(f"[INFO] Saved {len(all_stocks)} recommendations to {TRACKER_XLSX}")
 
+        # Phase Shadow-XLSX (2026-07-10): mirror shadow_trades.csv into
+        # dedicated sheets so users see A/B/C/D buckets alongside the main
+        # Recommendations / Rejected data. Best-effort; never fails the
+        # main tracker save.
+        try:
+            _sync_shadow_buckets_to_xlsx()
+        except Exception as _sx_exc:
+            _log(f"[WARN] shadow-bucket sync to xlsx failed: {_sx_exc}")
+
     except Exception as e:
         _log(f"[WARN] Excel save failed: {e}")
+
+
+def _sync_shadow_buckets_to_xlsx() -> None:
+    """
+    Phase Shadow-XLSX (2026-07-10): Mirror shadow_trades.csv into two sheets
+    inside shadow_master.xlsx:
+
+      • "Shadow Buckets"  — full row-level dump of every shadow trade
+                            (date_added, symbol, bucket, setup, regime, conf,
+                            entry, target_1, stop_loss, status, exit_date,
+                            exit_price, r_multiple, days_held, note)
+      • "Shadow Summary"  — per-bucket rollup with win-rate + expectancy
+                            + calibration verdict vs backtest prediction
+
+    This makes the buckets first-class citizens of the Excel tracker so users
+    don't need to open shadow_trades.csv separately. Idempotent: rewrites both
+    sheets from the CSV each call (CSV is the source of truth).
+
+    Silent no-op if:
+      • openpyxl unavailable
+      • shadow_log module missing
+      • shadow_trades.csv doesn't exist yet
+      • shadow_master.xlsx doesn't exist yet
+    """
+    if not _SHADOW_LOG_OK:
+        return
+    try:
+        import openpyxl
+    except ImportError:
+        return
+
+    if not os.path.exists(TRACKER_XLSX):
+        return
+    csv_path = getattr(shadow_log, "SHADOW_CSV_PATH", None)
+    if not csv_path or not os.path.exists(csv_path):
+        return
+
+    try:
+        rows = shadow_log._read_all()
+    except Exception:
+        rows = []
+
+    try:
+        wb = openpyxl.load_workbook(TRACKER_XLSX)
+    except Exception as e:
+        _log(f"[WARN] shadow-sync: cannot open {TRACKER_XLSX}: {e}")
+        return
+
+    # ── Sheet 1: Shadow Buckets (full detail) ──
+    if "Shadow Buckets" in wb.sheetnames:
+        del wb["Shadow Buckets"]
+    ws_b = wb.create_sheet("Shadow Buckets")
+    _SHADOW_COLS = [
+        "date_added", "symbol", "bucket", "bucket_name", "setup", "regime",
+        "conf", "entry", "target_1", "stop_loss", "status", "exit_date",
+        "exit_price", "r_multiple", "days_held", "note",
+    ]
+    ws_b.append(_SHADOW_COLS)
+
+    _BUCKET_NAMES = {
+        "A": "A · TAKEN",
+        "B": "B · WATCH_ME",
+        "C": "C · NOT_MY_STYLE",
+        "D": "D · SO_CLOSE",
+    }
+    for r in rows:
+        b = r.get("bucket", "")
+        ws_b.append([
+            r.get("date_added", ""),
+            r.get("symbol", ""),
+            b,
+            _BUCKET_NAMES.get(b, b),
+            r.get("setup", ""),
+            r.get("regime", ""),
+            r.get("conf", ""),
+            r.get("entry", ""),
+            r.get("target_1", ""),
+            r.get("stop_loss", ""),
+            r.get("status", ""),
+            r.get("exit_date", ""),
+            r.get("exit_price", ""),
+            r.get("r_multiple", ""),
+            r.get("days_held", ""),
+            r.get("note", ""),
+        ])
+
+    # ── Sheet 2: Shadow Summary (per-bucket rollup) ──
+    if "Shadow Summary" in wb.sheetnames:
+        del wb["Shadow Summary"]
+    ws_s = wb.create_sheet("Shadow Summary")
+    ws_s.append([
+        "Bucket", "Bucket Name", "Total", "Pending", "Resolved",
+        "Wins", "Losses", "Time Exits", "Win Rate %", "Expected WR %",
+        "Avg R Multiple", "Calibration Verdict",
+    ])
+
+    from collections import Counter
+    for bucket in ("A", "B", "C", "D"):
+        try:
+            s = shadow_log._bucket_stats(rows, bucket)
+        except Exception:
+            continue
+        if s["total"] == 0:
+            continue
+        expected_wr = shadow_log._BUCKET_EXPECTED_WR.get(bucket, 0.0)
+        try:
+            verdict = shadow_log._bucket_verdict(
+                s["wr"], expected_wr, s["resolved"])
+        except Exception:
+            verdict = ""
+        # Strip HTML/emoji for xlsx cleanliness (keep just the text meaning)
+        _v = verdict.replace("✅", "OK").replace("⚠️", "WARN").replace("⏳", "PENDING")
+        ws_s.append([
+            bucket,
+            _BUCKET_NAMES.get(bucket, bucket),
+            s["total"],
+            s["pending"],
+            s["resolved"],
+            s["wins"],
+            s["losses"],
+            s["time_exits"],
+            round(s["wr"], 2) if s["resolved"] >= 1 else "",
+            expected_wr,
+            round(s["exp_r"], 3) if s["resolved"] >= 1 else "",
+            _v,
+        ])
+
+    # Aggregate row
+    total = len(rows)
+    pending = sum(1 for r in rows if r.get("status") == "PENDING")
+    wins = sum(1 for r in rows if r.get("status") == "WIN")
+    losses = sum(1 for r in rows if r.get("status") == "LOSS")
+    tex = sum(1 for r in rows if r.get("status") == "TIME_EXIT")
+    resolved = wins + losses + tex
+    ws_s.append([])
+    ws_s.append([
+        "ALL", "All buckets combined", total, pending, resolved,
+        wins, losses, tex,
+        round(wins / resolved * 100, 2) if resolved >= 1 else "",
+        "", "", "",
+    ])
+
+    try:
+        wb.save(TRACKER_XLSX)
+        _log(f"[shadow-xlsx] Synced {len(rows)} shadow rows to Shadow Buckets/Summary sheets")
+    except Exception as e:
+        _log(f"[WARN] shadow-xlsx save failed: {e}")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
