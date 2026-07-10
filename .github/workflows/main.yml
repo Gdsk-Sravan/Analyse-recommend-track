@@ -239,6 +239,88 @@ jobs:
           python-version: "3.11"
           cache: "pip"
 
+      # ─────────────────────────────────────────────────────────────────
+      # Phase C7h (2026-07-10): PREFLIGHT SANITY CHECK
+      # ─────────────────────────────────────────────────────────────────
+      # Catches config footguns BEFORE the pipeline runs for 45 minutes
+      # and silently discards its own work:
+      #
+      #   1. FRESH_START=true + PERSIST_STATE_TO_REPO=false is a FATAL
+      #      combination — main.py would wipe 27 state files, run for an
+      #      hour, then throw away the entire clean baseline because the
+      #      persist step won't commit. The next cron run pulls back the
+      #      OLD state (still in git) and appears to have "ignored" the
+      #      wipe. This has burned real hours.
+      #
+      #   2. FRESH_START=true on a manual run without explicit persist opt-in
+      #      is warned about but allowed (user might be testing locally).
+      #
+      #   3. Scheduled run without persistence is warned about — CI runners
+      #      are ephemeral so results vanish. Not fatal because you might
+      #      be running a "read-only" scan for signal preview.
+      #
+      # Fails the workflow FAST if any FATAL combo is detected, with a
+      # human-readable error and the exact fix.
+      # ─────────────────────────────────────────────────────────────────
+      - name: Preflight sanity check (FRESH_START vs PERSIST config)
+        run: |
+          set -e
+          echo "═══════════════════════════════════════════════════════════"
+          echo "  PREFLIGHT — evening pipeline config validation"
+          echo "═══════════════════════════════════════════════════════════"
+          echo "  FRESH_START           = ${FRESH_START:-<unset>}"
+          echo "  PERSIST_STATE_TO_REPO = ${PERSIST_STATE_TO_REPO:-<unset>}"
+          echo "  SCHEDULED_RUN         = ${SCHEDULED_RUN:-<unset>}"
+          echo "  run_mode              = ${{ github.event.inputs.run_mode }}"
+          echo "  run_job               = ${{ github.event.inputs.run_job }}"
+          echo ""
+
+          # ── FATAL: FRESH_START without persist would discard the wipe ──
+          if [ "${FRESH_START}" = "true" ] && [ "${PERSIST_STATE_TO_REPO}" != "true" ]; then
+            echo "❌ FATAL: FRESH_START=true but PERSIST_STATE_TO_REPO=${PERSIST_STATE_TO_REPO:-false}"
+            echo ""
+            echo "   A fresh-start wipe writes 27 file changes to the runner's"
+            echo "   working copy. Without persist, those changes vanish when"
+            echo "   the runner is destroyed. The NEXT cron run then pulls back"
+            echo "   the OLD state files from git, making the wipe useless."
+            echo ""
+            echo "   FIX (pick one):"
+            echo "     A. Manual run: on the workflow_dispatch form, set"
+            echo "        persist_state_to_repo=true (top-level input)"
+            echo "     B. Repo variable: Settings → Variables →"
+            echo "        PERSIST_STATE_TO_REPO=true (permanent)"
+            echo "     C. If you're testing locally and don't want commits,"
+            echo "        also set FRESH_START=false (no wipe = no waste)"
+            echo ""
+            exit 1
+          fi
+
+          # ── WARN: scheduled run with no persistence is a silent-drop ──
+          if [ "${SCHEDULED_RUN}" = "true" ] && [ "${PERSIST_STATE_TO_REPO}" != "true" ]; then
+            echo "⚠️  WARNING: scheduled run but PERSIST_STATE_TO_REPO != true"
+            echo "   Today's shadow_trades.csv + tracker updates will be uploaded"
+            echo "   as an artifact only (90-day retention), not committed to main."
+            echo "   To enable durable persistence, set repo variable"
+            echo "   PERSIST_STATE_TO_REPO=true or leave run_mode=scheduled."
+            echo ""
+          fi
+
+          # ── INFO: FRESH_START summary ──
+          if [ "${FRESH_START}" = "true" ]; then
+            echo "🧹 FRESH_START ACTIVE — main.py will wipe 27 state files:"
+            echo "   9 renamed to .stale_$(date +%Y-%m-%d) (shadow xlsx/csv, portfolio_state.csv, etc.)"
+            echo "   18 deleted outright (trackers, gate memory, caches, run_health, etc.)"
+            echo "   11 preserved (portfolio.json, user configs, universe metadata)"
+            echo ""
+            echo "   ⚠️  REMEMBER: unset FRESH_START after this run — leaving it on"
+            echo "                 will wipe again tomorrow."
+            echo ""
+          fi
+
+          echo "═══════════════════════════════════════════════════════════"
+          echo "  ✅ Preflight passed — pipeline will proceed"
+          echo "═══════════════════════════════════════════════════════════"
+
       - name: Restore cache
         uses: actions/cache/restore@v4
         with:
