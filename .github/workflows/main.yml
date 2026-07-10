@@ -228,7 +228,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
           persist-credentials: true
@@ -242,68 +242,82 @@ jobs:
       # ─────────────────────────────────────────────────────────────────
       # Phase C7h (2026-07-10): PREFLIGHT SANITY CHECK
       # ─────────────────────────────────────────────────────────────────
-      # Catches config footguns BEFORE the pipeline runs for 45 minutes
-      # and silently discards its own work:
+      # Enforces the SIMPLE PERSIST POLICY (v2):
       #
-      #   1. FRESH_START=true + PERSIST_STATE_TO_REPO=false is a FATAL
-      #      combination — main.py would wipe 27 state files, run for an
-      #      hour, then throw away the entire clean baseline because the
-      #      persist step won't commit. The next cron run pulls back the
-      #      OLD state (still in git) and appears to have "ignored" the
-      #      wipe. This has burned real hours.
+      #   • run_mode='scheduled' → PERSIST=true   (cron = production)
+      #   • run_mode='manual'    → PERSIST=false  (UI  = testing)
+      #   • fresh_start='true'   → PERSIST=true   (wipe must commit)
       #
-      #   2. FRESH_START=true on a manual run without explicit persist opt-in
-      #      is warned about but allowed (user might be testing locally).
+      # This step VERIFIES that the PERSIST_STATE_TO_REPO expression
+      # in the job env resolved correctly against run_mode/fresh_start.
+      # If the expression is ever edited incorrectly and drifts from
+      # policy, this preflight fails FAST (30 seconds) instead of after
+      # 45 minutes of wasted compute.
       #
-      #   3. Scheduled run without persistence is warned about — CI runners
-      #      are ephemeral so results vanish. Not fatal because you might
-      #      be running a "read-only" scan for signal preview.
-      #
-      # Fails the workflow FAST if any FATAL combo is detected, with a
-      # human-readable error and the exact fix.
+      # Also catches the legacy footgun: FRESH_START=true + PERSIST=false
+      # would wipe 27 state files, run for an hour, then throw the wipe
+      # away when the runner is destroyed. This has burned real hours in
+      # the past — now it's impossible.
       # ─────────────────────────────────────────────────────────────────
-      - name: Preflight sanity check (FRESH_START vs PERSIST config)
+      - name: Preflight sanity check (persist policy enforcement)
         run: |
           set -e
           echo "═══════════════════════════════════════════════════════════"
-          echo "  PREFLIGHT — evening pipeline config validation"
+          echo "  PREFLIGHT — evening pipeline persist-policy validation"
           echo "═══════════════════════════════════════════════════════════"
-          echo "  FRESH_START           = ${FRESH_START:-<unset>}"
-          echo "  PERSIST_STATE_TO_REPO = ${PERSIST_STATE_TO_REPO:-<unset>}"
-          echo "  SCHEDULED_RUN         = ${SCHEDULED_RUN:-<unset>}"
           echo "  run_mode              = ${{ github.event.inputs.run_mode }}"
           echo "  run_job               = ${{ github.event.inputs.run_job }}"
+          echo "  fresh_start           = ${{ github.event.inputs.fresh_start }}"
+          echo "  FRESH_START (env)     = ${FRESH_START:-<unset>}"
+          echo "  PERSIST_STATE_TO_REPO = ${PERSIST_STATE_TO_REPO:-<unset>}"
+          echo "  SCHEDULED_RUN         = ${SCHEDULED_RUN:-<unset>}"
+          echo ""
+          echo "  POLICY (v2, enforced):"
+          echo "    scheduled cron  → persist=true   (production)"
+          echo "    manual dispatch → persist=false  (testing)"
+          echo "    fresh_start=true → persist=true  (override, wipe must commit)"
           echo ""
 
-          # ── FATAL: FRESH_START without persist would discard the wipe ──
-          if [ "${FRESH_START}" = "true" ] && [ "${PERSIST_STATE_TO_REPO}" != "true" ]; then
-            echo "❌ FATAL: FRESH_START=true but PERSIST_STATE_TO_REPO=${PERSIST_STATE_TO_REPO:-false}"
+          # Compute the EXPECTED persist value from run_mode + fresh_start alone.
+          expected_persist="false"
+          if [ "${{ github.event.inputs.fresh_start }}" = "true" ]; then
+            expected_persist="true"
+          elif [ "${{ github.event.inputs.run_mode }}" = "scheduled" ]; then
+            expected_persist="true"
+          fi
+
+          # ── FATAL 1: policy drift — env doesn't match expected ──
+          if [ "${PERSIST_STATE_TO_REPO}" != "${expected_persist}" ]; then
+            echo "❌ FATAL: policy drift detected!"
             echo ""
-            echo "   A fresh-start wipe writes 27 file changes to the runner's"
-            echo "   working copy. Without persist, those changes vanish when"
-            echo "   the runner is destroyed. The NEXT cron run then pulls back"
-            echo "   the OLD state files from git, making the wipe useless."
+            echo "   Expected PERSIST_STATE_TO_REPO='${expected_persist}'"
+            echo "   Actual   PERSIST_STATE_TO_REPO='${PERSIST_STATE_TO_REPO}'"
             echo ""
-            echo "   FIX (pick one):"
-            echo "     A. Manual run: on the workflow_dispatch form, set"
-            echo "        persist_state_to_repo=true (top-level input)"
-            echo "     B. Repo variable: Settings → Variables →"
-            echo "        PERSIST_STATE_TO_REPO=true (permanent)"
-            echo "     C. If you're testing locally and don't want commits,"
-            echo "        also set FRESH_START=false (no wipe = no waste)"
+            echo "   Someone edited the PERSIST_STATE_TO_REPO expression in"
+            echo "   main.yml and broke the v2 policy. Restore it to:"
+            echo ""
+            echo "     PERSIST_STATE_TO_REPO: \${{ (github.event.inputs.fresh_start == 'true' || github.event.inputs.run_mode == 'scheduled') && 'true' || 'false' }}"
             echo ""
             exit 1
           fi
 
-          # ── WARN: scheduled run with no persistence is a silent-drop ──
-          if [ "${SCHEDULED_RUN}" = "true" ] && [ "${PERSIST_STATE_TO_REPO}" != "true" ]; then
-            echo "⚠️  WARNING: scheduled run but PERSIST_STATE_TO_REPO != true"
-            echo "   Today's shadow_trades.csv + tracker updates will be uploaded"
-            echo "   as an artifact only (90-day retention), not committed to main."
-            echo "   To enable durable persistence, set repo variable"
-            echo "   PERSIST_STATE_TO_REPO=true or leave run_mode=scheduled."
-            echo ""
+          # ── FATAL 2: legacy fresh_start footgun (defensive, shouldn't fire) ──
+          if [ "${FRESH_START}" = "true" ] && [ "${PERSIST_STATE_TO_REPO}" != "true" ]; then
+            echo "❌ FATAL: FRESH_START=true but PERSIST_STATE_TO_REPO=${PERSIST_STATE_TO_REPO}"
+            echo "   A fresh-start wipe cannot be discarded — this should be"
+            echo "   impossible under v2 policy. main.yml expression is broken."
+            exit 1
           fi
+
+          # ── INFO: what will actually happen this run ──
+          if [ "${PERSIST_STATE_TO_REPO}" = "true" ]; then
+            echo "💾 PERSIST=TRUE — end-of-run will 'git commit + git push' the"
+            echo "                  32 durable state files back to main branch."
+          else
+            echo "🧪 PERSIST=FALSE — manual/testing run, no git commits."
+            echo "                   Results available in artifact zip only."
+          fi
+          echo ""
 
           # ── INFO: FRESH_START summary ──
           if [ "${FRESH_START}" = "true" ]; then
@@ -322,7 +336,7 @@ jobs:
           echo "═══════════════════════════════════════════════════════════"
 
       - name: Restore cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: |
             cache
@@ -460,7 +474,7 @@ jobs:
 
       - name: Save cache (includes tracker.json for morning job)
         if: always()
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: |
             cache
@@ -495,7 +509,7 @@ jobs:
 
       - name: Upload recommendation tracker Excel
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: recommendation-tracker
           # Phase C7h (2026-07-10): include every stateful file so the day-30
@@ -538,7 +552,7 @@ jobs:
 
       - name: Upload reports (if enabled)
         if: ${{ always() && env.UPLOAD_PRIVATE_REPORTS == 'true' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: evening-pipeline-output
           retention-days: 14
@@ -588,11 +602,14 @@ jobs:
             watchlist_persist.json
             regime_calibration.json
             reject_watch.json
-            # ── caches (delete-on-FRESH_START, still committed for warm start) ──
+            # ── caches (delivery_cache committed for warm start; others are .gitignored) ──
+            # NOTE (2026-07-10 hotfix): fundamentals_cache.json and sector_cache.json
+            # are in .gitignore (lines 38-39) and CANNOT be `git add`-ed without -f.
+            # They ARE regenerated cheaply every run, so we intentionally do NOT persist
+            # them here. They still ship in the artifact zip (upload step below) for the
+            # day-30 analyst. Adding them to this list crashes the entire persist step.
             sector_rank_history.json
             delivery_cache.json
-            fundamentals_cache.json
-            sector_cache.json
             # ── auxiliary summaries ──
             weekly_metrics.json
             telegram_prev_state.json
@@ -636,8 +653,24 @@ jobs:
             echo "[FRESH_START] Removing stale .fresh_start_marker from git tracking"
             git rm -f .fresh_start_marker || true
           fi
+          # Only stage files that actually exist AND are not gitignored.
+          # Phase C7h-hotfix (2026-07-10): filter via `git check-ignore` so a
+          # future .gitignore addition never crashes the persist step again.
+          # `git check-ignore -q <f>` exits 0 if IGNORED, 1 if NOT IGNORED.
           existing=()
-          for f in "${files[@]}"; do [ -e "$f" ] && existing+=("$f"); done
+          skipped_ignored=()
+          for f in "${files[@]}"; do
+            if [ -e "$f" ]; then
+              if git check-ignore -q "$f" 2>/dev/null; then
+                skipped_ignored+=("$f")
+              else
+                existing+=("$f")
+              fi
+            fi
+          done
+          if [ ${#skipped_ignored[@]} -gt 0 ]; then
+            echo "[persist] Skipped gitignored files (still in artifact zip): ${skipped_ignored[*]}"
+          fi
           # Phase I (2026-07-09): also stage the shadow-report archive dir so
           # daily dated xlsx copies (reports/archive/shadow_report_YYYY-MM-DD.xlsx)
           # get committed. The dir itself is stable; only new files trigger
@@ -693,7 +726,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -704,7 +737,7 @@ jobs:
       # Phase C7d: morning kill-switch reads trade_tracker.json to compute
       # buys_paused verdict — must be restored alongside tracker.json.
       - name: Restore cache (to get last night's tracker.json + trade_tracker.json)
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: |
             tracker.json
