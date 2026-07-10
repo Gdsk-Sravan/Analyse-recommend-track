@@ -465,6 +465,13 @@ jobs:
             echo "[FRESH_START] Purging any .stale_* xlsx siblings from git tracking"
             git ls-files 'shadow_master.xlsx.stale_*' 2>/dev/null | xargs -r git rm -f || true
           fi
+          # Phase C7g (2026-07-10): if main.py's startup deleted a stale
+          # .fresh_start_marker (non-consuming peek design), also remove it
+          # from git tracking so the repo doesn't carry a dead marker.
+          if [ ! -f .fresh_start_marker ] && git ls-files --error-unmatch .fresh_start_marker >/dev/null 2>&1; then
+            echo "[FRESH_START] Removing stale .fresh_start_marker from git tracking"
+            git rm -f .fresh_start_marker || true
+          fi
           existing=()
           for f in "${files[@]}"; do [ -e "$f" ] && existing+=("$f"); done
           # Phase I (2026-07-09): also stage the shadow-report archive dir so
