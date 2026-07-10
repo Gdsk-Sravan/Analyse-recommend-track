@@ -5,8 +5,8 @@
     "tier_since": "2026-07-10",
     "entry_ref": 1159.7,
     "last_seen": "2026-07-10",
-    "conf": 72.38,
-    "conf_gap": 10.6,
+    "conf": 71.97999999999999,
+    "conf_gap": 11.0,
     "tq": 54.9,
     "rr_ratio": 2.25,
     "regime": "TRANSITION",
@@ -17,7 +17,7 @@
       "STRONG_ACCUMULATION: delivery 36% (20d avg 26%)"
     ],
     "fail_reasons": [
-      "CONF_FAIL(got 72.4, need 83)",
+      "CONF_FAIL(got 72.0, need 83)",
       "TQ_FAIL(got 54.9, need 73)"
     ],
     "blocker_reason": null,
@@ -30,8 +30,8 @@
     "tier_since": "2026-07-10",
     "entry_ref": 1012.55,
     "last_seen": "2026-07-10",
-    "conf": 48.415,
-    "conf_gap": 34.6,
+    "conf": 47.515,
+    "conf_gap": 35.5,
     "tq": 59.9,
     "rr_ratio": 2.29,
     "regime": "TRANSITION",
@@ -42,7 +42,7 @@
       "WEAK_DELIVERY: 32% (20d avg 38%)"
     ],
     "fail_reasons": [
-      "CONF_FAIL(got 48.4, need 83)",
+      "CONF_FAIL(got 47.5, need 83)",
       "TQ_FAIL(got 59.9, need 73)"
     ],
     "blocker_reason": null,

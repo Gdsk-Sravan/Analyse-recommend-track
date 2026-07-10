@@ -4,10 +4,10 @@
       {
         "date": "2026-07-10",
         "fails": [
-          "CONF_FAIL(got 72.4, need 83)",
+          "CONF_FAIL(got 72.0, need 83)",
           "TQ_FAIL(got 54.9, need 73)"
         ],
-        "conf": 72.38
+        "conf": 71.97999999999999
       }
     ]
   },
@@ -16,10 +16,10 @@
       {
         "date": "2026-07-10",
         "fails": [
-          "CONF_FAIL(got 48.4, need 83)",
+          "CONF_FAIL(got 47.5, need 83)",
           "TQ_FAIL(got 59.9, need 73)"
         ],
-        "conf": 48.415
+        "conf": 47.515
       }
     ]
   }
