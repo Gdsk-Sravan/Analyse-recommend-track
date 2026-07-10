@@ -1,1 +1,52 @@
-{}
+{
+  "SPAL.NS": {
+    "first_seen": "2026-07-10",
+    "tier": "MONITOR",
+    "tier_since": "2026-07-10",
+    "entry_ref": 1159.7,
+    "last_seen": "2026-07-10",
+    "conf": 72.38,
+    "conf_gap": 10.6,
+    "tq": 54.9,
+    "rr_ratio": 2.25,
+    "regime": "TRANSITION",
+    "warnings": [
+      "FUND_DATA_MISSING: ROE/D/E/pledge unavailable (src=SCREENER+YF_RL) \u2014 ownership_quality weight redistributed to present factors",
+      "WIDE_STOP_WARN(got 13.3%, soft cap 7.0% \u2014 R/R gate handles this)",
+      "HIGH_GAP_RISK: p90 gap 17.1% \u00b7 effective stop 30.4%",
+      "STRONG_ACCUMULATION: delivery 36% (20d avg 26%)"
+    ],
+    "fail_reasons": [
+      "CONF_FAIL(got 72.4, need 83)",
+      "TQ_FAIL(got 54.9, need 73)"
+    ],
+    "blocker_reason": null,
+    "monitor_reason": "TQ_LOW",
+    "trajectory": ""
+  },
+  "ORCHPHARMA.NS": {
+    "first_seen": "2026-07-10",
+    "tier": "MONITOR",
+    "tier_since": "2026-07-10",
+    "entry_ref": 1012.55,
+    "last_seen": "2026-07-10",
+    "conf": 48.415,
+    "conf_gap": 34.6,
+    "tq": 59.9,
+    "rr_ratio": 2.29,
+    "regime": "TRANSITION",
+    "warnings": [
+      "FUND_DATA_MISSING: ROE/D/E/pledge unavailable (src=SCREENER+YF_RL) \u2014 ownership_quality weight redistributed to present factors",
+      "WIDE_STOP_WARN(got 9.9%, soft cap 7.0% \u2014 R/R gate handles this)",
+      "HIGH_GAP_RISK: p90 gap 7.9% \u00b7 effective stop 17.8%",
+      "WEAK_DELIVERY: 32% (20d avg 38%)"
+    ],
+    "fail_reasons": [
+      "CONF_FAIL(got 48.4, need 83)",
+      "TQ_FAIL(got 59.9, need 73)"
+    ],
+    "blocker_reason": null,
+    "monitor_reason": "LOW_CONF_AND_TQ",
+    "trajectory": ""
+  }
+}
