@@ -454,8 +454,17 @@ jobs:
             echo "[INFO] reject_watch.json not yet populated — skipping"
           fi
 
+      # Phase Shadow-Send-v2 (2026-07-10): removed `continue-on-error: true`
+      # here — this step was silently swallowing all shadow-master failures
+      # (missing xlsx write, crashed openpyxl save, telegram-send import
+      # error). The result was that the DEDICATED xlsx→Telegram step below
+      # would find no file on disk and report rc=2 ("file not found") with
+      # no upstream context. Now this step will fail LOUDLY and the
+      # Notify-on-failure step at the end will alert to Telegram with the
+      # run URL, so we finally see the real error. If it turns out the
+      # step is legitimately flaky for a downstream reason, re-add the
+      # `continue-on-error: true` line with a comment explaining WHY.
       - name: Run shadow master job (buckets A/B/C/D + rollups)
-        continue-on-error: true
         env:
           SHADOW_MASTER_PATH: shadow_master.xlsx
           SHADOW_ARCHIVE_DIR: reports/archive
