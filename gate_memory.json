@@ -1,25 +1,72 @@
 {
-  "SPAL.NS": {
+  "DATAMATICS.NS": {
     "history": [
       {
-        "date": "2026-07-10",
+        "date": "2026-07-11",
         "fails": [
-          "CONF_FAIL(got 72.0, need 83)",
-          "TQ_FAIL(got 54.9, need 73)"
+          "CONF_FAIL(got 70.1, need 83)",
+          "RR_FAIL(got 1.43, need 2.0)"
         ],
-        "conf": 71.97999999999999
+        "conf": 70.145
+      }
+    ]
+  },
+  "ARKADE.NS": {
+    "history": [
+      {
+        "date": "2026-07-11",
+        "fails": [
+          "CONF_FAIL(got 50.7, need 83)"
+        ],
+        "conf": 50.72
+      }
+    ]
+  },
+  "ANANTRAJ.NS": {
+    "history": [
+      {
+        "date": "2026-07-11",
+        "fails": [
+          "CONF_FAIL(got 48.5, need 83)",
+          "RR_FAIL(got 1.44, need 2.0)"
+        ],
+        "conf": 48.53
       }
     ]
   },
   "ORCHPHARMA.NS": {
     "history": [
       {
-        "date": "2026-07-10",
+        "date": "2026-07-11",
         "fails": [
-          "CONF_FAIL(got 47.5, need 83)",
+          "CONF_FAIL(got 48.4, need 83)",
           "TQ_FAIL(got 59.9, need 73)"
         ],
-        "conf": 47.515
+        "conf": 48.415
+      }
+    ]
+  },
+  "RPTECH.NS": {
+    "history": [
+      {
+        "date": "2026-07-11",
+        "fails": [
+          "CONF_FAIL(got 39.0, need 83)",
+          "TQ_FAIL(got 56.1, need 73)"
+        ],
+        "conf": 39.05
+      }
+    ]
+  },
+  "EMBDL.NS": {
+    "history": [
+      {
+        "date": "2026-07-11",
+        "fails": [
+          "CONF_FAIL(got 33.4, need 83)",
+          "RR_FAIL(got 1.79, need 2.0)"
+        ],
+        "conf": 33.37
       }
     ]
   }
