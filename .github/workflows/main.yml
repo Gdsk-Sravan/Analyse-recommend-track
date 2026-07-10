@@ -148,7 +148,23 @@ jobs:
       # back to git, otherwise the next tracker.yml checkout pulls the
       # pre-wipe xlsx and appends onto stale rows. Force-on regardless of
       # what the user selected on the workflow_dispatch form.
-      PERSIST_STATE_TO_REPO:        ${{ (github.event.inputs.fresh_start == 'true') && 'true' || (github.event.inputs.persist_state_to_repo || vars.PERSIST_STATE_TO_REPO || 'false') }}
+      #
+      # Phase Shadow-Persist (2026-07-10): scheduled runs (cron-job.org →
+      # workflow_dispatch with run_mode='scheduled') now default to 'true' so
+      # shadow_trades.csv, shadow_master.xlsx, and other durable state files
+      # are committed back on every nightly run. Without this, cron-triggered
+      # runs wrote rows to the ephemeral GitHub Actions runner and the data
+      # was lost when the runner was destroyed.
+      #
+      # Manual dispatch (run_mode='manual') still respects whatever the user
+      # picked on the form — default there stays 'false' for testing safety.
+      # Precedence (highest first):
+      #   1. FRESH_START=true                    → always true (state wipe must persist)
+      #   2. explicit user form input            → whatever they picked
+      #   3. repo Variable PERSIST_STATE_TO_REPO → org-level override
+      #   4. run_mode='scheduled'                → true (cron-triggered persistence)
+      #   5. otherwise                           → false (manual testing default)
+      PERSIST_STATE_TO_REPO:        ${{ (github.event.inputs.fresh_start == 'true') && 'true' || (github.event.inputs.persist_state_to_repo || vars.PERSIST_STATE_TO_REPO || (github.event.inputs.run_mode == 'scheduled' && 'true') || 'false') }}
       UPLOAD_PRIVATE_REPORTS:       ${{ github.event.inputs.upload_private_reports || vars.UPLOAD_PRIVATE_REPORTS || 'false' }}
       SHOW_VERBOSE_LOGS:            ${{ vars.SHOW_VERBOSE_LOGS || 'false' }}
 
