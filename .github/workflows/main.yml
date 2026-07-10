@@ -465,6 +465,109 @@ jobs:
           TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python shadow_master_job.py --mode scan-and-update
 
+      # ─────────────────────────────────────────────────────────────────
+      # Phase Shadow-Send-v2 (2026-07-10): DEDICATED xlsx SEND
+      # ─────────────────────────────────────────────────────────────────
+      # The shadow_master_job.py step ABOVE also tries to send the xlsx
+      # internally via _maybe_send_telegram(), but that path is buried
+      # inside a step marked continue-on-error: true, which means any
+      # failure (missing import, import path issue, empty result dict,
+      # skipped-mode short-circuit, etc.) silently swallows the send and
+      # you get NO xlsx on Telegram — with zero visible error.
+      #
+      # This step is an INDEPENDENT belt-and-suspenders send:
+      #   • Runs AFTER shadow_master_job so xlsx is on disk
+      #   • Only on scheduled runs (no manual-test spam)
+      #   • Fails LOUDLY (sends a Telegram warning) if xlsx missing
+      #   • Uses the standalone scripts/notify_telegram_document.py which
+      #     has its own retry + logging + explicit error output
+      #   • Uses continue-on-error so a Telegram outage doesn't fail the
+      #     whole pipeline (the artifact zip is the true durable record)
+      # ─────────────────────────────────────────────────────────────────
+      - name: Send shadow_master.xlsx to Telegram (dedicated, always)
+        if: ${{ always() && env.SCHEDULED_RUN == 'true' }}
+        continue-on-error: true
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          set +e   # do not fail the pipeline on Telegram issues
+          echo "═══════════════════════════════════════════════════════════"
+          echo "  Dedicated Shadow Master xlsx → Telegram send"
+          echo "═══════════════════════════════════════════════════════════"
+
+          if [ ! -f shadow_master.xlsx ]; then
+            echo "⚠️  shadow_master.xlsx NOT FOUND on disk — nothing to send"
+            ls -la *.xlsx 2>/dev/null || echo "  (no xlsx files at all)"
+            python scripts/notify_telegram.py --text \
+              "⚠️ Evening run: shadow_master.xlsx missing on runner — check shadow_master_job step (run ${{ github.run_id }})" || true
+            exit 0
+          fi
+
+          size_bytes=$(stat -c%s shadow_master.xlsx)
+          size_human=$(numfmt --to=iec --suffix=B "$size_bytes" 2>/dev/null || echo "${size_bytes}B")
+          today=$(date +%Y-%m-%d)
+          weekday=$(date +%A)
+
+          # Count sheets + rows for a richer caption
+          summary=$(python -c "
+          import openpyxl, sys
+          try:
+              wb = openpyxl.load_workbook('shadow_master.xlsx', read_only=True, data_only=True)
+              n_sheets = len(wb.sheetnames)
+              total_rows = 0
+              for name in wb.sheetnames:
+                  try:
+                      total_rows += wb[name].max_row or 0
+                  except Exception:
+                      pass
+              # bucket counts from Shadow Buckets sheet if present
+              buckets = ''
+              if 'Shadow Buckets' in wb.sheetnames:
+                  from collections import Counter
+                  ws = wb['Shadow Buckets']
+                  bc = Counter()
+                  headers = [c.value for c in next(ws.iter_rows(min_row=1, max_row=1))]
+                  try:
+                      idx = headers.index('bucket')
+                      for row in ws.iter_rows(min_row=2, values_only=True):
+                          if row and len(row) > idx and row[idx]:
+                              bc[str(row[idx])[:1]] += 1
+                      buckets = f'A={bc.get(chr(65),0)} B={bc.get(chr(66),0)} C={bc.get(chr(67),0)} D={bc.get(chr(68),0)}'
+                  except (ValueError, StopIteration):
+                      pass
+              print(f'{n_sheets} sheets · {total_rows} rows total')
+              if buckets:
+                  print(buckets)
+          except Exception as e:
+              print(f'(preview unavailable: {e})')
+          ")
+
+          caption="📊 Shadow Master — ${today} (${weekday})
+${summary}
+Size: ${size_human}
+Full 18-sheet workbook — open in Excel for A/B/C/D bucket review, live positions, performance rollup, benchmark curve."
+
+          echo "Sending shadow_master.xlsx (${size_human}) to Telegram..."
+          echo "Caption preview:"
+          echo "─────────────"
+          echo "$caption"
+          echo "─────────────"
+
+          python scripts/notify_telegram_document.py shadow_master.xlsx \
+            --caption "$caption"
+          rc=$?
+
+          if [ $rc -eq 0 ]; then
+            echo "✅ Shadow Master xlsx sent to Telegram OK"
+          else
+            echo "⚠️  Shadow Master xlsx send returned rc=$rc"
+            # Also send a text ping so silence != invisible failure
+            python scripts/notify_telegram.py --text \
+              "⚠️ Evening run: shadow_master.xlsx send failed (rc=$rc). Check run ${{ github.run_id }}. Artifact zip still uploaded." || true
+          fi
+          echo "═══════════════════════════════════════════════════════════"
+
       - name: Show summary
         if: always()
         run: |
