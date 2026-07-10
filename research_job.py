@@ -46,13 +46,38 @@ FRESH_START  = os.getenv("FRESH_START", "false").lower() == "true"
 MIN_SAMPLE_N = int(os.getenv("MIN_SAMPLE_N", "5"))
 
 
+# ─── Phase C7g (2026-07-10): cross-workflow FRESH_START marker ─────────────
+# main.py writes `.fresh_start_marker` (containing today's YYYY-MM-DD) when it
+# wipes state. Downstream jobs (research/weekly/intraday/shadow/backtest) each
+# run on their own runner with their own git checkout, so a shared env var is
+# not enough — the marker is committed to git so every runner sees it.
+# NON-CONSUMING peek: main.py cleans the marker up on the NEXT non-fresh-start
+# run. This keeps semantics simple ("is today a fresh-start day?") and lets any
+# number of jobs react without stepping on each other.
+def _peek_fresh_start_marker(today_str: str = None) -> bool:
+    marker = ".fresh_start_marker"
+    if not os.path.exists(marker):
+        return False
+    try:
+        with open(marker, "r", encoding="utf-8") as _fm:
+            marker_date = _fm.read().strip()
+    except Exception:
+        return False
+    if today_str is None:
+        today_str = datetime.now().strftime("%Y-%m-%d")
+    return marker_date == today_str
+
+
 def run_research():
     print(f"=== RESEARCH JOB: {datetime.now().strftime('%Y-%m-%d')} ===")
 
-    # Phase C7c: FRESH_START safety — skip when state was wiped this run.
+    # Phase C7c + C7g: FRESH_START safety — skip when state was wiped this run.
     # Historical analysis on 1 day of data is meaningless; wait for real history.
-    if FRESH_START:
-        print("[FRESH_START] research_job: state was wiped this run — skipping analysis")
+    _today = datetime.now().strftime("%Y-%m-%d")
+    _marker_detected = _peek_fresh_start_marker(_today)
+    if FRESH_START or _marker_detected:
+        _reason = "explicit FRESH_START env" if FRESH_START else "detected .fresh_start_marker for today"
+        print(f"[FRESH_START] research_job: state was wiped this run ({_reason}) — skipping analysis")
         print("[FRESH_START] research_job: will resume on the next scheduled run once history builds")
         return
 
