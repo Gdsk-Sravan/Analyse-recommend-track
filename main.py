@@ -2340,40 +2340,52 @@ def ai_buy_thesis(
 ) -> str:
     """1-2 sentence specific trade thesis for a BUY signal.
 
-    Now feeds the LLM the TOP-3 factor scores, the WEAKEST factor, RS-vs-Nifty,
-    accumulation signal and any soft warnings so it has stock-specific evidence
-    to cite instead of falling back to generic phrases like 'strong buy signal'.
+    Change #2 (2026-07-10): thesis now writes like a trader, not a factor table.
+    - Pre-selects TOP-2 strongest factors + WEAKEST factor for LLM focus
+    - Strips numbers/percentages from output (numbers already visible in card)
+    - Falls back to rule-based on API failure or if output contains digits
     """
     # Stage C: kill-switch bypasses LLM entirely and returns rule-based thesis.
     if not ENABLE_AI_NARRATIVES:
         return _rule_based_thesis(symbol, sector, rr, conf_trend, catalyst, sector_status)
 
     fs = factor_scores or {}
-    ranked = sorted(fs.items(), key=lambda kv: -(kv[1] or 0))
-    top_factors = [f"{k}={int(v)}" for k, v in ranked[:3] if v is not None]
-    weakest     = ranked[-1] if ranked else ("n/a", 0)
-    warns       = ", ".join((soft_warnings or [])[:3]) or "none"
+    ranked  = sorted(fs.items(), key=lambda kv: -(kv[1] or 0))
+    top_two = [k for k, v in ranked[:2] if v is not None]           # names only
+    weakest = ranked[-1][0] if ranked else "n/a"                    # name only
+    warns   = ", ".join((soft_warnings or [])[:2]) or "none"
+
+    # Special-signal shortlist — feed only what's actually true for THIS stock
+    signals = []
+    if rs_diff21 >= 15.0:
+        signals.append("beating Nifty by a wide margin")
+    if pledge_pct <= 1.0:
+        signals.append("clean ownership (no pledge)")
+    if accum_signal in ("STRONG", "POCKET_PIVOT"):
+        signals.append("institutional accumulation signal")
+    if sector_status in ("LEADING", "IMPROVING"):
+        signals.append(f"{sector} sector rotating in")
+    if "VOL_SURGE" in (catalyst or []):
+        signals.append("volume expansion today")
+    if "NEAR_52W_HIGH" in (catalyst or []):
+        signals.append("near 52-week high")
 
     prompt = (
-        f"Stock selected as BUY signal:\n"
-        f"Symbol: {symbol} | Sector: {sector}\n"
-        f"Confidence: {confidence:.1f}/100 | TQ: {tq:.1f} | R/R: {rr:.2f}x\n"
-        f"Confidence trend (3d): {conf_trend if conf_trend else 'first appearance'}\n"
-        f"Catalysts: {', '.join(catalyst) if catalyst else 'none'}\n"
-        f"Sector status: {sector_status} | Accumulation: {accum_signal}\n"
-        f"Fundamentals: ROE {roe:.1f}% | Pledge {pledge_pct:.0f}%\n"
-        f"Relative Strength vs Nifty (21d): {rs_diff21:+.1f}%\n"
-        f"Top-3 factor scores: {', '.join(top_factors) if top_factors else 'n/a'}\n"
-        f"Weakest factor: {weakest[0]}={int(weakest[1] or 0)}\n"
+        f"You are a trader writing a one-line thesis to a colleague about {symbol} ({sector}).\n"
+        f"STRONGEST attributes: {', '.join(top_two) if top_two else 'trend'}\n"
+        f"POSITIVE signals: {'; '.join(signals) if signals else 'confluence of factors'}\n"
+        f"WEAKEST attribute (must mention as risk): {weakest}\n"
         f"Soft warnings: {warns}\n"
         f"Regime: {regime}\n\n"
-        "Write ONE sentence (max 25 words) on why THIS stock was selected today. "
-        "MUST cite AT LEAST ONE of: the strongest factor by name+score, a specific catalyst, "
-        "the RS-vs-Nifty number, or accumulation signal. "
-        "Do NOT say 'strong buy signal' or generic phrases like 'strong <sector> sector'. "
-        "Then ONE sentence (max 15 words) on the KEY RISK — must mention the WEAKEST factor by name, "
-        "a soft warning, or a stock-specific concern (wide stop, near 52W high, etc.). "
-        "Do NOT mention '1.5% loss per trade' — fixed and boring. No bullets, no jargon."
+        "Rules:\n"
+        "1. Write EXACTLY 2 sentences.\n"
+        "2. Sentence 1: what makes THIS stock stand out. Use plain words a trader would say.\n"
+        "3. Sentence 2: the KEY RISK — must name the weakest attribute or a soft warning.\n"
+        "4. DO NOT use ANY numbers, percentages, ratios, or scores. No digits at all.\n"
+        "5. DO NOT say 'strong buy signal', 'high trend quality', 'multi-factor confluence', "
+        "or any phrase that could apply to every stock.\n"
+        "6. NO bullets, NO markdown, NO jargon like 'R/R' or 'TQ'.\n"
+        "7. Max 40 words total."
     )
     result = _call_ai(prompt, max_tokens=100)
     if result and len(result) > 20:
@@ -2382,6 +2394,17 @@ def ai_buy_thesis(
             clean = html.unescape(clean)
         except Exception:
             pass
+        # Hallucination guard: reject output containing digits or ₹/% —
+        # those numbers might be invented by the LLM and the BUY card
+        # already displays the real numbers directly below.
+        if any(ch.isdigit() for ch in clean) or "%" in clean or "₹" in clean:
+            # Rewrite fallback: strip digits/percent tokens instead of dropping
+            import re as _re
+            clean = _re.sub(r"[₹\d]+\.?\d*%?", "", clean)
+            clean = _re.sub(r"\s+", " ", clean).strip()
+            # If stripping mangled it, fall back cleanly
+            if len(clean) < 25:
+                return _rule_based_thesis(symbol, sector, rr, conf_trend, catalyst, sector_status)
         sentences = _split_sentences(clean)
         return " ".join(sentences[:2]) if sentences else clean
     return _rule_based_thesis(symbol, sector, rr, conf_trend, catalyst, sector_status)
@@ -5814,21 +5837,35 @@ def apply_setup_edge(stock: dict, regime: str) -> tuple:
 
     skip_reason = None
     if _ENABLE_REGIME_SETUP_FILTER and regime in _CHOP_REGIMES and setup != "BREAKOUT":
-        # BREAKOUT is the only setup with positive expectancy in the backtest,
-        # so in choppy/weak regimes we require it as the entry pattern.
-        skip_reason = f"REGIME_CHOP_NO_BREAKOUT({regime}/{setup})"
+        # Change #3 (2026-07-10): MOMENTUM in chop is NO LONGER a hard block.
+        # Backtest shows MOMENTUM WR ~47% (vs BREAKOUT 51%). Blocking it entirely
+        # in chop regimes loses good signals. Instead apply a soft 10% CONF
+        # penalty — only exceptional MOMENTUM (raw ≥ ~89 → ~80 after penalty)
+        # can pass the TRANSITION 83-threshold gate. PULLBACK/REVERSAL/OTHER
+        # remain hard-blocked (backtest WR 21-27% — genuinely poor).
+        if setup == "MOMENTUM":
+            penalty_mult = 0.90
+            adj_conf     = round(max(0.0, min(100.0, adj_conf * penalty_mult)), 2)
+            stock["final_confidence"]      = adj_conf
+            stock["chop_momentum_penalty"] = round((1.0 - penalty_mult) * 100, 1)  # audit
+            # No skip_reason — let downstream gates decide based on the
+            # penalised confidence. If it still passes, it's a good signal.
+        else:
+            # BREAKOUT is the only setup with positive expectancy in the backtest,
+            # so in choppy/weak regimes we require it as the entry pattern.
+            skip_reason = f"REGIME_CHOP_NO_BREAKOUT({regime}/{setup})"
 
-        # Phase I shadow-log (2026-07-07): record this rejection into
-        # bucket B (WATCH_ME — right setup, wrong regime) OR bucket C
-        # (NOT_MY_STYLE — wrong setup entirely). Split lets us tell
-        # WHERE the edge lives after 30 days of observation.
-        if _SHADOW_LOG_OK:
-            try:
-                _bucket = shadow_log.classify_skip_bucket(setup)
-                shadow_log.record_shadow_trade(_bucket, stock, regime,
-                                               note=f"skip:{skip_reason[:40]}")
-            except Exception:
-                pass  # never let the shadow log break the pipeline
+            # Phase I shadow-log (2026-07-07): record this rejection into
+            # bucket B (WATCH_ME — right setup, wrong regime) OR bucket C
+            # (NOT_MY_STYLE — wrong setup entirely). Split lets us tell
+            # WHERE the edge lives after 30 days of observation.
+            if _SHADOW_LOG_OK:
+                try:
+                    _bucket = shadow_log.classify_skip_bucket(setup)
+                    shadow_log.record_shadow_trade(_bucket, stock, regime,
+                                                   note=f"skip:{skip_reason[:40]}")
+                except Exception:
+                    pass  # never let the shadow log break the pipeline
 
     return setup, adj_conf, skip_reason
 
@@ -9343,16 +9380,22 @@ def calculate_watchlist_levels(stock: dict) -> dict:
             tr_list.append(tr)
         atr = float(np.mean(tr_list)) if tr_list else current * 0.03
 
-        # STOP: 10-day swing low with 0.5% buffer
-        swing_low = float(np.min(low[-10:]))
-        stop = round(swing_low * 0.995, 2)
+        # STOP: ATR-based (Change #1, 2026-07-10) — was 10-day swing low × 0.995.
+        # Uses stock's own volatility: stop sits 1.5 × ATR below entry.
+        # Bounded 2.5%–8% to prevent extremes.
+        # Rationale: fixed swing-low can be either too tight (volatile small-caps
+        # like JTLIND) or hits the 10% upper bound (chart gaps). ATR adapts.
+        # Shadow buckets (shadow_log.py) intentionally KEEP fixed ±3%/+5%/+10%
+        # for backtest comparability — do NOT change that path.
+        stop_atr    = round(entry - (1.5 * atr), 2)
+        stop        = stop_atr
+        risk_raw    = (entry - stop) / entry * 100 if entry > 0 else 0
 
-        # Enforce bounds: 2% min, 10% max
-        risk_raw = (entry - stop) / entry * 100
-        if risk_raw < 2.0:
-            stop = round(entry * 0.97, 2)
-        elif risk_raw > 10.0:
-            stop = round(entry * 0.90, 2)
+        # Enforce bounds: 2.5% floor (min real risk), 8% ceiling (max real risk).
+        if risk_raw < 2.5:
+            stop = round(entry * 0.975, 2)
+        elif risk_raw > 8.0:
+            stop = round(entry * 0.92, 2)
 
         risk     = entry - stop
         risk_pct = round(risk / entry * 100, 1)
