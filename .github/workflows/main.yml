@@ -455,6 +455,9 @@ jobs:
             shadow_trades.csv
             shadow_report.xlsx
             telegram_prev_state.json
+            portfolio.json
+            last_known_good.json
+            last_tradable.json
             .fresh_start_marker
           )
           # Phase C7f (2026-07-07): on a FRESH_START run, main.py renamed the
