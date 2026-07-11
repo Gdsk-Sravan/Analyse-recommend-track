@@ -770,6 +770,262 @@ def run_tracker():
     print(f"[INFO] Tracker job complete — {TRACKER_XLSX} updated")
 
 
+# ═════════════════════════════════════════════════════════════════════════════
+# KELLY PARALLEL TRACKING (2026-07-11)
+# ═════════════════════════════════════════════════════════════════════════════
+# Everything below runs in parallel with the main tracker loop but reads
+# from 'KELLY Recommendations' and writes to 'KELLY Daily Tracking'. The
+# functions mirror the main tracker so KELLY picks have identical daily
+# OHLC updates, T1/T2/Stop detection, win-rate + expectancy stats.
+
+def _track_kelly_recommendations(wb, prices_cache: dict, today_str: str) -> None:
+    """Track daily P&L for KELLY-approved recommendations.
+
+    Mirrors the main tracking loop:
+      - Iterate active KELLY recs
+      - Fetch today's OHLC (reuses main loop's cache when possible)
+      - Compute return / max_gain / max_dd / T1 / T2 / Stop status
+      - Append one row to 'KELLY Daily Tracking' per rec
+      - Mark terminal recs in 'KELLY Recommendations' (Status column)
+
+    Safe no-op if the KELLY sheets don't exist yet (older workbook).
+    """
+    if "KELLY Recommendations" not in wb.sheetnames:
+        print("[KELLY] No 'KELLY Recommendations' sheet — skipping parallel tracking")
+        return
+    if "KELLY Daily Tracking" not in wb.sheetnames:
+        # Auto-create if main.py's workbook constructor hasn't been rerun
+        try:
+            from openpyxl.styles import PatternFill, Font
+            ws_new = wb.create_sheet("KELLY Daily Tracking")
+            ws_new.append([
+                "Tracking Date", "Ticker", "Rec Date", "Day#", "Close", "High", "Low",
+                "Volume", "Return%", "Max Gain%", "Max DD%", "T1 Hit", "T2 Hit",
+                "Stop Hit", "Remaining Upside%", "Holding Days", "Status"
+            ])
+            _kfill = PatternFill(start_color="C6EFCE", end_color="C6EFCE",
+                                 fill_type="solid")
+            for _c in ws_new[1]:
+                _c.font = Font(bold=True, color="000000")
+                _c.fill = _kfill
+            print("[KELLY] Auto-created 'KELLY Daily Tracking' sheet")
+        except Exception as _e:
+            print(f"[KELLY] Could not auto-create KELLY Daily Tracking: {_e}")
+            return
+
+    ws_krec  = wb["KELLY Recommendations"]
+    ws_ktrk  = wb["KELLY Daily Tracking"]
+    headers  = [c.value for c in ws_krec[1]]
+
+    # Load active KELLY recs
+    active_kelly = []
+    for row in ws_krec.iter_rows(min_row=2, values_only=True):
+        d = dict(zip(headers, row))
+        if d.get("Status") == "ACTIVE":
+            active_kelly.append(d)
+
+    if not active_kelly:
+        print("[KELLY] No active KELLY recommendations to track")
+        return
+
+    print(f"[KELLY] Tracking {len(active_kelly)} active KELLY recommendation(s)")
+
+    # Fetch prices for any KELLY symbols not already in the main cache
+    missing = [str(r["Ticker"]) for r in active_kelly
+               if r.get("Ticker") and str(r["Ticker"]) not in prices_cache]
+    if missing:
+        print(f"[KELLY] Fetching prices for {len(missing)} extra symbol(s) not in main cache")
+        for sym in missing:
+            try:
+                df = yf.download(sym, period="5d", interval="1d",
+                                 progress=False, auto_adjust=True,
+                                 multi_level_index=False)
+                if df is None or len(df) == 0:
+                    continue
+                if hasattr(df.columns, "nlevels") and df.columns.nlevels > 1:
+                    try:
+                        df = df.xs(sym, axis=1, level=-1)
+                    except Exception:
+                        df.columns = df.columns.get_level_values(0)
+
+                def _s(v):
+                    try:
+                        if hasattr(v, "iloc"): v = v.iloc[0]
+                        if hasattr(v, "item"): v = v.item()
+                        return float(v)
+                    except Exception:
+                        return float("nan")
+
+                close_val = _s(df["Close"].iloc[-1])
+                high_val  = _s(df["High"].iloc[-1])
+                low_val   = _s(df["Low"].iloc[-1])
+                vol_val   = _s(df["Volume"].iloc[-1])
+                max_cl    = _s(df["Close"].max())
+                min_cl    = _s(df["Close"].min())
+                if any(np.isnan(x) for x in (close_val, high_val, low_val, max_cl, min_cl)):
+                    continue
+                prices_cache[sym] = {
+                    "close": close_val, "high": high_val, "low": low_val,
+                    "vol": vol_val if not np.isnan(vol_val) else 0.0,
+                    "max_close": max_cl, "min_close": min_cl,
+                }
+            except Exception as _e:
+                print(f"[KELLY] Price fetch failed for {sym}: {_e}")
+
+    # Write tracking rows for each active KELLY rec
+    rows_added = 0
+    for rec in active_kelly:
+        sym = str(rec.get("Ticker", ""))
+        px  = prices_cache.get(sym)
+        if not px:
+            continue
+
+        rec_date = rec.get("Date", "")
+        try:
+            _today_d = datetime.strptime(today_str, "%Y-%m-%d").date()
+            days_held = max(0, (_today_d -
+                         datetime.strptime(str(rec_date), "%Y-%m-%d").date()).days)
+        except Exception:
+            days_held = 0
+
+        entry = float(rec.get("Entry") or 0)
+        stop  = float(rec.get("Stop") or 0)
+        t1    = float(rec.get("T1") or 0)
+        t2    = float(rec.get("T2") or 0)
+
+        cur_return = round((px["close"] - entry) / entry * 100, 2) if entry > 0 else 0
+        max_gain   = round((px["max_close"] - entry) / entry * 100, 2) if entry > 0 else 0
+        max_dd     = round((px["min_close"] - entry) / entry * 100, 2) if entry > 0 else 0
+        remain_up  = round((t2 - px["close"]) / px["close"] * 100, 1) if t2 > px["close"] > 0 else 0
+
+        t1_hit   = px["high"] >= t1   if t1 > 0 else False
+        t2_hit   = px["high"] >= t2   if t2 > 0 else False
+        stop_hit = px["low"]  <= stop if stop > 0 else False
+
+        if t2_hit:
+            status = "T2_HIT"
+        elif stop_hit:
+            status = "STOPPED"
+        elif days_held >= TRACKING_DAYS:
+            status = "EXPIRED"
+        elif t1_hit:
+            status = "T1_HIT_ACTIVE"
+        else:
+            status = "ACTIVE"
+
+        ws_ktrk.append([
+            today_str, sym, str(rec_date), days_held,
+            px["close"], px["high"], px["low"], px["vol"],
+            cur_return, max_gain, max_dd,
+            t1_hit, t2_hit, stop_hit, remain_up, days_held, status
+        ])
+        rows_added += 1
+
+        # Mark terminal status back on the KELLY Recommendations sheet
+        if status in ("T2_HIT", "STOPPED", "EXPIRED"):
+            for row in ws_krec.iter_rows(min_row=2):
+                if (str(row[1].value) == sym and
+                        str(row[0].value) == str(rec_date)):
+                    row[-1].value = status
+                    break
+
+    print(f"[KELLY] Added {rows_added} KELLY tracking row(s)")
+
+
+def _update_kelly_performance_sheet(wb, run_date: str | None = None) -> None:
+    """Rebuild the 'KELLY Performance Summary' sheet from KELLY Daily Tracking.
+
+    Same stats as the main Performance Summary (Win Rate %, Avg Return,
+    Avg Win, Avg Loss, T1/T2/Stop hit rates) — but computed on KELLY
+    picks only. Adds an extra row 'KELLY Mode' showing which filter
+    was active (KELLY / STRICT / OFF).
+    """
+    if "KELLY Daily Tracking" not in wb.sheetnames:
+        return
+    if "KELLY Performance Summary" not in wb.sheetnames:
+        try:
+            from openpyxl.styles import PatternFill, Font
+            ws_new = wb.create_sheet("KELLY Performance Summary")
+            ws_new.append(["Metric", "Value"])
+            _kfill = PatternFill(start_color="C6EFCE", end_color="C6EFCE",
+                                 fill_type="solid")
+            for _c in ws_new[1]:
+                _c.font = Font(bold=True, color="000000")
+                _c.fill = _kfill
+        except Exception:
+            return
+
+    try:
+        ws_track = wb["KELLY Daily Tracking"]
+        ws_perf  = wb["KELLY Performance Summary"]
+
+        # Clear existing values (keep header)
+        for row in ws_perf.iter_rows(min_row=2):
+            for cell in row:
+                cell.value = None
+
+        headers = [c.value for c in ws_track[1]]
+        records = [dict(zip(headers, [c.value for c in row]))
+                   for row in ws_track.iter_rows(min_row=2)]
+
+        # Latest row per Ticker+Rec Date = final outcome
+        outcomes = {}
+        for r in records:
+            key = f"{r.get('Ticker')}_{r.get('Rec Date')}"
+            day = int(r.get("Day#") or 0)
+            if key not in outcomes or day > int(outcomes[key].get("Day#") or 0):
+                outcomes[key] = r
+
+        closed = [o for o in outcomes.values()
+                  if o.get("Status") not in ("ACTIVE", "T1_HIT_ACTIVE")]
+        wins   = [o for o in closed if float(o.get("Return%") or 0) > 0]
+        losses = [o for o in closed if float(o.get("Return%") or 0) <= 0]
+
+        # Read Kelly Mode from the KELLY Recommendations sheet (most recent row)
+        kmode = "?"
+        try:
+            ws_krec = wb["KELLY Recommendations"]
+            k_headers = [c.value for c in ws_krec[1]]
+            _last_mode = None
+            for row in ws_krec.iter_rows(min_row=2, values_only=True):
+                d = dict(zip(k_headers, row))
+                if d.get("Kelly Mode"):
+                    _last_mode = d["Kelly Mode"]
+            if _last_mode:
+                kmode = str(_last_mode)
+        except Exception:
+            pass
+
+        stats = [
+            ("KELLY Mode",      kmode),
+            ("Total KELLY Picks", len(outcomes)),
+            ("Closed",          len(closed)),
+            ("Active",          len(outcomes) - len(closed)),
+            ("Win Rate %",      round(len(wins)/len(closed)*100, 1) if closed else 0),
+            ("Avg Return %",    round(np.mean([float(o.get("Return%") or 0) for o in closed]), 2) if closed else 0),
+            ("Avg Win %",       round(np.mean([float(o.get("Return%") or 0) for o in wins]), 2) if wins else 0),
+            ("Avg Loss %",      round(np.mean([float(o.get("Return%") or 0) for o in losses]), 2) if losses else 0),
+            ("Avg Max Gain %",  round(np.mean([float(o.get("Max Gain%") or 0) for o in closed]), 2) if closed else 0),
+            ("Avg Max DD %",    round(np.mean([float(o.get("Max DD%") or 0) for o in closed]), 2) if closed else 0),
+            ("T1 Hit Rate %",   round(sum(1 for o in closed if o.get("T1 Hit"))/len(closed)*100, 1) if closed else 0),
+            ("T2 Hit Rate %",   round(sum(1 for o in closed if o.get("T2 Hit"))/len(closed)*100, 1) if closed else 0),
+            ("Stop Hit Rate %", round(sum(1 for o in closed if o.get("Stop Hit"))/len(closed)*100, 1) if closed else 0),
+            ("Last Updated",    _ts_str()),
+        ]
+
+        ws_perf["A1"] = "Metric"
+        ws_perf["B1"] = "Value"
+        for i, (metric, value) in enumerate(stats, start=2):
+            ws_perf[f"A{i}"] = metric
+            ws_perf[f"B{i}"] = value
+
+        print(f"[KELLY] Performance Summary refreshed: "
+              f"{len(outcomes)} picks, {len(closed)} closed, "
+              f"WR={round(len(wins)/len(closed)*100, 1) if closed else 0}%")
+    except Exception as e:
+        print(f"[KELLY] _update_kelly_performance_sheet failed: {e}")
+
+
 def _update_performance_sheet(wb, run_date: str | None = None):
     """Recalculates Performance Summary sheet from tracking data.
 
