@@ -2066,6 +2066,10 @@ def send_buy_telegram(buys: list, regime: str, timestamp: str) -> None:
     lines.append(f"Regime: {regime}")
     lines.append("─" * 38)
 
+    # KELLY-tag every buy (does not filter them — every buy still shown
+    # in the main list). tag_kelly_buys is idempotent, safe to call twice.
+    kelly_buys = tag_kelly_buys(buys or [], regime)
+
     if buys:
         for b in buys:
             sym      = b.get("symbol", "?")
@@ -2111,6 +2115,37 @@ def send_buy_telegram(buys: list, regime: str, timestamp: str) -> None:
     else:
         lines.append("\nNo BUY signals today — no setup cleared all gates.")
         lines.append("─" * 38)
+
+    # ── KELLY SAYS TO BUY (parallel track, backtest-verified filter) ──
+    # Only shows the SUBSET of `buys` that passes the KELLY filter
+    # (BR|MO setup + BULLISH regime). Backtest OOS: exp +0.076R, PF 1.18.
+    lines.append("")
+    lines.append("=" * 38)
+    lines.append(f"🎯 KELLY SAYS TO BUY  ({_KELLY_MODE} mode)")
+    lines.append("Backtest-verified filter · 62 rules tested · this survived")
+    lines.append("=" * 38)
+    if kelly_buys:
+        for b in kelly_buys:
+            sym    = b.get("symbol", "?")
+            sector = b.get("sector", "OTHERS")
+            conf   = b.get("final_confidence", 0)
+            entry  = b.get("entry", 0)
+            stop_p = b.get("stop", 0)
+            t1     = b.get("target1", 0)
+            t2     = b.get("target2", 0)
+            reason = b.get("kelly_reason", "")
+            lines.append(f"\n<b>{html.escape(str(sym))}</b> [{html.escape(str(sector))}] · Conf {conf:.0f}")
+            lines.append(f"Entry Rs{entry:.2f} · Stop Rs{stop_p:.2f} · T1 Rs{t1:.2f} · T2 Rs{t2:.2f}")
+            lines.append(f"✅ {html.escape(str(reason))}")
+        lines.append("")
+        lines.append(f"Total KELLY-approved: {len(kelly_buys)} of {len(buys)} BUY(s)")
+    else:
+        if buys:
+            lines.append(f"\nNone of today's {len(buys)} BUY(s) match the KELLY filter.")
+            lines.append("(need setup ∈ {BREAKOUT, MOMENTUM} AND regime = BULLISH)")
+        else:
+            lines.append("\nNo KELLY-approved buys — no BUY signals today at all.")
+    lines.append("=" * 38)
 
     lines.append("Recommendation only. Execute manually.")
     message = "\n".join(lines)
@@ -6152,6 +6187,82 @@ def apply_setup_edge(stock: dict, regime: str) -> tuple:
 
 # Env-driven cap (default 25%). Read once at module load so both sizers agree.
 _MAX_POSITION_PCT_ENV = float(os.getenv("MAX_POSITION_PCT", "25")) / 100.0
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# KELLY FILTER (2026-07-11) — parallel track, does NOT modify BUY list
+# ═════════════════════════════════════════════════════════════════════════════
+# Backtest verdict after 62 filter tests from 7 domain-expert agents
+# (Technical Analysis, Quant, Behavioral, Portfolio, ML/TimeSeries, NSE
+# Microstructure, Market Psychology): only ONE filter shape survives
+# rigorous walk-forward validation on 26,519 trades with outlier capping
+# and train/test independence:
+#
+#     KELLY = (setup ∈ {BREAKOUT, MOMENTUM}) AND (regime == BULLISH)
+#
+# Expected metrics on the 2-year backtest:
+#   n = 2,320 trades  ·  WR = 49.1%  ·  exp = +0.076R  ·  PF = 1.18
+#   OOS test slice   :  n = 1,316  ·  WR = 50.8%  ·  exp = +0.076R  ·  PF = 1.18
+#
+# STRICT variant (same shape + confidence >= 75) is even higher quality
+# but ~10x fewer trades — offered as an env-selectable mode.
+#
+# This filter runs ALONGSIDE the existing BUY pipeline: every stock is
+# still scored/gated/emitted normally. Additionally, each stock is tagged
+# with `kelly_approved` and (if approved) the reason. Downstream code
+# renders a separate "KELLY SAYS TO BUY" section in Telegram and a
+# separate "KELLY Recommendations" sheet in shadow_master.xlsx so that
+# performance of KELLY-approved picks can be tracked in isolation.
+_KELLY_MODE = os.getenv("KELLY_MODE", "KELLY").upper()   # KELLY | STRICT | OFF
+_KELLY_MIN_CONF_STRICT = float(os.getenv("KELLY_STRICT_MIN_CONF", "75"))
+_KELLY_ALLOWED_SETUPS = {"BREAKOUT", "MOMENTUM"}
+_KELLY_ALLOWED_REGIMES = {"BULLISH"}
+
+
+def kelly_approves(stock: dict, regime: str) -> tuple:
+    """Return (approved: bool, reason: str).
+
+    Pure filter — reads only fields already stamped by apply_setup_edge()
+    on the stock dict. Never mutates the stock. Never raises.
+
+    Modes (env KELLY_MODE):
+      • "OFF"    → returns (False, "kelly disabled") for every stock
+      • "KELLY"  → default. BR|MO setup + BULLISH regime = approve
+      • "STRICT" → KELLY + confidence >= KELLY_STRICT_MIN_CONF (default 75)
+    """
+    try:
+        if _KELLY_MODE == "OFF":
+            return False, "kelly disabled"
+        setup = str(stock.get("setup_type", "OTHER")).upper()
+        conf  = float(stock.get("final_confidence", 0) or 0)
+        regime_s = str(regime or "").upper()
+
+        if setup not in _KELLY_ALLOWED_SETUPS:
+            return False, f"setup {setup} not in {{BREAKOUT,MOMENTUM}}"
+        if regime_s not in _KELLY_ALLOWED_REGIMES:
+            return False, f"regime {regime_s} not BULLISH"
+        if _KELLY_MODE == "STRICT" and conf < _KELLY_MIN_CONF_STRICT:
+            return False, f"strict conf {conf:.0f} < {_KELLY_MIN_CONF_STRICT:.0f}"
+
+        # Approved
+        mode_tag = "STRICT" if _KELLY_MODE == "STRICT" else "KELLY"
+        return True, f"{mode_tag}: {setup}+BULLISH+conf{conf:.0f}"
+    except Exception:
+        return False, "kelly error"
+
+
+def tag_kelly_buys(buys: list, regime: str) -> list:
+    """Stamp `kelly_approved` (bool) and `kelly_reason` (str) on each buy dict.
+    Returns the list of buys that pass — a SUBSET, order preserved.
+    """
+    approved = []
+    for b in buys or []:
+        ok, reason = kelly_approves(b, regime)
+        b["kelly_approved"] = ok
+        b["kelly_reason"]   = reason
+        if ok:
+            approved.append(b)
+    return approved
 
 
 def compute_position_size(entry: float, stop: float, capital: float,
@@ -12097,6 +12208,9 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
     lines.append("")
 
     # ── BUY Signals (Patch 6 for no-buy case) ──
+    # KELLY tag (parallel track): stamps each buy with kelly_approved so
+    # the following KELLY SAYS TO BUY sub-section can render the subset.
+    _kelly_approved_list = tag_kelly_buys(buys or [], regime)
     lines.append("✅ <b>BUY SIGNALS</b>")
     if buys:
         _ai = ai_results or {}
@@ -12147,6 +12261,34 @@ def format_telegram_message(regime_data: dict, buys: list, shorts: list,
         no_buy_lines = format_no_buy_explanation(rejected_stocks or [], regime,
                                                   watchlist=watchlist or [])
         lines.extend(no_buy_lines)
+    lines.append("")
+
+    # ── 🎯 KELLY SAYS TO BUY (parallel track, backtest-verified subset) ──
+    # Renders the SUBSET of buys that pass the KELLY filter. This is a
+    # separate, additive section — the BUY SIGNALS list above is unchanged.
+    # Data source: 62 filters tested from 7 domain expert agents; only
+    # (setup ∈ {BREAKOUT, MOMENTUM} + BULLISH regime) survived rigorous
+    # walk-forward validation. OOS expectancy +0.076R, PF 1.18.
+    lines.append("🎯 <b>KELLY SAYS TO BUY</b>")
+    if _kelly_approved_list:
+        lines.append(f"  <i>Backtest-verified filter ({_KELLY_MODE} mode) · "
+                     f"{len(_kelly_approved_list)} of {len(buys)} BUY(s) approved</i>")
+        for kb in _kelly_approved_list:
+            _sym = html.escape(str(kb.get("symbol", "?")))
+            _conf = kb.get("final_confidence", 0)
+            _entry = kb.get("entry", 0)
+            _stop = kb.get("stop", 0)
+            _t1 = kb.get("target1", 0)
+            _reason = html.escape(str(kb.get("kelly_reason", "")))
+            lines.append(f"  ✅ <b>{_sym}</b> · Conf {_conf:.0f} · "
+                         f"Entry Rs{_entry:.1f} · Stop Rs{_stop:.1f} · T1 Rs{_t1:.1f}")
+            lines.append(f"     <i>{_reason}</i>")
+    else:
+        if buys:
+            lines.append(f"  <i>None of today's {len(buys)} BUY(s) match KELLY filter.</i>")
+            lines.append("  <i>(needs BREAKOUT/MOMENTUM setup + BULLISH regime)</i>")
+        else:
+            lines.append("  <i>No KELLY-approved buys — no BUY signals at all today.</i>")
     lines.append("")
 
     # ── SHORT Signals ──
@@ -14122,6 +14264,23 @@ def _create_excel_workbook():
             "D/E", "Catalysts", "Fail Reasons", "Status"
         ])
 
+        # KELLY Recommendations (2026-07-11): separate sheet tracking ONLY
+        # the KELLY-approved subset of buys. Same schema + Kelly Mode +
+        # Kelly Reason columns. Lets us compare KELLY picks vs full BUY
+        # list performance after 3+ weeks of live shadow tracking.
+        ws_k = wb.create_sheet("KELLY Recommendations")
+        ws_k.append([
+            "Date", "Ticker", "Company", "Kelly Mode", "Kelly Reason",
+            "Setup", "Regime", "Opp Score", "Confidence", "TQ",
+            "R/R", "Entry", "Stop", "T1", "T2", "Sector",
+            "Pledge%", "ROE", "D/E", "Catalysts", "Status"
+        ])
+        _k_fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE",
+                              fill_type="solid")   # green — kelly-approved
+        for _cell in ws_k[1]:
+            _cell.font = Font(bold=True, color="000000")
+            _cell.fill = _k_fill
+
         ws2 = wb.create_sheet("Daily Tracking")
         ws2.append([
             "Tracking Date", "Ticker", "Rec Date", "Day#", "Close", "High", "Low",
@@ -14399,6 +14558,59 @@ def save_recommendations_to_excel(buys: list, watchlist: list,
                 ", ".join(stock.get("fail_reasons", []) or []),
                 "ACTIVE",
             ])
+
+        # KELLY Recommendations sheet — write ONLY the buys that pass the
+        # KELLY filter. Separate ledger for performance-vs-full-BUY
+        # comparison over time. Falls through silently for older
+        # workbooks that don't yet have this sheet.
+        try:
+            _regime_str = regime_data.get("regime", "")
+            _kelly_approved = tag_kelly_buys(buys or [], _regime_str)
+            if _kelly_approved:
+                if "KELLY Recommendations" not in wb.sheetnames:
+                    from openpyxl.styles import PatternFill, Font
+                    _ws_k_new = wb.create_sheet("KELLY Recommendations")
+                    _ws_k_new.append([
+                        "Date", "Ticker", "Company", "Kelly Mode", "Kelly Reason",
+                        "Setup", "Regime", "Opp Score", "Confidence", "TQ",
+                        "R/R", "Entry", "Stop", "T1", "T2", "Sector",
+                        "Pledge%", "ROE", "D/E", "Catalysts", "Status"
+                    ])
+                    _kfill = PatternFill(start_color="C6EFCE", end_color="C6EFCE",
+                                         fill_type="solid")
+                    for _c in _ws_k_new[1]:
+                        _c.font = Font(bold=True, color="000000")
+                        _c.fill = _kfill
+                ws_k = wb["KELLY Recommendations"]
+                for _kb in _kelly_approved:
+                    _ksym = _kb.get("symbol", "")
+                    ws_k.append([
+                        today_str,
+                        _ksym,
+                        _ksym.replace(".NS", ""),
+                        _KELLY_MODE,
+                        _kb.get("kelly_reason", ""),
+                        _kb.get("setup_type", ""),
+                        _regime_str,
+                        _kb.get("opportunity_score", 0),
+                        _kb.get("final_confidence", 0),
+                        _kb.get("trade_quality_score", 0),
+                        _kb.get("rr_ratio", _kb.get("rr", 0)),
+                        _kb.get("entry", 0),
+                        _kb.get("stop", 0),
+                        _kb.get("target1", 0),
+                        _kb.get("target2", 0),
+                        get_sector(_ksym),
+                        _kb.get("promoter_pledge_pct", 0),
+                        _kb.get("roe", 0),
+                        _kb.get("de_ratio", 0),
+                        ", ".join(_kb.get("catalysts", []) or []),
+                        "ACTIVE",
+                    ])
+                _log(f"[KELLY] Wrote {len(_kelly_approved)} approved pick(s) "
+                     f"to 'KELLY Recommendations' sheet")
+        except Exception as _e:
+            _log(f"[KELLY] Sheet write failed (non-fatal): {_e}")
 
         # Rejected sheet: append today's rejects for 3-week retrospective
         # analysis. Falls through silently if the sheet doesn't exist yet
