@@ -45,7 +45,12 @@ import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-HEALTH_FILE = os.getenv("PIPELINE_HEALTH_FILE", "run_health.json")
+# BUG-E3 fix: default HEALTH_FILE anchored to the project root (parent of
+# scripts/) instead of cwd. Callers who set PIPELINE_HEALTH_FILE explicitly
+# still win; otherwise the state file lands next to the product code, not
+# in whatever transient cwd the CI runner is in.
+_DEFAULT_HEALTH_FILE = str(Path(__file__).resolve().parent.parent / "run_health.json")
+HEALTH_FILE = os.getenv("PIPELINE_HEALTH_FILE", _DEFAULT_HEALTH_FILE)
 
 # Staleness thresholds — a job that hasn't succeeded in this many hours triggers
 # a warning. Tuned per-job: evening pipeline runs daily on weekdays, so 36h
