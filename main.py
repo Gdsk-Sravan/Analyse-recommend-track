@@ -14281,6 +14281,29 @@ def _create_excel_workbook():
             _cell.font = Font(bold=True, color="000000")
             _cell.fill = _k_fill
 
+        # KELLY Daily Tracking — mirror of "Daily Tracking" but populated
+        # ONLY from KELLY-approved recs by tracker_job.py. Lets us compute
+        # KELLY win-rate/expectancy in isolation from the full BUY list.
+        ws_kt = wb.create_sheet("KELLY Daily Tracking")
+        ws_kt.append([
+            "Tracking Date", "Ticker", "Rec Date", "Day#", "Close", "High", "Low",
+            "Volume", "Return%", "Max Gain%", "Max DD%", "T1 Hit", "T2 Hit",
+            "Stop Hit", "Remaining Upside%", "Holding Days", "Status"
+        ])
+        for _cell in ws_kt[1]:
+            _cell.font = Font(bold=True, color="000000")
+            _cell.fill = _k_fill
+
+        # KELLY Performance Summary — mirror of the main Performance
+        # Summary but filtered to KELLY picks only. Populated by
+        # tracker_job._update_kelly_performance_sheet(). Bold-green header
+        # to visually match the KELLY family.
+        ws_kp = wb.create_sheet("KELLY Performance Summary")
+        ws_kp.append(["Metric", "Value"])
+        for _cell in ws_kp[1]:
+            _cell.font = Font(bold=True, color="000000")
+            _cell.fill = _k_fill
+
         ws2 = wb.create_sheet("Daily Tracking")
         ws2.append([
             "Tracking Date", "Ticker", "Rec Date", "Day#", "Close", "High", "Low",
