@@ -66,7 +66,7 @@ def _load_partial_exit_stops() -> dict:
         return {}
     try:
         import json as _json
-        with open(TRACKER_FILE, "r") as f:
+        with open(TRACKER_FILE, "r", encoding="utf-8") as f:
             entries = _json.load(f)
     except Exception as e:
         print(f"[WARN] Could not read {TRACKER_FILE}: {e}")
@@ -635,9 +635,12 @@ def run_tracker():
         try:
             # BUG-D: use the simulated run date, not wall-clock, so days_held
             # is correct when the harness backfills 30 sim days.
+            # BUG-O1 fix: max(0, ...) so a stray future-dated Rec Date (data
+            # entry error, clock skew across CI runners) never yields a
+            # negative days_held that trips the max-holding logic backwards.
             _today_d = datetime.strptime(today_str, "%Y-%m-%d").date()
-            days_held = (_today_d -
-                         datetime.strptime(str(rec_date), "%Y-%m-%d").date()).days
+            days_held = max(0, (_today_d -
+                         datetime.strptime(str(rec_date), "%Y-%m-%d").date()).days)
         except Exception:
             days_held = 0
 
@@ -1178,8 +1181,10 @@ def _update_equity_curve_sheet(wb):
                 chart.height = 10
                 chart.width  = 22
                 ws.add_chart(chart, "F3")
-        except Exception:
-            pass
+        except Exception as _ce:
+            # BUG-F2 fix: at least log the reason so a missing/broken
+            # openpyxl chart module doesn't disappear silently.
+            print(f"[WARN] Equity curve chart skipped: {_ce}")
     except Exception as e:
         print(f"[WARN] Equity curve sheet failed: {e}")
 
@@ -1216,7 +1221,9 @@ if __name__ == "__main__":
                              "run_health.json"),
             )
             subprocess.run(
-                [sys.executable, "scripts/pipeline_health.py", "record",
+                [sys.executable,
+                 os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                              "scripts", "pipeline_health.py"), "record",
                  "--job", "tracker",
                  "--status", _status,
                  "--mode", _mode,
