@@ -520,6 +520,25 @@ if FRESH_START:
         "last_known_good.json",
         "last_tradable.json",
         "run_health.json",
+        # intraday_monitor.py dedup cache (bounded to today; must not leak)
+        "intraday_state.json",
+        # transient job flags (created by shadow_master_job / tracker_job on
+        # error/manual-trigger paths — stale ones would poison next run)
+        "yfinance_down.flag",
+        "manual_in_ci.flag",
+        # marker file (safety: main.py deletes stale markers elsewhere too,
+        # but a hard wipe here guarantees no cross-day leak on fresh start)
+        ".fresh_start_marker",
+    ]
+
+    # (B2) GLOB-DELETE — date-suffixed audit/log files that jobs create fresh
+    # every day. A fresh start MUST wipe all previous days' copies so the
+    # baseline truly looks like day-0.
+    #   decision_audit_YYYYMMDD.jsonl  — main.py append-only per-day audit
+    #   run_log_YYYYMMDD.txt           — main.py per-run stdout tee
+    _fresh_delete_globs = [
+        "decision_audit_*.jsonl",
+        "run_log_*.txt",
     ]
 
     # (C) DOCUMENTED PRESERVATION LIST — files that FRESH_START explicitly
@@ -537,7 +556,7 @@ if FRESH_START:
     #   sector_master.csv       — REBUILD-COST high (static sector map)
     #   market_calendars.json   — METADATA (NSE holidays), not decision-tainted
     #   vix_history_cache.json  — METADATA (long-term market context, ~5y)
-    #   run_log_*.txt           — HISTORICAL audit trail (date-suffixed logs)
+    #   main.py.bak_*           — MANUAL backups (user-created, not job output)
 
     _renamed = 0
     _deleted = 0
@@ -571,7 +590,60 @@ if FRESH_START:
         except Exception as _e_d:
             print(f"[FRESH_START] Could not delete {_fname}: {_e_d} — non-fatal")
 
-    print(f"[FRESH_START] Summary: renamed={_renamed}, deleted={_deleted}, "
+    # Phase C7j (2026-07-11): glob-delete date-suffixed audit/log files.
+    # decision_audit_*.jsonl and run_log_*.txt are created fresh each day
+    # by main.py; a truly fresh start must wipe all prior copies.
+    import glob as _glob_fs
+    for _pat in _fresh_delete_globs:
+        try:
+            _matches = _glob_fs.glob(_pat)
+            if not _matches:
+                _skipped += 1
+                continue
+            for _mf in _matches:
+                try:
+                    os.remove(_mf)
+                    _deleted += 1
+                    print(f"[FRESH_START] DELETED  {_mf} (glob {_pat})")
+                except Exception as _e_gm:
+                    print(f"[FRESH_START] Could not delete {_mf}: {_e_gm} — non-fatal")
+        except Exception as _e_g:
+            print(f"[FRESH_START] Glob {_pat} failed: {_e_g} — non-fatal")
+
+    # ─────────────────────────────────────────────────────────────────────
+    # Phase C7i (2026-07-11): archive trees + GH artifact bundles
+    # ─────────────────────────────────────────────────────────────────────
+    # Historical dated files under reports/archive/ and gh_artifacts/ also
+    # count as "generated pipeline state". A FRESH_START run must sweep
+    # these into a single dated stale-tree so the workspace looks truly
+    # empty for the next-day rebuild.
+    #
+    # Strategy: rename each directory to <name>.stale_<date> (fast, atomic,
+    # keeps the raw archives for post-mortem/comparison). If the rename
+    # fails because a stale-dir already exists for today, add a millisecond
+    # suffix — same idempotency trick as the file-rename loop above.
+    _fresh_rename_dirs = [
+        os.path.join("reports", "archive"),
+        "gh_artifacts",
+    ]
+    _renamed_dirs = 0
+    for _dname in _fresh_rename_dirs:
+        try:
+            if not os.path.exists(_dname) or not os.path.isdir(_dname):
+                _skipped += 1
+                continue
+            _stale_d = f"{_dname}.stale_{_fresh_today}"
+            if os.path.exists(_stale_d):
+                import time as _t_fs2
+                _stale_d = f"{_stale_d}_{int(_t_fs2.time()*1000) % 100000}"
+            os.rename(_dname, _stale_d)
+            _renamed_dirs += 1
+            print(f"[FRESH_START] RENAMED  {_dname}/ → {os.path.basename(_stale_d)}/")
+        except Exception as _e_rd:
+            print(f"[FRESH_START] Could not rename {_dname}/: {_e_rd} — non-fatal")
+
+    print(f"[FRESH_START] Summary: renamed={_renamed} files + "
+          f"{_renamed_dirs} dirs, deleted={_deleted}, "
           f"absent={_skipped}, preserved={11}")
     print(f"[FRESH_START] Clean baseline ready — remember to unset FRESH_START "
           f"for tomorrow's run.")
