@@ -333,7 +333,7 @@ def _load_partial_exit_stops() -> dict:
         return {}
     try:
         import json as _json
-        with open(TRACKER_FILE, "r") as f:
+        with open(TRACKER_FILE, "r", encoding="utf-8") as f:
             entries = _json.load(f)
     except Exception as e:
         _log(f"[WARN] Could not read {TRACKER_FILE}: {e}")
@@ -1195,10 +1195,12 @@ def _update_performance_sheet(wb, run_date: str | None = None):
         ws_track = wb["Daily Tracking"]
         ws_perf  = wb["Performance Summary"]
 
-        # Clear existing (keep header)
-        for row in ws_perf.iter_rows(min_row=2):
-            for cell in row:
-                cell.value = None
+        # BUG-B2 fix: openpyxl's ws.max_row does NOT shrink when values are
+        # nulled, so on subsequent runs ws.append lands after the phantom
+        # rows and the summary drifts downward every rebuild. Delete rows
+        # 2..max_row so the next append lands at row 2 as intended.
+        if ws_perf.max_row and ws_perf.max_row > 1:
+            ws_perf.delete_rows(2, ws_perf.max_row - 1)
 
         headers = [cell.value for cell in ws_track[1]]
         records = [dict(zip(headers, [cell.value for cell in row]))
@@ -1323,12 +1325,19 @@ def run_scan_and_update(quiet: bool = False) -> dict:
     # Legacy Performance Summary (for real BUY signals in Daily Tracking)
     _update_performance_sheet(wb, run_date=today_str)
 
-    # Save
+    # Save (BUG-L1 fix: atomic write — avoid half-written xlsx if kill/crash mid-save)
     try:
-        wb.save(target_path)
+        _tmp_path = target_path + ".tmp"
+        wb.save(_tmp_path)
+        os.replace(_tmp_path, target_path)
         _log(f"[INFO] Saved {target_path}", quiet)
     except Exception as e:
         _log(f"[ERROR] Save failed: {e}", quiet)
+        try:
+            if os.path.exists(_tmp_path):
+                os.remove(_tmp_path)
+        except Exception:
+            pass
         return {"ok": False, "error": f"save-failed: {e}"}
 
     # Archive (scheduled only)
@@ -1391,8 +1400,16 @@ def run_update_only(quiet: bool = False) -> dict:
     _append_change_log(wb, "update-only", stats, 0, is_scheduled, run_date=today_str)
 
     try:
-        wb.save(target_path)
+        # BUG-L1 fix: atomic write in update-only path too.
+        _tmp_path = target_path + ".tmp"
+        wb.save(_tmp_path)
+        os.replace(_tmp_path, target_path)
     except Exception as e:
+        try:
+            if os.path.exists(_tmp_path):
+                os.remove(_tmp_path)
+        except Exception:
+            pass
         return {"ok": False, "error": f"save-failed: {e}"}
 
     return {
