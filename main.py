@@ -449,53 +449,54 @@ if FRESH_START:
     print("[FRESH_START] Enabled — old tracker/audit/memory state will be ignored this run")
 
     # ─────────────────────────────────────────────────────────────────────
-    # Phase C7h (2026-07-10): FULL STATE SCRUBBER
+    # Phase C7h (2026-07-10) → C7k (2026-07-11): FULL STATE SCRUBBER
     # ─────────────────────────────────────────────────────────────────────
-    # Previous versions only wiped a subset (main.py-owned loaders + a
-    # single weekly_metrics.json delete). That left ~9 state files on disk
+    # Previous versions only wiped a subset of state (main.py-owned loaders +
+    # a single weekly_metrics.json delete). That left ~9 state files on disk
     # that leaked stale data into supposedly-fresh runs.
     #
     # Now: every stateful/history file gets reset in a single deterministic
     # pass here, so the ONE FRESH_START run produces a truly clean baseline.
     #
-    # Three action types:
-    #   RENAME  — big files where post-mortem value is real (xlsx, shadow_trades)
-    #             → renamed to <name>.stale_<date> so you can zip & compare later
-    #   DELETE  — small transient JSON caches/summaries (regenerated on demand)
-    #             → deleted outright to keep the repo tidy
+    # Two action types (simplified from C7h's three-tier model per user
+    # request on 2026-07-11 — see C7k):
+    #   DELETE  — every generated file (xlsx, csv, jsonl, json, flag, log)
+    #             is deleted outright. No post-mortem retention.
     #   PRESERVE — user-owned config or expensive universe metadata
     #             → NOT touched. Documented exclusion list below.
     #
-    # If you add a NEW stateful file to the pipeline, add it to ONE of the
-    # three sections below. That's the single source of truth for what a
-    # fresh start means in this repo.
+    # If you add a NEW stateful file to the pipeline, add it to _fresh_delete_files
+    # or _fresh_delete_globs below. That's the single source of truth for
+    # what a fresh start means in this repo.
     # ─────────────────────────────────────────────────────────────────────
-    _fresh_today = datetime.datetime.now().strftime("%Y-%m-%d")
 
-    # (A) Files to RENAME to <name>.stale_<date>. Preserves the raw data for
-    # post-mortem/comparison but keeps the "live" filename empty so the
-    # pipeline creates a fresh one on first write.
-    _fresh_rename_files = [
-        # xlsx workbooks (rebuild cost high, but data valuable for audit)
-        "shadow_master.xlsx",            # main shadow log workbook
-        "shadow_report.xlsx",             # weekly rollup workbook
-        "shadow_report_weekly.xlsx",      # alternate weekly xlsx name
-        "recommendation_tracker.xlsx",    # legacy v1 tracker (no code path but user-visible)
-        # csv accumulators (append-only history files)
-        "shadow_trades.csv",              # 4-bucket A/B/C/D shadow rows
-        "portfolio_state.csv",            # portfolio snapshot log
-        "telegram_daily.csv",             # per-day telegram audit trail
-        # jsonl append-only logs
-        "price_fetch_failures.jsonl",     # yfinance failure log
-        "tradable_dropouts.jsonl",         # symbols that stopped trading
-    ]
+    # Phase C7k (2026-07-11): USER PREFERENCE — DELETE, don't rename.
+    # Previous versions renamed xlsx/csv/jsonl history files to
+    # <name>.stale_<date> for post-mortem. User explicitly requested that
+    # renamed files are of no use — switch to hard delete everywhere.
 
-    # (B) Files to DELETE outright. All are small (<50 KB), regenerated
-    # automatically by their owning loader/job on next run, and have no
-    # post-mortem value beyond what's already in trade_tracker.json.
+    # (A) Files to DELETE outright on FRESH_START. Formerly split into
+    # "rename" and "delete" tiers — now unified into one delete list per
+    # user preference (2026-07-11). If you want a specific file to be
+    # PRESERVED across a fresh start, add it to the preservation list (C)
+    # below and remove it from here.
     _fresh_delete_files = [
-        # main.py-owned state (also load-guarded, but wipe the disk copy
-        # so downstream jobs on separate runners see the fresh state too)
+        # ── xlsx workbooks (formerly renamed for audit; now deleted) ──
+        "shadow_master.xlsx",             # main shadow log workbook
+        "shadow_report.xlsx",              # weekly rollup workbook
+        "shadow_report_weekly.xlsx",       # alternate weekly xlsx name
+        "recommendation_tracker.xlsx",     # legacy v1 tracker
+
+        # ── csv accumulators (formerly renamed; now deleted) ──
+        "shadow_trades.csv",               # 4-bucket A/B/C/D shadow rows
+        "portfolio_state.csv",             # portfolio snapshot log
+        "telegram_daily.csv",              # per-day telegram audit trail
+
+        # ── jsonl append-only logs (formerly renamed; now deleted) ──
+        "price_fetch_failures.jsonl",      # yfinance failure log
+        "tradable_dropouts.jsonl",         # symbols that stopped trading
+
+        # ── main.py-owned state ──
         "trade_tracker.json",
         "trade_tracker_v2.json",
         "tracker.json",                    # tracker_job.py / morning_check.py
@@ -504,7 +505,7 @@ if FRESH_START:
         "watchlist_persist.json",
         "confidence_history.json",
         "reject_watch.json",
-        # C7g caches (already covered — kept here for single-source-of-truth)
+        # C7g caches
         "sector_rank_history.json",
         "delivery_cache.json",
         "fundamentals_cache.json",
@@ -522,29 +523,28 @@ if FRESH_START:
         "run_health.json",
         # intraday_monitor.py dedup cache (bounded to today; must not leak)
         "intraday_state.json",
-        # transient job flags (created by shadow_master_job / tracker_job on
-        # error/manual-trigger paths — stale ones would poison next run)
+        # transient job flags
         "yfinance_down.flag",
         "manual_in_ci.flag",
-        # marker file (safety: main.py deletes stale markers elsewhere too,
-        # but a hard wipe here guarantees no cross-day leak on fresh start)
+        # marker file (a hard wipe guarantees no cross-day leak on fresh start)
         ".fresh_start_marker",
     ]
 
-    # (B2) GLOB-DELETE — date-suffixed audit/log files that jobs create fresh
-    # every day. A fresh start MUST wipe all previous days' copies so the
-    # baseline truly looks like day-0.
+    # (B2) GLOB-DELETE — date-suffixed audit/log files + any leftover
+    # .stale_<date>* files from earlier rename-era FRESH_START runs.
     #   decision_audit_YYYYMMDD.jsonl  — main.py append-only per-day audit
     #   run_log_YYYYMMDD.txt           — main.py per-run stdout tee
+    #   *.stale_*                       — legacy renamed files (C7k cleanup)
     _fresh_delete_globs = [
         "decision_audit_*.jsonl",
         "run_log_*.txt",
+        "*.stale_*",                       # sweep legacy .stale_<date>* residue
     ]
 
     # (C) DOCUMENTED PRESERVATION LIST — files that FRESH_START explicitly
     # does NOT touch. If you're wondering why file X survived a fresh start,
     # it should be here (with rationale). This is enforced by convention
-    # only; add to _fresh_rename_files or _fresh_delete_files to wipe.
+    # only; add to _fresh_delete_files to wipe.
     #
     #   portfolio.json          — USER-OWNED positions, never auto-wiped
     #   events_config.json      — USER-OWNED event calendar config
@@ -557,27 +557,15 @@ if FRESH_START:
     #   market_calendars.json   — METADATA (NSE holidays), not decision-tainted
     #   vix_history_cache.json  — METADATA (long-term market context, ~5y)
     #   main.py.bak_*           — MANUAL backups (user-created, not job output)
+    #   results/                — USER-OWNED manual folder (user stashes files there)
 
-    _renamed = 0
     _deleted = 0
     _skipped = 0
 
-    for _fname in _fresh_rename_files:
-        try:
-            if not os.path.exists(_fname):
-                _skipped += 1
-                continue
-            _stale = f"{_fname}.stale_{_fresh_today}"
-            # If a stale-file for today already exists (re-run same day),
-            # tack on a millisecond suffix to avoid clobber.
-            if os.path.exists(_stale):
-                import time as _t_fs
-                _stale = f"{_stale}_{int(_t_fs.time()*1000) % 100000}"
-            os.rename(_fname, _stale)
-            _renamed += 1
-            print(f"[FRESH_START] RENAMED  {_fname} → {os.path.basename(_stale)}")
-        except Exception as _e_r:
-            print(f"[FRESH_START] Could not rename {_fname}: {_e_r} — non-fatal")
+    # NOTE: rename loop removed in C7k (2026-07-11) — user preference is
+    # hard delete for everything. If you want post-mortem preservation
+    # back, re-populate _fresh_rename_files above and restore the
+    # rename loop from git history.
 
     for _fname in _fresh_delete_files:
         try:
@@ -611,40 +599,49 @@ if FRESH_START:
             print(f"[FRESH_START] Glob {_pat} failed: {_e_g} — non-fatal")
 
     # ─────────────────────────────────────────────────────────────────────
-    # Phase C7i (2026-07-11): archive trees + GH artifact bundles
+    # Phase C7i (2026-07-11) — updated by C7k: archive trees + GH artifacts
     # ─────────────────────────────────────────────────────────────────────
     # Historical dated files under reports/archive/ and gh_artifacts/ also
-    # count as "generated pipeline state". A FRESH_START run must sweep
-    # these into a single dated stale-tree so the workspace looks truly
-    # empty for the next-day rebuild.
+    # count as "generated pipeline state". A FRESH_START run RECURSIVELY
+    # DELETES these directories so the workspace looks truly empty for the
+    # next-day rebuild. (Previous versions renamed to .stale_<date>/ but
+    # user requested hard delete — 2026-07-11.)
     #
-    # Strategy: rename each directory to <name>.stale_<date> (fast, atomic,
-    # keeps the raw archives for post-mortem/comparison). If the rename
-    # fails because a stale-dir already exists for today, add a millisecond
-    # suffix — same idempotency trick as the file-rename loop above.
-    _fresh_rename_dirs = [
+    # Also sweep any legacy <dir>.stale_<date>/ residue left by earlier
+    # rename-era FRESH_START runs.
+    _fresh_delete_dirs = [
         os.path.join("reports", "archive"),
         "gh_artifacts",
     ]
-    _renamed_dirs = 0
-    for _dname in _fresh_rename_dirs:
+    _deleted_dirs = 0
+    import shutil as _shutil_fs
+    for _dname in _fresh_delete_dirs:
         try:
             if not os.path.exists(_dname) or not os.path.isdir(_dname):
                 _skipped += 1
-                continue
-            _stale_d = f"{_dname}.stale_{_fresh_today}"
-            if os.path.exists(_stale_d):
-                import time as _t_fs2
-                _stale_d = f"{_stale_d}_{int(_t_fs2.time()*1000) % 100000}"
-            os.rename(_dname, _stale_d)
-            _renamed_dirs += 1
-            print(f"[FRESH_START] RENAMED  {_dname}/ → {os.path.basename(_stale_d)}/")
+            else:
+                _shutil_fs.rmtree(_dname, ignore_errors=False)
+                _deleted_dirs += 1
+                print(f"[FRESH_START] DELETED  {_dname}/ (recursive)")
         except Exception as _e_rd:
-            print(f"[FRESH_START] Could not rename {_dname}/: {_e_rd} — non-fatal")
+            print(f"[FRESH_START] Could not delete {_dname}/: {_e_rd} — non-fatal")
+        # Sweep legacy .stale_* variants for the same base name
+        try:
+            for _stale_leftover in _glob_fs.glob(f"{_dname}.stale_*"):
+                try:
+                    if os.path.isdir(_stale_leftover):
+                        _shutil_fs.rmtree(_stale_leftover, ignore_errors=True)
+                    else:
+                        os.remove(_stale_leftover)
+                    _deleted_dirs += 1
+                    print(f"[FRESH_START] DELETED  {_stale_leftover} (legacy .stale_* residue)")
+                except Exception as _e_sl:
+                    print(f"[FRESH_START] Could not delete {_stale_leftover}: {_e_sl} — non-fatal")
+        except Exception:
+            pass
 
-    print(f"[FRESH_START] Summary: renamed={_renamed} files + "
-          f"{_renamed_dirs} dirs, deleted={_deleted}, "
-          f"absent={_skipped}, preserved={11}")
+    print(f"[FRESH_START] Summary: deleted={_deleted} files + "
+          f"{_deleted_dirs} dirs, absent={_skipped}, preserved={12}")
     print(f"[FRESH_START] Clean baseline ready — remember to unset FRESH_START "
           f"for tomorrow's run.")
 else:
