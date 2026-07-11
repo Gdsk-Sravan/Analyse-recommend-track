@@ -37,8 +37,27 @@ def _peek_fresh_start_marker(today_str: str = None) -> bool:
     except Exception:
         return False
     if today_str is None:
-        today_str = datetime.now().strftime("%Y-%m-%d")
+        today_str = _today_iso()
     return marker_date == today_str
+
+
+# ─── BUG-A6/A7 fix: sim-date aware "today" for weekly summary ──────────────
+# The 30-day integration harness pins today via SHADOW_RUN_DATE; without
+# this override, the "past 7 days" recommendation filter and the
+# week_start/week_end labels would use wall-clock and miss all sim rows.
+def _today_iso() -> str:
+    override = os.getenv("SHADOW_RUN_DATE", "").strip()
+    if override:
+        try:
+            datetime.strptime(override, "%Y-%m-%d")
+            return override
+        except ValueError:
+            pass
+    return datetime.now().strftime("%Y-%m-%d")
+
+
+def _today_dt() -> datetime:
+    return datetime.strptime(_today_iso(), "%Y-%m-%d")
 
 
 def _weekly_wipe_stale_metrics_if_fresh() -> None:
@@ -221,7 +240,8 @@ def write_weekly_factor_summary(week_start: str, week_end: str) -> None:
     # ── Load Recommendations for the past 7 days ──
     ws_rec = wb["Recommendations"]
     rec_headers = [c.value for c in ws_rec[1]]
-    week_ago = (datetime.now() - timedelta(days=7)).date()
+    # BUG-A6 fix: honor SHADOW_RUN_DATE so sim runs filter the correct window.
+    week_ago = (_today_dt() - timedelta(days=7)).date()
 
     recs = []  # list of dict rows within the week
     for row in ws_rec.iter_rows(min_row=2, values_only=True):
@@ -519,7 +539,7 @@ def _load_last_week_metrics() -> dict:
     try:
         if not os.path.exists(WEEKLY_METRICS_FILE):
             return {}
-        with open(WEEKLY_METRICS_FILE, "r") as f:
+        with open(WEEKLY_METRICS_FILE, "r", encoding="utf-8") as f:
             return json.load(f) or {}
     except Exception:
         return {}
@@ -528,7 +548,7 @@ def _load_last_week_metrics() -> dict:
 def _save_this_week_metrics(metrics: dict) -> None:
     """Persist current week's snapshot for next week's diff."""
     try:
-        with open(WEEKLY_METRICS_FILE, "w") as f:
+        with open(WEEKLY_METRICS_FILE, "w", encoding="utf-8") as f:
             json.dump(metrics, f, indent=2)
     except Exception as e:
         print(f"[WARN] Could not save {WEEKLY_METRICS_FILE}: {e}")
@@ -566,7 +586,8 @@ def _compute_wow_deltas(cur: dict, prev: dict) -> list:
 
 
 def run_weekly_summary():
-    today      = datetime.now()
+    # BUG-A7 fix: sim-date aware — SHADOW_RUN_DATE pins the reference day.
+    today      = _today_dt()
     week_start = (today - timedelta(days=6)).strftime("%b %d")
     week_end   = today.strftime("%b %d, %Y")
     print(f"=== WEEKLY SUMMARY: {week_start} \u2014 {week_end} ===")
@@ -593,7 +614,7 @@ def run_weekly_summary():
     else:
         try:
             if os.path.exists(TRACKER_FILE):
-                with open(TRACKER_FILE, "r") as f:
+                with open(TRACKER_FILE, "r", encoding="utf-8") as f:
                     tracker = json.load(f)
         except Exception as e:
             print(f"[WARN] Tracker load failed: {e}")
@@ -624,7 +645,7 @@ def run_weekly_summary():
     else:
         try:
             if os.path.exists(CONF_HISTORY_FILE):
-                with open(CONF_HISTORY_FILE, "r") as f:
+                with open(CONF_HISTORY_FILE, "r", encoding="utf-8") as f:
                     conf_hist = json.load(f)
                 for sym, data in conf_hist.items():
                     confs = data.get("confs", [])
@@ -820,13 +841,24 @@ if __name__ == "__main__":
         if _err:
             _extras.append(f"error={_err.replace(' ', '_')[:80]}")
         try:
+            # BUG-E4 fix: anchor pipeline_health.py to this file's dir so the
+            # subprocess resolves regardless of the caller's cwd, and set
+            # PIPELINE_HEALTH_FILE explicitly so run_health.json lands next
+            # to the repo root instead of some transient cwd.
+            _here = os.path.dirname(os.path.abspath(__file__))
+            _ph_script = os.path.join(_here, "scripts", "pipeline_health.py")
+            _env = os.environ.copy()
+            _env.setdefault(
+                "PIPELINE_HEALTH_FILE",
+                os.path.join(_here, "run_health.json"),
+            )
             subprocess.run(
-                [sys.executable, "scripts/pipeline_health.py", "record",
+                [sys.executable, _ph_script, "record",
                  "--job", "weekly",
                  "--status", _status,
                  "--mode", _mode,
                  "--extras", *_extras],
-                check=False, timeout=15,
+                check=False, timeout=15, env=_env,
             )
         except Exception as _pe:
             print(f"[WARN] pipeline_health record failed: {_pe}")
