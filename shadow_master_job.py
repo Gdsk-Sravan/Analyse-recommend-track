@@ -81,6 +81,7 @@ import os
 import sys
 import tempfile
 import shutil
+import time
 import numpy as np
 from datetime import datetime, date, timedelta
 
@@ -1326,10 +1327,31 @@ def run_scan_and_update(quiet: bool = False) -> dict:
     _update_performance_sheet(wb, run_date=today_str)
 
     # Save (BUG-L1 fix: atomic write — avoid half-written xlsx if kill/crash mid-save)
+    # Windows-safe pattern: write .tmp, then retry-replace target with short backoff
+    # to tolerate transient handle-holding by AV / indexer / prior openpyxl close.
     try:
         _tmp_path = target_path + ".tmp"
         wb.save(_tmp_path)
-        os.replace(_tmp_path, target_path)
+        _last_err = None
+        for _attempt in range(6):
+            try:
+                os.replace(_tmp_path, target_path)
+                _last_err = None
+                break
+            except PermissionError as _pe:
+                _last_err = _pe
+                time.sleep(0.5)
+        if _last_err is not None:
+            # Fallback: overwrite in place (loses atomicity but unblocks Windows)
+            try:
+                shutil.copyfile(_tmp_path, target_path)
+                try:
+                    os.remove(_tmp_path)
+                except Exception:
+                    pass
+                _log(f"[WARN] Atomic replace failed, used copy fallback: {_last_err}", quiet)
+            except Exception as _ce:
+                raise _last_err
         _log(f"[INFO] Saved {target_path}", quiet)
     except Exception as e:
         _log(f"[ERROR] Save failed: {e}", quiet)
@@ -1400,10 +1422,27 @@ def run_update_only(quiet: bool = False) -> dict:
     _append_change_log(wb, "update-only", stats, 0, is_scheduled, run_date=today_str)
 
     try:
-        # BUG-L1 fix: atomic write in update-only path too.
+        # BUG-L1 fix: atomic write in update-only path too — Windows-safe variant
         _tmp_path = target_path + ".tmp"
         wb.save(_tmp_path)
-        os.replace(_tmp_path, target_path)
+        _last_err = None
+        for _attempt in range(6):
+            try:
+                os.replace(_tmp_path, target_path)
+                _last_err = None
+                break
+            except PermissionError as _pe:
+                _last_err = _pe
+                time.sleep(0.5)
+        if _last_err is not None:
+            try:
+                shutil.copyfile(_tmp_path, target_path)
+                try:
+                    os.remove(_tmp_path)
+                except Exception:
+                    pass
+            except Exception:
+                raise _last_err
     except Exception as e:
         try:
             if os.path.exists(_tmp_path):
