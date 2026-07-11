@@ -70,8 +70,27 @@ def _peek_fresh_start_marker(today_str: str = None) -> bool:
     except Exception:
         return False
     if today_str is None:
-        today_str = date.today().isoformat()
+        today_str = _today_iso()
     return marker_date == today_str
+
+
+# ─── BUG-A4 fix: sim-date aware "today" for the weekly rollup ─────────────
+# The 30-day integration harness pins today via SHADOW_RUN_DATE; without
+# this override, generate_weekly_report() would filter by real wall-clock
+# ISO week and drop every sim-dated row.
+def _today_iso() -> str:
+    override = os.getenv("SHADOW_RUN_DATE", "").strip()
+    if override:
+        try:
+            datetime.strptime(override, "%Y-%m-%d")
+            return override
+        except ValueError:
+            pass
+    return date.today().isoformat()
+
+
+def _today_date():
+    return datetime.strptime(_today_iso(), "%Y-%m-%d").date()
 # ─── Styling ─────────────────────────────────────────────────────────────
 _HEADER_FONT = Font(bold=True, color="FFFFFF", size=11)
 _HEADER_FILL = PatternFill(start_color="2F5F8F", end_color="2F5F8F", fill_type="solid")
@@ -181,7 +200,7 @@ def _build_week_glance(ws, rows: List[Dict], today: date):
     this_week = _iso_week(today)
     last_week = _iso_week(today - timedelta(days=7))
 
-    ws["A2"] = f"This week: {this_week}  |  Last week: {last_week}  |  Generated: {datetime.now():%Y-%m-%d %H:%M IST}"
+    ws["A2"] = f"This week: {this_week}  |  Last week: {last_week}  |  Generated: {_today_iso()} IST"
     ws["A2"].font = _SUBTITLE_FONT
     ws.merge_cells("A2:K2")
 
@@ -625,7 +644,8 @@ def generate_weekly_report(csv_path: str = None,
     if not quiet:
         print(f"[shadow_weekly] Loaded {len(rows)} rows from {csv_path}")
 
-    today = date.today()
+    # BUG-A4 fix: honor SHADOW_RUN_DATE so ISO-week rollups match sim dates.
+    today = _today_date()
     deltas = _compute_bucket_deltas(rows)
 
     wb = Workbook()
