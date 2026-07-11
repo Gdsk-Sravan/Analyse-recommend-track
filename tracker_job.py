@@ -740,6 +740,19 @@ def run_tracker():
     print(f"[INFO] Added {rows_added} tracking rows")
     wb.save(TRACKER_XLSX)
     _update_performance_sheet(wb, run_date=today_str)
+
+    # ── KELLY parallel tracking (2026-07-11) ──
+    # Same OHLC-based tracking as the main loop, but reads from
+    # 'KELLY Recommendations' and writes to 'KELLY Daily Tracking'.
+    # Reuses the already-fetched `prices` dict when possible — KELLY picks
+    # are a subset of buys, so most symbols are already cached. Only
+    # missing symbols trigger a new yfinance download.
+    try:
+        _track_kelly_recommendations(wb, prices, today_str)
+        _update_kelly_performance_sheet(wb, run_date=today_str)
+    except Exception as _kex:
+        print(f"[WARN] KELLY parallel tracking failed (non-fatal): {_kex}")
+
     # BUG-C: refresh the per-bucket Summary sheet so N Closed / Win Rate
     # reflect closed outcomes (not stuck at 0).
     _refresh_summary_bucket_outcomes(wb)
