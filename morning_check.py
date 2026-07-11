@@ -97,7 +97,7 @@ def _compute_morning_kill_switch() -> dict:
         return {"buys_paused": False, "reason": "no_tracker", "sizing_multiplier": 1.0}
 
     try:
-        with open(TRADE_TRACKER_V2_FILE, "r") as f:
+        with open(TRADE_TRACKER_V2_FILE, "r", encoding="utf-8") as f:
             tracker = json.load(f)
     except Exception:
         return {"buys_paused": False, "reason": "tracker_unreadable", "sizing_multiplier": 1.0}
@@ -253,7 +253,7 @@ def _load_tracker() -> list:
         return []
     try:
         if os.path.exists(TRACKER_FILE):
-            with open(TRACKER_FILE) as f:
+            with open(TRACKER_FILE, "r", encoding="utf-8") as f:
                 return json.load(f)
     except Exception as e:
         print(f"[WARN] load_tracker: {e}")
