@@ -16633,13 +16633,23 @@ if __name__ == "__main__":
             _safe = _run_error.replace(" ", "_")[:80]
             _extras.append(f"error={_safe}")
         try:
+            # BUG-E fix: anchor pipeline_health.py to this file's dir and set
+            # PIPELINE_HEALTH_FILE so state lands next to main.py regardless
+            # of the caller's cwd.
+            _here = os.path.dirname(os.path.abspath(__file__))
+            _ph_script = os.path.join(_here, "scripts", "pipeline_health.py")
+            _env = os.environ.copy()
+            _env.setdefault(
+                "PIPELINE_HEALTH_FILE",
+                os.path.join(_here, "run_health.json"),
+            )
             subprocess.run(
-                [sys.executable, "scripts/pipeline_health.py", "record",
+                [sys.executable, _ph_script, "record",
                  "--job", "evening",
                  "--status", _run_status,
                  "--mode", _mode,
                  "--extras", *_extras],
-                check=False, timeout=15,
+                check=False, timeout=15, env=_env,
             )
         except Exception as _health_exc:
             _log(f"[WARN] pipeline_health record failed: {_health_exc}")
