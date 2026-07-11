@@ -54,13 +54,18 @@ jobs:
       # try to pull the latest evening pipeline artifact. Once main.yml
       # commits shadow_trades.csv (already wired in the persist step),
       # this is a no-op safety net.
+      #
+      # 2026-07-11 fix: artifact name was 'evening-pipeline-output' (only
+      # uploaded when UPLOAD_PRIVATE_REPORTS=true). Real always-uploaded
+      # artifact from main.yml line 785 is 'recommendation-tracker', which
+      # includes shadow_trades.csv in its file list (line 795).
       - name: Download shadow_trades artifact (fallback if git copy missing)
         if: ${{ hashFiles('shadow_trades.csv') == '' }}
         uses: dawidd6/action-download-artifact@v3
         continue-on-error: true
         with:
           workflow: main.yml
-          name: evening-pipeline-output
+          name: recommendation-tracker
           path: .
           workflow_conclusion: success
 
