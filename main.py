@@ -1046,15 +1046,40 @@ REGIME_THRESHOLDS = {
 # trend_quality (0.20 → 0.23) — our highest-confidence purely-technical
 # signal computed directly from prices. This tilts the score toward
 # hard-measurable data and away from LLM-inferred sentiment.
+#
+# Phase III retune (2026-07-11): FACTOR ATTRIBUTION STUDY (v5_factor_attribution.py)
+# on the 26,519-trade backtest revealed:
+#   • sector_strength contributes 0.00% variance-explained (R²) — literally noise
+#     across all 26,519 trades. The sector rotation ranking either has too much
+#     lag or is not aligned with per-stock trade outcomes on this timeframe.
+#   • regime contributes 0.98% R² (2× more than any other layer) — but that is
+#     accounted for OUTSIDE base_confidence as REGIME_ADJ in compute_final_confidence.
+#   • trend_quality and rs_vs_nifty are the strongest per-factor contributors.
+# Fix: zero out sector_strength (was 0.15) and redistribute:
+#   +0.07 → trend_quality (0.23 → 0.30, our best pure-technical signal)
+#   +0.08 → rs_vs_nifty   (0.15 → 0.23, market-relative strength picks winners)
+# Confidence numbers may shift slightly; regime_calibration.json will re-baseline.
+#
+# Phase III-B retune (2026-07-11 late): SUB-FACTOR IC STUDY (v6_subfactor_attribution.py)
+# on the same 26,519 trades × 5 proxy sub-factors revealed:
+#   • momentum has strongest Spearman IC (ρ=+0.279) but currently only 0.16 weight
+#   • trend and rs are ~equally predictive (ρ≈+0.27) but 62-76% correlated w/ MTF
+#   • volume_delivery has 0.00 correlation with rest — pure diversifier, under-weight
+#   • mtf_quality (weekly EMA slope) has ρ=+0.167 AND is the ONLY factor whose top
+#     decile is actually profitable (+0.069R). Currently unused as a standalone.
+# Phase III-B backtest (v7): NEW weights lift Spearman IC of aggregate confidence
+# from +0.334 → +0.352 (+0.018, p=0). Q5–Q1 spread widens from +0.371R → +0.380R.
+# Fix: redistribute trend/rs → momentum/volume/mtf and re-inject mtf_quality.
 FACTOR_WEIGHTS = {
-    "trend_quality":      0.23,
-    "momentum_quality":   0.16,
-    "volume_delivery":    0.10,
-    "sector_strength":    0.15,
-    "rs_vs_nifty":        0.15,
+    "trend_quality":      0.20,   # was 0.30 — 76% correlated w/ new mtf_quality, freed 0.10
+    "momentum_quality":   0.22,   # was 0.16 — strongest IC (ρ=+0.279), under-weighted
+    "volume_delivery":    0.15,   # was 0.10 — zero-correlated diversifier, boosted
+    "sector_strength":    0.00,   # was 0.15  — R²=0% in backtest, redistributed
+    "rs_vs_nifty":        0.18,   # was 0.23 — 62% correlated w/ trend, freed 0.05
+    "mtf_quality":        0.08,   # NEW — weekly EMA slope, top decile is profitable
     "news_risk":          0.05,
     "risk_reward":        0.07,
-    "ownership_quality":  0.06,
+    "ownership_quality":  0.02,   # was 0.06 — fundamentals have low temporal edge, freed 0.04
     "options_sentiment":  0.00,
     "macro_alignment":    0.03,
 }
@@ -6213,9 +6238,19 @@ _MAX_POSITION_PCT_ENV = float(os.getenv("MAX_POSITION_PCT", "25")) / 100.0
 # renders a separate "KELLY SAYS TO BUY" section in Telegram and a
 # separate "KELLY Recommendations" sheet in shadow_master.xlsx so that
 # performance of KELLY-approved picks can be tracked in isolation.
+# ─── Phase III (2026-07-11): factor-attribution v5 tightened KELLY ────────
+# The v5 factor cube (BREAKOUT|MOMENTUM + BULLISH) had exp=-0.013R (p=0.33),
+# NOT statistically distinguishable from noise. Adding the confidence gate:
+#     BR|MO + BULLISH + conf ≥ 70  →  exp=+0.073R (p=0.003)  ← MEDIUM
+#     BR    + BULLISH + conf ≥ 75  →  exp=+0.125R (p=0.012)  ← STRICT
+# Also: conf ≥ 82 saturates and INVERTS (n=103, exp=-0.003R). Confidence
+# gate is now a MANDATORY floor across all modes; STRICT tightens the floor.
 _KELLY_MODE = os.getenv("KELLY_MODE", "KELLY").upper()   # KELLY | STRICT | OFF
+_KELLY_MIN_CONF_KELLY  = float(os.getenv("KELLY_MIN_CONF",        "70"))  # NEW: mandatory floor in KELLY mode
 _KELLY_MIN_CONF_STRICT = float(os.getenv("KELLY_STRICT_MIN_CONF", "75"))
+_KELLY_MAX_CONF_CAP    = float(os.getenv("KELLY_MAX_CONF_CAP",    "82"))  # NEW: block saturation zone
 _KELLY_ALLOWED_SETUPS = {"BREAKOUT", "MOMENTUM"}
+_KELLY_STRICT_ALLOWED_SETUPS = {"BREAKOUT"}  # STRICT is BR-only (best cell: 56.6% WR, +0.125R)
 _KELLY_ALLOWED_REGIMES = {"BULLISH"}
 
 
@@ -6227,8 +6262,10 @@ def kelly_approves(stock: dict, regime: str) -> tuple:
 
     Modes (env KELLY_MODE):
       • "OFF"    → returns (False, "kelly disabled") for every stock
-      • "KELLY"  → default. BR|MO setup + BULLISH regime = approve
-      • "STRICT" → KELLY + confidence >= KELLY_STRICT_MIN_CONF (default 75)
+      • "KELLY"  → default. BR|MO setup + BULLISH + conf ≥ 70 + conf ≤ 82
+                 → backtest: n=1,554  exp=+0.073R  p=0.003
+      • "STRICT" → BREAKOUT only + BULLISH + conf ≥ 75 + conf ≤ 82
+                 → backtest: n=309   exp=+0.125R  p=0.012
     """
     try:
         if _KELLY_MODE == "OFF":
@@ -6237,12 +6274,25 @@ def kelly_approves(stock: dict, regime: str) -> tuple:
         conf  = float(stock.get("final_confidence", 0) or 0)
         regime_s = str(regime or "").upper()
 
-        if setup not in _KELLY_ALLOWED_SETUPS:
-            return False, f"setup {setup} not in {{BREAKOUT,MOMENTUM}}"
+        # Regime gate (identical for both modes)
         if regime_s not in _KELLY_ALLOWED_REGIMES:
             return False, f"regime {regime_s} not BULLISH"
-        if _KELLY_MODE == "STRICT" and conf < _KELLY_MIN_CONF_STRICT:
-            return False, f"strict conf {conf:.0f} < {_KELLY_MIN_CONF_STRICT:.0f}"
+
+        # Setup gate — STRICT is BREAKOUT-only, KELLY accepts BR|MO
+        if _KELLY_MODE == "STRICT":
+            if setup not in _KELLY_STRICT_ALLOWED_SETUPS:
+                return False, f"strict setup {setup} not BREAKOUT"
+            if conf < _KELLY_MIN_CONF_STRICT:
+                return False, f"strict conf {conf:.0f} < {_KELLY_MIN_CONF_STRICT:.0f}"
+        else:
+            if setup not in _KELLY_ALLOWED_SETUPS:
+                return False, f"setup {setup} not in {{BREAKOUT,MOMENTUM}}"
+            if conf < _KELLY_MIN_CONF_KELLY:
+                return False, f"kelly conf {conf:.0f} < {_KELLY_MIN_CONF_KELLY:.0f}"
+
+        # Saturation cap — v5 study: conf > 82 zone had n=103, exp=-0.003R (edge inverts)
+        if conf > _KELLY_MAX_CONF_CAP:
+            return False, f"conf {conf:.0f} > sat-cap {_KELLY_MAX_CONF_CAP:.0f} (crowded)"
 
         # Approved
         mode_tag = "STRICT" if _KELLY_MODE == "STRICT" else "KELLY"
@@ -7160,7 +7210,7 @@ def _default_stock_result(symbol: str, sector: str) -> dict:
     return {
         "symbol": symbol, "sector": sector,
         "trend_quality": 50, "momentum_quality": 50, "volume_delivery": 50,
-        "sector_strength": 50, "rs_vs_nifty": 50, "news_risk": 50,
+        "sector_strength": 50, "rs_vs_nifty": 50, "mtf_quality": 50, "news_risk": 50,
         "risk_reward": 0, "ownership_quality": 50, "options_sentiment": 60,
         "macro_alignment": 50, "trade_quality_score": 0,
         "entry": 0.0, "stop": 0.0, "target1": 0.0, "target2": 0.0,
@@ -7679,6 +7729,11 @@ def compute_all_factors(symbol: str, df,
         if not weekly_ok and tq > 50:
             tq = max(35, tq - 15)   # strong daily trend against weekly = reduce confidence
         result["trend_quality"] = tq
+        # Phase III-B (2026-07-11): mtf_quality = the raw weekly EMA slope score,
+        # exposed as a standalone factor. IC study showed weekly-slope has ρ=+0.167
+        # with r_multiple and is the ONLY factor whose top decile is actually
+        # profitable (+0.069R) — hence promoted to a distinct FACTOR_WEIGHTS entry.
+        result["mtf_quality"] = w_score
 
         # ── Factor 2: Momentum Quality ──
         ret5d  = (last / closes[-6]  - 1) * 100 if n > 6  else 0
