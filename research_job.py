@@ -46,6 +46,24 @@ FRESH_START  = os.getenv("FRESH_START", "false").lower() == "true"
 MIN_SAMPLE_N = int(os.getenv("MIN_SAMPLE_N", "5"))
 
 
+# ─── BUG-B5/B6 fix: proper phantom-row clearing ────────────────────────────
+# Every _analyze_* function used to null-clear rows 2..max_row and then
+# ws.append(headers). openpyxl's ws.max_row does NOT shrink when cell values
+# are nulled — so on run N the append lands at row (old_max_row+1) instead
+# of row 2, leaving a growing gap of blank rows and drifting headers
+# downward every run. The correct fix is ws.delete_rows(1, ws.max_row).
+def _clear_data_rows(ws) -> None:
+    """Delete every row of a sheet so the next ws.append() starts fresh at row 1."""
+    try:
+        if ws.max_row and ws.max_row > 0:
+            ws.delete_rows(1, ws.max_row)
+    except Exception:
+        # Fallback: value-null pass (drift is still better than crash)
+        for row in ws.iter_rows(min_row=1):
+            for cell in row:
+                cell.value = None
+
+
 # ─── Phase C7g (2026-07-10): cross-workflow FRESH_START marker ─────────────
 # main.py writes `.fresh_start_marker` (containing today's YYYY-MM-DD) when it
 # wipes state. Downstream jobs (research/weekly/intraday/shadow/backtest) each
@@ -197,9 +215,7 @@ def _analyze_by_column(wb, df_rec, df_track, col, sheet_name, thresholds):
     try:
         ws = wb[sheet_name]
         # Clear existing data (keep header)
-        for row in ws.iter_rows(min_row=2):
-            for cell in row:
-                cell.value = None
+        _clear_data_rows(ws)
 
         ws.append(["Range", "Count", "Avg Return%", "Median Return%",
                     "Win Rate%", "Avg Max Gain%", "T1 Hit%", "T2 Hit%"])
@@ -260,9 +276,7 @@ def _analyze_by_column(wb, df_rec, df_track, col, sheet_name, thresholds):
 def _analyze_by_sector(wb, df_rec, df_track):
     try:
         ws = wb["Sector Analysis"]
-        for row in ws.iter_rows(min_row=2):
-            for cell in row:
-                cell.value = None
+        _clear_data_rows(ws)
         ws.append(["Sector", "Count", "Avg Return%", "Win Rate%", "Avg Max Gain%"])
 
         if df_rec.empty or "Sector" not in df_rec.columns:
@@ -305,9 +319,7 @@ def _analyze_by_sector(wb, df_rec, df_track):
 def _analyze_by_regime(wb, df_rec, df_track):
     try:
         ws = wb["Regime Analysis"]
-        for row in ws.iter_rows(min_row=2):
-            for cell in row:
-                cell.value = None
+        _clear_data_rows(ws)
         ws.append(["Regime", "Count", "Avg Return%", "Win Rate%", "Best Sector"])
 
         if df_rec.empty or "Regime" not in df_rec.columns:
@@ -379,9 +391,7 @@ def _add_threshold_note(wb):
 def _generate_monthly_report(wb, df_rec, df_track):
     try:
         ws = wb["Monthly Report"]
-        for row in ws.iter_rows(min_row=1):
-            for cell in row:
-                cell.value = None
+        _clear_data_rows(ws)
 
         now = datetime.now()
         ws["A1"] = f"Monthly Research Report — {now.strftime('%B %Y')}"
@@ -585,9 +595,7 @@ def _analyze_by_weekday(wb, df_rec, df_track):
     """Do Monday picks outperform Friday picks?"""
     try:
         ws = wb["Weekday Analysis"]
-        for row in ws.iter_rows(min_row=1):
-            for cell in row:
-                cell.value = None
+        _clear_data_rows(ws)
 
         ws["A1"] = "Weekday Analysis — Does day-of-recommendation matter?"
         headers = ["Weekday", "Count", "Win Rate%", "Avg Return%",
@@ -638,9 +646,7 @@ def _analyze_holding_period(wb, df_rec, df_track):
     """When do winners hit target? Buckets by Holding Days."""
     try:
         ws = wb["Holding Period Analysis"]
-        for row in ws.iter_rows(min_row=1):
-            for cell in row:
-                cell.value = None
+        _clear_data_rows(ws)
 
         ws["A1"] = "Holding Period Analysis — When do trades close out?"
         headers = ["Holding Days", "Count", "% of All Closed",
@@ -703,9 +709,7 @@ def _analyze_category_comparison(wb, df_rec, df_track):
     """BUY vs NEAR_MISS vs WATCHLIST — is the tier system meaningful?"""
     try:
         ws = wb["Category Comparison"]
-        for row in ws.iter_rows(min_row=1):
-            for cell in row:
-                cell.value = None
+        _clear_data_rows(ws)
 
         ws["A1"] = "Category Comparison — Do BUY, NEAR_MISS, WATCHLIST tiers differ?"
         headers = ["Category", "Count", "Win Rate%", "Avg Return%",
@@ -774,9 +778,7 @@ def _analyze_conf_tq_matrix(wb, df_rec, df_track):
     """Cross-tab of Confidence buckets × TQ buckets — sweet-spot detection."""
     try:
         ws = wb["Conf x TQ Matrix"]
-        for row in ws.iter_rows(min_row=1):
-            for cell in row:
-                cell.value = None
+        _clear_data_rows(ws)
 
         ws["A1"] = "Confidence × TQ Matrix — where do the two factors compound?"
         ws["A2"] = "Each cell shows: Win Rate% (n=count)"
@@ -852,9 +854,7 @@ def _analyze_catalysts(wb, df_rec, df_track):
     """Which catalyst tokens (EARNINGS_BEAT, BREAKOUT, ...) drive returns?"""
     try:
         ws = wb["Catalyst Analysis"]
-        for row in ws.iter_rows(min_row=1):
-            for cell in row:
-                cell.value = None
+        _clear_data_rows(ws)
 
         ws["A1"] = "Catalyst Analysis — which catalysts actually pay off?"
         headers = ["Catalyst", "Count", "Win Rate%", "Avg Return%", "Best Trade%"]
@@ -920,9 +920,7 @@ def _analyze_fail_reasons(wb, df_rec, df_track):
     """Fail Reasons frequency — which 'amber warnings' become real losses?"""
     try:
         ws = wb["Fail Reason Analysis"]
-        for row in ws.iter_rows(min_row=1):
-            for cell in row:
-                cell.value = None
+        _clear_data_rows(ws)
 
         ws["A1"] = "Fail Reason Analysis — which amber flags actually predict losses?"
         headers = ["Fail Reason", "Count in Buys+NearMiss", "Win Rate%",
@@ -994,9 +992,7 @@ def _analyze_regime_x_sector(wb, df_rec, df_track):
     """Which sectors work in which regimes? (defensive vs cyclical detection)"""
     try:
         ws = wb["Regime x Sector"]
-        for row in ws.iter_rows(min_row=1):
-            for cell in row:
-                cell.value = None
+        _clear_data_rows(ws)
 
         ws["A1"] = "Regime × Sector — which sectors win in each regime?"
         ws["A2"] = "Cell = Avg Return% (n=count). Blank if <2 picks."
@@ -1048,9 +1044,7 @@ def _analyze_confidence_trajectory(wb, df_rec, df_track):
     """
     try:
         ws = wb["Confidence Trajectory"]
-        for row in ws.iter_rows(min_row=1):
-            for cell in row:
-                cell.value = None
+        _clear_data_rows(ws)
 
         ws["A1"] = "Confidence Trajectory — does rising conf beat stable/falling?"
         headers = ["Trajectory", "Count", "Win Rate%", "Avg Return%", "Definition"]
@@ -1315,9 +1309,7 @@ def _analyze_portfolio_metrics(wb, df_rec, df_track):
        - Profit factor = gross wins / |gross losses|
     """
     ws = wb["Portfolio Metrics"]
-    for row in ws.iter_rows():
-        for cell in row:
-            cell.value = None
+    _clear_data_rows(ws)
 
     ws.append(["PORTFOLIO METRICS (from Daily Tracking)"])
     ws.append([])
@@ -1425,9 +1417,7 @@ def _analyze_backtest_vs_live(wb, df_rec, df_track):
     (if present). If no backtest artefact is found, notes it as a stub.
     """
     ws = wb["Backtest vs Live"]
-    for row in ws.iter_rows():
-        for cell in row:
-            cell.value = None
+    _clear_data_rows(ws)
 
     ws.append(["BACKTEST vs LIVE DIVERGENCE"])
     ws.append([])
@@ -1531,13 +1521,21 @@ if __name__ == "__main__":
         if _err:
             _extras.append(f"error={_err.replace(' ', '_')[:80]}")
         try:
+            # BUG-E5 fix: anchor subprocess script + PIPELINE_HEALTH_FILE.
+            _here = os.path.dirname(os.path.abspath(__file__))
+            _ph_script = os.path.join(_here, "scripts", "pipeline_health.py")
+            _env = os.environ.copy()
+            _env.setdefault(
+                "PIPELINE_HEALTH_FILE",
+                os.path.join(_here, "run_health.json"),
+            )
             subprocess.run(
-                [sys.executable, "scripts/pipeline_health.py", "record",
+                [sys.executable, _ph_script, "record",
                  "--job", "research",
                  "--status", _status,
                  "--mode", _mode,
                  "--extras", *_extras],
-                check=False, timeout=15,
+                check=False, timeout=15, env=_env,
             )
         except Exception as _pe:
             print(f"[WARN] pipeline_health record failed: {_pe}")
