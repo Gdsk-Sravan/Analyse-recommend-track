@@ -190,8 +190,283 @@ def _detect_fresh_start_marker(today_str: str) -> bool:
     return True
 
 
+def _resolve_run_date() -> str:
+    """Return the run date as YYYY-MM-DD.
+
+    BUG-D fix: honor the SHADOW_RUN_DATE env var so the 30-day integration
+    harness (and any future backfill script) can pin the "today" clock
+    to a simulated date. Falls back to wall-clock in production.
+    """
+    override = os.getenv("SHADOW_RUN_DATE", "").strip()
+    if override:
+        try:
+            datetime.strptime(override, "%Y-%m-%d")
+            return override
+        except ValueError:
+            pass
+    return datetime.now().strftime("%Y-%m-%d")
+
+
+def _resolve_run_dt() -> datetime:
+    """Same as _resolve_run_date but returns a full datetime."""
+    override = os.getenv("SHADOW_RUN_DATE", "").strip()
+    if override:
+        try:
+            d = datetime.strptime(override, "%Y-%m-%d")
+            # Keep current wall-clock time-of-day so distinct runs on the same
+            # simulated date still get ordered timestamps.
+            now = datetime.now()
+            return d.replace(hour=now.hour, minute=now.minute, second=now.second)
+        except ValueError:
+            pass
+    return datetime.now()
+
+
+def _ts_str() -> str:
+    """Formatted 'Last Updated' timestamp respecting SHADOW_RUN_DATE."""
+    return _resolve_run_dt().strftime("%Y-%m-%d %H:%M")
+
+
+def _resolve_shadow_csv_path() -> str | None:
+    """Locate the shadow_trades.csv that pairs with TRACKER_XLSX.
+
+    Priority: env SHADOW_CSV_PATH → sibling of TRACKER_XLSX → cwd default.
+    Returns None if no candidate is a readable file.
+    """
+    envp = os.getenv("SHADOW_CSV_PATH", "").strip()
+    if envp and os.path.exists(envp):
+        return envp
+    # Sibling of the tracker xlsx
+    try:
+        sib = os.path.join(os.path.dirname(os.path.abspath(TRACKER_XLSX)),
+                           "shadow_trades.csv")
+        if os.path.exists(sib):
+            return sib
+    except Exception:
+        pass
+    if os.path.exists("shadow_trades.csv"):
+        return "shadow_trades.csv"
+    return None
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# BUG-H + BUG-I: close-out CSV writeback
+# When the tracker terminates a position (T2_HIT / STOPPED / EXPIRED /
+# RUNNER_STOPPED), reflect that outcome back into shadow_trades.csv.
+# Trade identity = (symbol, bucket) tuple + earliest PENDING date_added
+# — this stays stable even when the same symbol is added multiple times
+# to different buckets on different dates (BUG-I).
+# ─────────────────────────────────────────────────────────────────────────
+
+# Map tracker terminal statuses → shadow_log status enum
+_TRACKER_TO_SHADOW_STATUS = {
+    "T2_HIT":         "WIN",
+    "RUNNER_STOPPED": "WIN",   # runner is by-definition profitable at stop
+    "STOPPED":        "LOSS",
+    "EXPIRED":        "TIME_EXIT",
+}
+
+
+def _writeback_closed_to_csv(resolved: list) -> None:
+    """Persist tracker-terminated trades into shadow_trades.csv.
+
+    resolved: list of dicts with keys {symbol, rec_date, status, exit_date,
+              exit_price, r_multiple, days_held}.
+    """
+    csv_path = _resolve_shadow_csv_path()
+    if not csv_path:
+        print("[WARN] BUG-H writeback skipped: no shadow_trades.csv found")
+        return
+    try:
+        # Reuse shadow_log's schema-aware I/O so the CSV stays canonical.
+        try:
+            from shadow_log import _read_all, _write_all, _CSV_COLS  # type: ignore
+        except Exception:
+            # Fall back to a local import path (script run from Analyse-recommend-track-main/)
+            import importlib.util
+            _sp = os.path.join(os.path.dirname(os.path.abspath(__file__)), "shadow_log.py")
+            _spec = importlib.util.spec_from_file_location("shadow_log", _sp)
+            _mod = importlib.util.module_from_spec(_spec)  # type: ignore
+            assert _spec and _spec.loader
+            _spec.loader.exec_module(_mod)  # type: ignore
+            _read_all = _mod._read_all
+            _write_all = _mod._write_all
+            _CSV_COLS = _mod._CSV_COLS
+
+        rows = _read_all(csv_path)
+        if not rows:
+            print(f"[WARN] BUG-H writeback: {csv_path} empty")
+            return
+
+        # Index rows by (symbol, bucket) → list of row indices sorted by date_added
+        # Only PENDING rows are eligible.
+        by_key: dict[tuple, list[int]] = {}
+        for i, r in enumerate(rows):
+            if str(r.get("status", "")).upper() != "PENDING":
+                continue
+            k = (str(r.get("symbol", "")).upper(),
+                 str(r.get("bucket", "")).upper())
+            by_key.setdefault(k, []).append(i)
+        for k in by_key:
+            by_key[k].sort(key=lambda idx: str(rows[idx].get("date_added", "")))
+
+        # For each resolved trade, find the earliest PENDING match.
+        # Tracker doesn't know the bucket → try any bucket for that symbol,
+        # preferring the row whose date_added == rec_date. That gives us
+        # identity via (symbol, date_added) which is stable across runs.
+        n_matched = 0
+        for tr in resolved:
+            sym    = str(tr["symbol"]).upper()
+            rec_dt = str(tr["rec_date"])
+            # First, exact-match on (symbol, date_added)
+            match_i = None
+            for i, r in enumerate(rows):
+                if (str(r.get("symbol", "")).upper() == sym and
+                        str(r.get("date_added", "")) == rec_dt and
+                        str(r.get("status", "")).upper() == "PENDING"):
+                    match_i = i
+                    break
+            # Fallback: earliest PENDING for symbol regardless of bucket
+            if match_i is None:
+                for k, ilist in by_key.items():
+                    if k[0] == sym and ilist:
+                        match_i = ilist[0]
+                        break
+            if match_i is None:
+                continue
+            new_status = _TRACKER_TO_SHADOW_STATUS.get(str(tr["status"]).upper(), "ERROR")
+            rows[match_i]["status"]     = new_status
+            rows[match_i]["exit_date"]  = str(tr["exit_date"])
+            rows[match_i]["exit_price"] = str(tr["exit_price"])
+            rows[match_i]["r_multiple"] = str(tr["r_multiple"])
+            rows[match_i]["days_held"]  = str(tr["days_held"])
+            rows[match_i]["note"]       = f"tracker:{tr['status']}"
+            n_matched += 1
+
+        if n_matched:
+            _write_all(csv_path, rows)
+            print(f"[INFO] BUG-H: wrote {n_matched} closed outcome(s) back to {csv_path}")
+        else:
+            print("[INFO] BUG-H: no CSV rows matched resolved trades")
+    except Exception as e:
+        print(f"[WARN] BUG-H writeback failed: {e}")
+
+
+def _refresh_summary_bucket_outcomes(wb) -> None:
+    """Recompute per-bucket N Closed / Win Rate on the Summary sheet.
+
+    BUG-C: the Summary sheet's bucket-outcome counters were stuck at 0.
+
+    Layout of Summary (product-owned): one row per bucket A/B/C/D with columns
+    Bucket, Name, N Total, N Open, N Closed, N WIN_T2, N LOSS, Win Rate %, ...
+
+    Closed trades exist only in bucket A (TAKEN). B/C/D are watch/reject
+    lists — they never close, so their counters stay zero.
+
+    Source of truth for closure: Recommendations sheet (Status column).
+    Total/Open for each bucket: the bucket-specific sheet row count.
+    """
+    try:
+        if "Summary" not in wb.sheetnames:
+            return
+
+        # --- Tally closed trades per bucket from Recommendations sheet -------
+        closed_a_win  = 0
+        closed_a_loss = 0
+        open_a        = 0
+        total_a       = 0
+        if "Recommendations" in wb.sheetnames:
+            ws_rec = wb["Recommendations"]
+            rec_headers = [str(c.value or "").strip() for c in
+                           next(ws_rec.iter_rows(min_row=1, max_row=1))]
+            i_status = next((k for k, h in enumerate(rec_headers)
+                            if h.lower() == "status"), -1)
+            i_cat    = next((k for k, h in enumerate(rec_headers)
+                            if h.lower() == "category"), -1)
+            if i_status >= 0:
+                for row in ws_rec.iter_rows(min_row=2, values_only=True):
+                    if not row:
+                        continue
+                    # Only count BUY (bucket-A) rows
+                    if i_cat >= 0 and str(row[i_cat] or "").strip().upper() != "BUY":
+                        continue
+                    st = str(row[i_status] or "").strip().upper()
+                    total_a += 1
+                    if st in ("T2_HIT", "RUNNER_STOPPED"):
+                        closed_a_win += 1
+                    elif st in ("STOPPED", "EXPIRED"):
+                        closed_a_loss += 1
+                    else:
+                        open_a += 1
+
+        # --- Count totals for B/C/D from their bucket sheets -----------------
+        totals: dict[str, int] = {"A": total_a, "B": 0, "C": 0, "D": 0}
+        for bkt, sn in [("B", "B_WATCH_ME"),
+                        ("C", "C_NOT_MY_STYLE"),
+                        ("D", "D_SO_CLOSE")]:
+            if sn in wb.sheetnames:
+                ws_b = wb[sn]
+                n = 0
+                for row in ws_b.iter_rows(min_row=2, values_only=True):
+                    if row and any(c is not None for c in row):
+                        n += 1
+                totals[bkt] = n
+
+        stats = {
+            "A": {"total": total_a, "open": open_a,
+                  "closed": closed_a_win + closed_a_loss,
+                  "win": closed_a_win, "loss": closed_a_loss},
+            "B": {"total": totals["B"], "open": totals["B"],
+                  "closed": 0, "win": 0, "loss": 0},
+            "C": {"total": totals["C"], "open": totals["C"],
+                  "closed": 0, "win": 0, "loss": 0},
+            "D": {"total": totals["D"], "open": totals["D"],
+                  "closed": 0, "win": 0, "loss": 0},
+        }
+
+        # --- Update Summary sheet in place -----------------------------------
+        ws_sum = wb["Summary"]
+        sum_headers = [str(c.value or "").strip() for c in
+                       next(ws_sum.iter_rows(min_row=1, max_row=1))]
+
+        def _col_idx(*aliases: str) -> int:
+            for a in aliases:
+                for i, h in enumerate(sum_headers):
+                    if h.lower() == a.lower():
+                        return i + 1  # 1-based
+            return -1
+
+        c_bucket = _col_idx("Bucket")
+        c_total  = _col_idx("N Total", "Total")
+        c_open   = _col_idx("N Open", "Open")
+        c_closed = _col_idx("N Closed", "Closed")
+        c_win    = _col_idx("N WIN_T2", "N Win", "Wins")
+        c_loss   = _col_idx("N LOSS", "N Loss", "Losses")
+        c_wr     = _col_idx("Win Rate %", "Win Rate")
+        if c_bucket < 0:
+            return
+
+        for row in ws_sum.iter_rows(min_row=2):
+            bcell = row[c_bucket - 1]
+            if bcell.value is None:
+                continue
+            bkt = str(bcell.value).strip().upper()[:1]  # 'A','B','C','D'
+            if bkt not in stats:
+                continue
+            d = stats[bkt]
+            wr = (d["win"] / d["closed"] * 100) if d["closed"] else 0.0
+            if c_total  > 0: ws_sum.cell(row=bcell.row, column=c_total,  value=d["total"])
+            if c_open   > 0: ws_sum.cell(row=bcell.row, column=c_open,   value=d["open"])
+            if c_closed > 0: ws_sum.cell(row=bcell.row, column=c_closed, value=d["closed"])
+            if c_win    > 0: ws_sum.cell(row=bcell.row, column=c_win,    value=d["win"])
+            if c_loss   > 0: ws_sum.cell(row=bcell.row, column=c_loss,   value=d["loss"])
+            if c_wr     > 0: ws_sum.cell(row=bcell.row, column=c_wr,     value=round(wr, 1))
+    except Exception as e:
+        print(f"[WARN] BUG-C summary refresh failed: {e}")
+
+
 def run_tracker():
-    today_str = datetime.now().strftime("%Y-%m-%d")
+    today_str = _resolve_run_date()  # BUG-D
     print(f"=== TRACKER JOB: {today_str} ===")
     # Phase C7c: FRESH_START safety — if main.py just wiped state, skip tracking
     # today. It'll pick up naturally from tomorrow's run with clean baseline.
@@ -348,6 +623,8 @@ def run_tracker():
 
     # ── Write tracking rows ──
     rows_added = 0
+    # BUG-H: collect trades that closed on this run so we can write back to CSV
+    resolved_this_run: list[dict] = []
     for rec in active_recs:
         sym = str(rec.get("Ticker", ""))
         px  = prices.get(sym)
@@ -356,7 +633,10 @@ def run_tracker():
 
         rec_date = rec.get("Date", "")
         try:
-            days_held = (date.today() -
+            # BUG-D: use the simulated run date, not wall-clock, so days_held
+            # is correct when the harness backfills 30 sim days.
+            _today_d = datetime.strptime(today_str, "%Y-%m-%d").date()
+            days_held = (_today_d -
                          datetime.strptime(str(rec_date), "%Y-%m-%d").date()).days
         except Exception:
             days_held = 0
@@ -440,10 +720,30 @@ def run_tracker():
                         str(row[0].value) == str(rec_date)):
                     row[-1].value = status
                     break
+            # BUG-H: also stage a CSV writeback for this closed trade.
+            # r_multiple = (exit - entry) / (entry - stop)   for longs
+            _risk = entry - stop
+            r_mult = round((px["close"] - entry) / _risk, 2) if _risk > 0 else 0
+            resolved_this_run.append({
+                "symbol":    sym,
+                "rec_date":  str(rec_date),
+                "status":    status,
+                "exit_date": today_str,
+                "exit_price": round(px["close"], 2),
+                "r_multiple": r_mult,
+                "days_held":  days_held,
+            })
 
     print(f"[INFO] Added {rows_added} tracking rows")
     wb.save(TRACKER_XLSX)
-    _update_performance_sheet(wb)
+    _update_performance_sheet(wb, run_date=today_str)
+    # BUG-C: refresh the per-bucket Summary sheet so N Closed / Win Rate
+    # reflect closed outcomes (not stuck at 0).
+    _refresh_summary_bucket_outcomes(wb)
+    # BUG-H: write closed outcomes back to shadow_trades.csv so CSV isn't
+    # forever full of PENDING rows.
+    if resolved_this_run:
+        _writeback_closed_to_csv(resolved_this_run)
     # Phase F7a: portfolio-level risk snapshot (env-gated, non-fatal)
     _update_portfolio_risk_sheet(wb)
     # Phase F9: strategy-vs-NIFTY overlay (env-gated, non-fatal)
@@ -454,8 +754,11 @@ def run_tracker():
     print(f"[INFO] Tracker job complete — {TRACKER_XLSX} updated")
 
 
-def _update_performance_sheet(wb):
-    """Recalculates Performance Summary sheet from tracking data."""
+def _update_performance_sheet(wb, run_date: str | None = None):
+    """Recalculates Performance Summary sheet from tracking data.
+
+    BUG-D fix: honor caller-supplied run_date for the Last Updated cell.
+    """
     try:
         ws_track = wb["Daily Tracking"]
         ws_perf  = wb["Performance Summary"]
@@ -504,7 +807,7 @@ def _update_performance_sheet(wb):
             ("T1 Hit Rate %",   round(sum(1 for o in closed if o.get("T1 Hit"))/len(closed)*100, 1) if closed else 0),
             ("T2 Hit Rate %",   round(sum(1 for o in closed if o.get("T2 Hit"))/len(closed)*100, 1) if closed else 0),
             ("Stop Hit Rate %", round(sum(1 for o in closed if o.get("Stop Hit"))/len(closed)*100, 1) if closed else 0),
-            ("Last Updated",    datetime.now().strftime("%Y-%m-%d %H:%M")),
+            ("Last Updated",    _ts_str()),
         ]
 
         ws_perf["A1"] = "Metric"
@@ -616,7 +919,7 @@ def _update_portfolio_risk_sheet(wb):
             ("Std Return% (open)",   std_ret),
             ("Worst Open Return %",  rolling_dd),
             ("VaR-95 (1-day, %)",    var95),
-            ("Last Updated",         datetime.now().strftime("%Y-%m-%d %H:%M")),
+            ("Last Updated",         _ts_str()),
         ]
         ws["A1"] = "Portfolio-level Risk Snapshot"
         for i, (metric, value) in enumerate(stats, start=3):
@@ -728,7 +1031,7 @@ def _update_benchmark_overlay(wb):
         else:
             ws["B7"] = "✗ Underperforming"
         ws["A8"] = "Last Updated"
-        ws["B8"] = datetime.now().strftime("%Y-%m-%d %H:%M")
+        ws["B8"] = _ts_str()
     except Exception as e:
         print(f"[WARN] Benchmark overlay failed: {e}")
 
@@ -841,7 +1144,7 @@ def _update_equity_curve_sheet(wb):
             ("Sortino (annualised)",  sortino),
             ("Max drawdown %",        max_dd_pct),
             ("Position size % used",  round(position_pct * 100, 2)),
-            ("Last Updated",          datetime.now().strftime("%Y-%m-%d %H:%M")),
+            ("Last Updated",          _ts_str()),
         ]
         for i, (k, v) in enumerate(stats, start=3):
             ws[f"A{i}"] = k
@@ -903,13 +1206,22 @@ if __name__ == "__main__":
         if _err_msg:
             _extras.append(f"error={_err_msg.replace(' ', '_')[:80]}")
         try:
+            # BUG-E: point pipeline_health at the same folder as TRACKER_XLSX
+            # so run_health.json lands next to the workbook, not in whichever
+            # cwd the caller happened to be in.
+            _env = os.environ.copy()
+            _env.setdefault(
+                "PIPELINE_HEALTH_FILE",
+                os.path.join(os.path.dirname(os.path.abspath(TRACKER_XLSX)),
+                             "run_health.json"),
+            )
             subprocess.run(
                 [sys.executable, "scripts/pipeline_health.py", "record",
                  "--job", "tracker",
                  "--status", _status,
                  "--mode", _mode,
                  "--extras", *_extras],
-                check=False, timeout=15,
+                check=False, timeout=15, env=_env,
             )
         except Exception as _pe:
             print(f"[WARN] pipeline_health record failed: {_pe}")
