@@ -6016,12 +6016,27 @@ def compute_final_confidence(base: float, regime: str, news_penalty: float,
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Tunable via env — defaults derived from backtest expectancy deltas.
+#
+# Phase II retune (2026-07-11) — recalibrated from a fresh 26,519-trade
+# 2-year backtest (backtest_raw_full.csv). The prior +12/+5/0/-4/-6 profile
+# was calibrated on old data and left the system with -0.163R expectancy,
+# PF 0.80. Setup×regime breakdown revealed three big mismatches:
+#
+#   BREAKOUT  aggregate exp +0.018R  → formula suggests +1, was +12  (drop 11)
+#   MOMENTUM  aggregate exp -0.031R  → formula suggests -1, was  +5  (drop  6)
+#   OTHER     aggregate exp -0.228R  → formula suggests -9, was   0  (drop  9)
+#   REVERSAL  aggregate exp -0.135R  → formula suggests -5, was  -4  (drop  1)
+#   PULLBACK  aggregate exp -0.154R  → formula suggests -6, was  -6  (unchanged)
+#
+# New defaults keep BREAKOUT positive (real edge in BULLISH regime) but
+# scaled down; OTHER is now firmly negative (was the biggest bleeder,
+# 57% of the sample). Env overrides still work for shadow-testing tweaks.
 _SETUP_CONF_BONUS = {
-    "BREAKOUT": float(os.getenv("SETUP_BONUS_BREAKOUT", "12")),
-    "MOMENTUM": float(os.getenv("SETUP_BONUS_MOMENTUM",  "5")),
-    "OTHER":    float(os.getenv("SETUP_BONUS_OTHER",     "0")),
-    "REVERSAL": float(os.getenv("SETUP_BONUS_REVERSAL", "-4")),
-    "PULLBACK": float(os.getenv("SETUP_BONUS_PULLBACK", "-6")),
+    "BREAKOUT": float(os.getenv("SETUP_BONUS_BREAKOUT",  "6")),   # was 12
+    "MOMENTUM": float(os.getenv("SETUP_BONUS_MOMENTUM",  "0")),   # was  5
+    "OTHER":    float(os.getenv("SETUP_BONUS_OTHER",    "-8")),   # was  0
+    "REVERSAL": float(os.getenv("SETUP_BONUS_REVERSAL", "-5")),   # was -4
+    "PULLBACK": float(os.getenv("SETUP_BONUS_PULLBACK", "-6")),   # unchanged
 }
 
 # Regime hard-block toggle. When true, WEAK + SIDEWAYS regime rejects any
