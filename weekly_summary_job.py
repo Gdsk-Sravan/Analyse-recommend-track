@@ -533,6 +533,177 @@ def write_weekly_factor_summary(week_start: str, week_end: str) -> None:
         print(f"[WARN] Could not save {TRACKER_XLSX}: {e}")
 
 
+# ═════════════════════════════════════════════════════════════════════════════
+# KELLY WEEKLY SUMMARY (2026-07-11)
+# ═════════════════════════════════════════════════════════════════════════════
+def write_kelly_weekly_summary(week_start: str, week_end: str) -> None:
+    """
+    Same shape as write_weekly_factor_summary() but reads only from
+    'KELLY Recommendations' + 'KELLY Daily Tracking'. Writes to a new
+    sheet 'KELLY Weekly Summary' with the KELLY subset's win rate,
+    factor averages, and hit rates.
+
+    Safe no-op if KELLY sheets don't exist yet.
+    """
+    if not os.path.exists(TRACKER_XLSX):
+        return
+
+    try:
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill, Alignment
+    except ImportError:
+        return
+
+    try:
+        wb = openpyxl.load_workbook(TRACKER_XLSX)
+    except Exception as e:
+        print(f"[KELLY-WEEKLY] Cannot open {TRACKER_XLSX}: {e}")
+        return
+
+    if "KELLY Recommendations" not in wb.sheetnames:
+        print("[KELLY-WEEKLY] No KELLY Recommendations sheet — skipping")
+        return
+
+    ws_krec = wb["KELLY Recommendations"]
+    k_headers = [c.value for c in ws_krec[1]]
+    week_ago = (_today_dt() - timedelta(days=7)).date()
+
+    kelly_recs = []
+    for row in ws_krec.iter_rows(min_row=2, values_only=True):
+        d = dict(zip(k_headers, row))
+        date_val = d.get("Date")
+        try:
+            if isinstance(date_val, datetime):
+                rec_dt = date_val.date()
+            elif isinstance(date_val, str) and date_val:
+                rec_dt = datetime.strptime(date_val[:10], "%Y-%m-%d").date()
+            else:
+                continue
+        except Exception:
+            continue
+        if rec_dt < week_ago:
+            continue
+        kelly_recs.append(d)
+
+    if not kelly_recs:
+        print("[KELLY-WEEKLY] No KELLY recommendations in the past 7 days")
+        return
+
+    # Load final outcomes from KELLY Daily Tracking (last row per Ticker+RecDate)
+    outcomes = {}
+    if "KELLY Daily Tracking" in wb.sheetnames:
+        ws_trk = wb["KELLY Daily Tracking"]
+        trk_headers = [c.value for c in ws_trk[1]]
+        for row in ws_trk.iter_rows(min_row=2, values_only=True):
+            d = dict(zip(trk_headers, row))
+            tkr = d.get("Ticker")
+            rec_date = d.get("Rec Date")
+            if not tkr or not rec_date:
+                continue
+            key = f"{tkr}_{rec_date}"
+            day_n = _safe_float(d.get("Day#")) or 0
+            prev = outcomes.get(key)
+            if prev is None or day_n > (_safe_float(prev.get("Day#")) or 0):
+                outcomes[key] = d
+
+    def _bucket_kelly(rec):
+        tkr = rec.get("Ticker")
+        rd  = rec.get("Date")
+        rd_str = rd.strftime("%Y-%m-%d") if isinstance(rd, datetime) else str(rd or "")[:10]
+        outcome = outcomes.get(f"{tkr}_{rd_str}") or outcomes.get(f"{tkr}_{rd}")
+        status = (outcome or {}).get("Status", rec.get("Status", "ACTIVE"))
+        ret = _safe_float((outcome or {}).get("Return%"))
+        return status, ret, outcome
+
+    winners, losers, active = [], [], []
+    outcome_by_rec = {}
+    for rec in kelly_recs:
+        status, ret_pct, outcome = _bucket_kelly(rec)
+        outcome_by_rec[id(rec)] = outcome
+        if status in ("T1_HIT", "T2_HIT"):
+            winners.append(rec)
+        elif status == "STOPPED" or (status == "EXPIRED" and (ret_pct or 0) < 0):
+            losers.append(rec)
+        else:
+            active.append(rec)
+
+    # (Re)create the sheet
+    sheet_name = "KELLY Weekly Summary"
+    if sheet_name in wb.sheetnames:
+        del wb[sheet_name]
+    ws = wb.create_sheet(sheet_name)
+    ws.append([f"KELLY Weekly Summary  ({week_start} — {week_end})"])
+    ws.append([f"KELLY picks in window: {len(kelly_recs)}  |  "
+               f"Winners: {len(winners)}  |  "
+               f"Losers: {len(losers)}  |  "
+               f"Still Active: {len(active)}"])
+    ws.append([])
+    ws.append(["Factor", "All KELLY (avg)", "Winners (avg)", "Losers (avg)",
+               "Still Active (avg)", "N (All)"])
+
+    def _col_vals(key, source):
+        return [_safe_float(r.get(key)) for r in source]
+
+    def _trk_vals(key, source):
+        vals = []
+        for r in source:
+            oc = outcome_by_rec.get(id(r))
+            if oc:
+                vals.append(_safe_float(oc.get(key)))
+        return vals
+
+    # Rec-side factors
+    for label, key in _REC_FACTORS:
+        ws.append([
+            label,
+            _fmt(_avg(_col_vals(key, kelly_recs))),
+            _fmt(_avg(_col_vals(key, winners))),
+            _fmt(_avg(_col_vals(key, losers))),
+            _fmt(_avg(_col_vals(key, active))),
+            len(kelly_recs),
+        ])
+
+    ws.append([])
+    ws.append(["── Outcome factors (from KELLY Daily Tracking) ──"])
+    for label, key in _TRK_FACTORS:
+        ws.append([
+            label,
+            _fmt(_avg(_trk_vals(key, kelly_recs))),
+            _fmt(_avg(_trk_vals(key, winners))),
+            _fmt(_avg(_trk_vals(key, losers))),
+            _fmt(_avg(_trk_vals(key, active))),
+            len(kelly_recs),
+        ])
+
+    ws.append([])
+    settled = len(winners) + len(losers)
+    hit_rate = round(len(winners) / settled * 100, 1) if settled else None
+    ws.append(["Hit Rate % (settled only)", _fmt(hit_rate),
+               "—", "—", "—", len(kelly_recs)])
+
+    # Styling
+    try:
+        ws["A1"].font = Font(bold=True, size=14)
+        header_fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE",
+                                  fill_type="solid")
+        for col in range(1, 7):
+            cell = ws.cell(row=4, column=col)
+            cell.font = Font(bold=True)
+            cell.fill = header_fill
+            cell.alignment = Alignment(horizontal="center")
+        for i, w in enumerate([26, 20, 18, 18, 20, 12], start=1):
+            ws.column_dimensions[chr(64 + i)].width = w
+    except Exception:
+        pass
+
+    try:
+        wb.save(TRACKER_XLSX)
+        print(f"[INFO] KELLY Weekly Summary written: {len(kelly_recs)} picks, "
+              f"WR={hit_rate if hit_rate is not None else 'n/a'}%")
+    except Exception as e:
+        print(f"[WARN] Could not save KELLY weekly summary: {e}")
+
+
 # ── Phase C7e (2026-07-02): week-over-week delta helpers ──
 def _load_last_week_metrics() -> dict:
     """Read last week's snapshot; empty dict if missing or FRESH_START set upstream."""
@@ -606,6 +777,13 @@ def run_weekly_summary():
         write_weekly_factor_summary(week_start, week_end)
     except Exception as e:
         print(f"[WARN] Factor summary failed: {e}")
+
+    # KELLY parallel weekly summary (2026-07-11): same table structure
+    # but computed on KELLY-approved picks only. Best-effort, non-fatal.
+    try:
+        write_kelly_weekly_summary(week_start, week_end)
+    except Exception as e:
+        print(f"[WARN] KELLY weekly summary failed: {e}")
 
     # Load tracker
     tracker = {}
