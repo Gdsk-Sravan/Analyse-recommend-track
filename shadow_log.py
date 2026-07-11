@@ -93,7 +93,29 @@ SHADOW_CSV_PATH = _resolve_shadow_csv_path()
 SHADOW_ENABLED  = os.getenv("PHASE_I_SHADOW_LOG", "true").lower() in ("1", "true", "yes")
 MAX_SHADOW_DAYS = int(os.getenv("MAX_SHADOW_DAYS", "10"))
 TARGET_PCT      = float(os.getenv("SHADOW_TARGET_PCT", "5.0"))
-STOP_PCT        = float(os.getenv("SHADOW_STOP_PCT",   "3.0"))
+# BUG-K4 fix: guard against SHADOW_STOP_PCT=0 (division-by-zero in r_multiple
+# math downstream). Enforce a tiny positive floor.
+STOP_PCT        = max(0.01, float(os.getenv("SHADOW_STOP_PCT",   "3.0")))
+
+
+# ─── BUG-D3/D4 fix: sim-date aware "today" ─────────────────────────────────
+# The 30-day integration harness pins the "today" clock via SHADOW_RUN_DATE
+# so record_shadow_trade / update_shadow_outcomes stamp CSV rows with the
+# simulated date instead of wall-clock. Falls back to wall-clock in prod.
+def _today_str() -> str:
+    override = os.getenv("SHADOW_RUN_DATE", "").strip()
+    if override:
+        try:
+            datetime.strptime(override, "%Y-%m-%d")
+            return override
+        except ValueError:
+            pass
+    return datetime.now().strftime("%Y-%m-%d")
+
+
+def _today_date():
+    """Same as _today_str but returns a datetime.date."""
+    return datetime.strptime(_today_str(), "%Y-%m-%d").date()
 
 # Bucket letters — kept short so they read cleanly in the CSV
 BUCKET_A = "A"   # TAKEN
@@ -156,13 +178,26 @@ def _ensure_csv() -> None:
 
 
 def _read_all() -> List[dict]:
-    """Read all rows. Returns [] if file missing/malformed."""
+    """Read all rows. Returns [] if file missing/malformed.
+
+    BUG-F4 fix: log I/O errors instead of silently returning []. A corrupt
+    CSV that returns [] would otherwise cause the next _write_all to
+    overwrite the file with just the header, wiping every historical row.
+    """
     if not os.path.exists(SHADOW_CSV_PATH):
         return []
     try:
         with open(SHADOW_CSV_PATH, "r", newline="", encoding="utf-8") as f:
             return list(csv.DictReader(f))
-    except Exception:
+    except Exception as e:
+        print(f"[shadow_log] _read_all failed on {SHADOW_CSV_PATH}: {e}")
+        # Keep a rescue copy before any downstream _write_all clobbers the file.
+        try:
+            import shutil as _shutil
+            _shutil.copy(SHADOW_CSV_PATH, SHADOW_CSV_PATH + ".corrupt")
+            print(f"[shadow_log] saved rescue copy to {SHADOW_CSV_PATH}.corrupt")
+        except Exception:
+            pass
         return []
 
 
@@ -242,7 +277,9 @@ def record_shadow_trade(bucket: str, stock: dict, regime: str,
         if not symbol or entry <= 0:
             return
 
-        today = datetime.now().strftime("%Y-%m-%d")
+        # BUG-D3 fix: honor SHADOW_RUN_DATE so the 30-day integration
+        # harness stamps CSV rows with the simulated date, not wall-clock.
+        today = _today_str()
 
         _ensure_csv()
         rows = _read_all()
@@ -300,7 +337,8 @@ def update_shadow_outcomes(quiet: bool = False) -> dict:
     if not rows:
         return stats
 
-    today = datetime.now().date()
+    # BUG-D4 fix: use sim-date for outcome resolution windows.
+    today = _today_date()
     changed = False
 
     for r in rows:
@@ -353,6 +391,12 @@ def update_shadow_outcomes(quiet: bool = False) -> dict:
                 hi = float(row.get("High", 0))
                 lo = float(row.get("Low",  0))
             except Exception:
+                continue
+            # BUG-H5 fix: yfinance sometimes returns NaN for High/Low on
+            # illiquid days. Skip the bar instead of silently comparing
+            # NaN (which is always False and leaves the row PENDING forever).
+            import math as _math
+            if _math.isnan(hi) or _math.isnan(lo):
                 continue
             # Tie-break: if both hit same day, assume STOP (conservative)
             if lo <= stop_loss:
