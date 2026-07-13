@@ -362,6 +362,7 @@ jobs:
             reject_watch.json
             reject_outcome_log.csv
             run_health.json
+            tracking_workbook.xlsx
             shadow_master.xlsx
             shadow_trades.csv
             shadow_report.xlsx
@@ -414,34 +415,12 @@ jobs:
       - name: Run evening pipeline
         run: python3 main.py
 
-      # ── 2026-07-09 Consolidation (D3): fold tracker_job.py + shadow_master_job.py in ──
-      # Was previously a standalone tracker.yml workflow at 4:30 PM IST. Now that
-      # the evening pipeline (main.py) already populates the Recommendations +
-      # shadow_trades.csv, run tracker_job.py right after to update Daily Tracking /
-      # Performance Summary / Portfolio Risk / Benchmark / Equity Curve sheets
-      # in shadow_master.xlsx, then run shadow_master_job.py to append today's
-      # A/B/C/D bucket rows + rebuild Live_Positions / Summary / Bucket_Comparison /
-      # Resolved_Today / Change_Log sheets on top.
-      - name: Run tracker job (Daily Tracking + Performance sheets)
-        continue-on-error: true
-        env:
-          TRACKER_XLSX: shadow_master.xlsx
-          SCHEDULED_RUN: "true"
-          FRESH_START: ${{ env.FRESH_START || 'false' }}
-          TRADE_TRACKER_V2_FILE: trade_tracker.json
-        run: python tracker_job.py
-
-      - name: Detect yfinance outage (from tracker_job)
-        if: always()
-        continue-on-error: true
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: |
-          if [ -f "yfinance_down.flag" ]; then
-            python scripts/notify_telegram.py --text \
-              "⚠️ tracker: yfinance API unreachable — no rows written. Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" || true
-          fi
+      # ── 2026-07-13 · A1 PURGE ──
+      # tracker_job.py, shadow_master_job.py, and the dedicated
+      # shadow_master.xlsx → Telegram step are DELETED. The evening pipeline
+      # (main.py) now writes ONE canonical workbook (tracking_workbook.xlsx)
+      # via the observation-dataset block and sends it to Telegram itself.
+      # No secondary job runs on top of main.py anymore.
 
       - name: Run reject-outcome follow-up (Phase N-2)
         continue-on-error: true
@@ -454,129 +433,32 @@ jobs:
             echo "[INFO] reject_watch.json not yet populated — skipping"
           fi
 
-      # Phase Shadow-Send-v2 (2026-07-10): removed `continue-on-error: true`
-      # here — this step was silently swallowing all shadow-master failures
-      # (missing xlsx write, crashed openpyxl save, telegram-send import
-      # error). The result was that the DEDICATED xlsx→Telegram step below
-      # would find no file on disk and report rc=2 ("file not found") with
-      # no upstream context. Now this step will fail LOUDLY and the
-      # Notify-on-failure step at the end will alert to Telegram with the
-      # run URL, so we finally see the real error. If it turns out the
-      # step is legitimately flaky for a downstream reason, re-add the
-      # `continue-on-error: true` line with a comment explaining WHY.
-      - name: Run shadow master job (buckets A/B/C/D + rollups)
-        env:
-          SHADOW_MASTER_PATH: shadow_master.xlsx
-          SHADOW_ARCHIVE_DIR: reports/archive
-          SCHEDULED_RUN: "true"
-          FRESH_START: ${{ env.FRESH_START || 'false' }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python shadow_master_job.py --mode scan-and-update
-
-      # ─────────────────────────────────────────────────────────────────
-      # Phase Shadow-Send-v2 (2026-07-10): DEDICATED xlsx SEND
-      # ─────────────────────────────────────────────────────────────────
-      # The shadow_master_job.py step ABOVE also tries to send the xlsx
-      # internally via _maybe_send_telegram(), but that path is buried
-      # inside a step marked continue-on-error: true, which means any
-      # failure (missing import, import path issue, empty result dict,
-      # skipped-mode short-circuit, etc.) silently swallows the send and
-      # you get NO xlsx on Telegram — with zero visible error.
-      #
-      # This step is an INDEPENDENT belt-and-suspenders send:
-      #   • Runs AFTER shadow_master_job so xlsx is on disk
-      #   • Only on scheduled runs (no manual-test spam)
-      #   • Fails LOUDLY (sends a Telegram warning) if xlsx missing
-      #   • Uses the standalone scripts/notify_telegram_document.py which
-      #     has its own retry + logging + explicit error output
-      #   • Uses continue-on-error so a Telegram outage doesn't fail the
-      #     whole pipeline (the artifact zip is the true durable record)
-      # ─────────────────────────────────────────────────────────────────
-      - name: Send shadow_master.xlsx to Telegram (dedicated, always)
-        if: ${{ always() && env.SCHEDULED_RUN == 'true' }}
+      # ── 2026-07-13 · A1 PURGE ──
+      # The former "Run shadow master job" step (python shadow_master_job.py
+      # --mode scan-and-update) and the "Send shadow_master.xlsx to Telegram"
+      # dedicated step are DELETED. main.py's observation-dataset block now
+      # writes tracking_workbook.xlsx and sends it to Telegram inline. If that
+      # inline Telegram send fails on the runner (e.g. transient 5xx), the
+      # artifact upload step below still preserves the workbook for 90 days.
+      # Belt-and-suspenders: fall back to a fresh Telegram send here iff the
+      # workbook exists AND we're on a scheduled run — this only fires when
+      # main.py's inline send returned non-zero (i.e. workbook on disk but
+      # never delivered).
+      - name: Send tracking_workbook.xlsx to Telegram (fallback, scheduled only)
+        if: ${{ always() && env.SCHEDULED_RUN == 'true' && hashFiles('tracking_workbook.xlsx') != '' }}
         continue-on-error: true
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          set +e   # do not fail the pipeline on Telegram issues
-          echo "═══════════════════════════════════════════════════════════"
-          echo "  Dedicated Shadow Master xlsx → Telegram send"
-          echo "═══════════════════════════════════════════════════════════"
-
-          if [ ! -f shadow_master.xlsx ]; then
-            echo "⚠️  shadow_master.xlsx NOT FOUND on disk — nothing to send"
-            ls -la *.xlsx 2>/dev/null || echo "  (no xlsx files at all)"
-            python scripts/notify_telegram.py --text \
-              "⚠️ Evening run: shadow_master.xlsx missing on runner — check shadow_master_job step (run ${{ github.run_id }})" || true
-            exit 0
-          fi
-
-          size_bytes=$(stat -c%s shadow_master.xlsx)
-          size_human=$(numfmt --to=iec --suffix=B "$size_bytes" 2>/dev/null || echo "${size_bytes}B")
+          set +e
           today=$(date +%Y-%m-%d)
           weekday=$(date +%A)
-
-          # Count sheets + rows for a richer caption
-          summary=$(python -c "
-          import openpyxl, sys
-          try:
-              wb = openpyxl.load_workbook('shadow_master.xlsx', read_only=True, data_only=True)
-              n_sheets = len(wb.sheetnames)
-              total_rows = 0
-              for name in wb.sheetnames:
-                  try:
-                      total_rows += wb[name].max_row or 0
-                  except Exception:
-                      pass
-              # bucket counts from Shadow Buckets sheet if present
-              buckets = ''
-              if 'Shadow Buckets' in wb.sheetnames:
-                  from collections import Counter
-                  ws = wb['Shadow Buckets']
-                  bc = Counter()
-                  headers = [c.value for c in next(ws.iter_rows(min_row=1, max_row=1))]
-                  try:
-                      idx = headers.index('bucket')
-                      for row in ws.iter_rows(min_row=2, values_only=True):
-                          if row and len(row) > idx and row[idx]:
-                              bc[str(row[idx])[:1]] += 1
-                      buckets = f'A={bc.get(chr(65),0)} B={bc.get(chr(66),0)} C={bc.get(chr(67),0)} D={bc.get(chr(68),0)}'
-                  except (ValueError, StopIteration):
-                      pass
-              parts = [f'{n_sheets} sheets - {total_rows} rows total']
-              if buckets:
-                  parts.append(buckets)
-              print(' | '.join(parts))
-          except Exception as e:
-              print(f'(preview unavailable: {e})')
-          ")
-
-          # Build caption using printf with %b so \n becomes real newlines.
-          # Keeping this all on ONE printf line avoids breaking YAML block-scalar
-          # indentation (multi-line bash string literals de-indent and confuse YAML).
-          caption=$(printf '%b' "📊 Shadow Master — ${today} (${weekday})\n${summary}\nSize: ${size_human}\nFull 18-sheet workbook — open in Excel for A/B/C/D bucket review, live positions, performance rollup, benchmark curve.")
-
-          echo "Sending shadow_master.xlsx (${size_human}) to Telegram..."
-          echo "Caption preview:"
-          echo "─────────────"
-          echo "$caption"
-          echo "─────────────"
-
-          python scripts/notify_telegram_document.py shadow_master.xlsx \
-            --caption "$caption"
-          rc=$?
-
-          if [ $rc -eq 0 ]; then
-            echo "✅ Shadow Master xlsx sent to Telegram OK"
-          else
-            echo "⚠️  Shadow Master xlsx send returned rc=$rc"
-            # Also send a text ping so silence != invisible failure
-            python scripts/notify_telegram.py --text \
-              "⚠️ Evening run: shadow_master.xlsx send failed (rc=$rc). Check run ${{ github.run_id }}. Artifact zip still uploaded." || true
-          fi
-          echo "═══════════════════════════════════════════════════════════"
+          size_bytes=$(stat -c%s tracking_workbook.xlsx 2>/dev/null || echo 0)
+          size_human=$(numfmt --to=iec --suffix=B "$size_bytes" 2>/dev/null || echo "${size_bytes}B")
+          caption=$(printf '%b' "📊 Tracking Workbook — ${today} (${weekday})\nSize: ${size_human}\nObservation-dataset workbook — 16 sheets (stage / setup / summary).")
+          python scripts/notify_telegram_document.py tracking_workbook.xlsx --caption "$caption"
+          echo "tracking_workbook.xlsx fallback send rc=$?"
 
       - name: Show summary
         if: always()
@@ -613,6 +495,7 @@ jobs:
             reject_watch.json
             reject_outcome_log.csv
             run_health.json
+            tracking_workbook.xlsx
             shadow_master.xlsx
             shadow_trades.csv
             shadow_report.xlsx
@@ -629,6 +512,7 @@ jobs:
           # calibration analyst gets a self-contained zip. Mirrors the git
           # persist file list — if you add a file there, add it here too.
           path: |
+            tracking_workbook.xlsx
             shadow_master.xlsx
             shadow_trades.csv
             shadow_report.xlsx
@@ -692,6 +576,7 @@ jobs:
           # _fresh_rename_files or _fresh_delete_files, it MUST be here.
           files=(
             # ── xlsx workbooks ──
+            tracking_workbook.xlsx
             shadow_master.xlsx
             shadow_report.xlsx
             shadow_report_weekly.xlsx
