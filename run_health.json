@@ -4,34 +4,20 @@
     "evening": {
       "buys": 0,
       "exit_status": "ok",
-      "fresh_start": true,
-      "last_run_utc": "2026-07-10T18:43:10Z",
-      "last_success_utc": "2026-07-10T18:43:10Z",
-      "mode": "scheduled",
+      "fresh_start": false,
+      "last_run_utc": "2026-07-13T07:06:00Z",
+      "last_success_utc": "2026-07-13T07:06:00Z",
+      "mode": "manual",
       "regime": "TRANSITION",
       "shorts": 0,
       "tradable": 120,
-      "watchlist": 6
-    },
-    "research": {
-      "exit_status": "ok",
-      "fresh_start": false,
-      "last_run_utc": "2026-07-12T01:31:37Z",
-      "last_success_utc": "2026-07-12T01:31:37Z",
-      "mode": "scheduled"
+      "watchlist": 4
     },
     "tracker": {
       "exit_status": "ok",
-      "fresh_start": true,
-      "last_run_utc": "2026-07-10T18:43:10Z",
-      "last_success_utc": "2026-07-10T18:43:10Z",
-      "mode": "scheduled"
-    },
-    "weekly": {
-      "exit_status": "ok",
       "fresh_start": false,
-      "last_run_utc": "2026-07-12T09:13:46Z",
-      "last_success_utc": "2026-07-12T09:13:46Z",
+      "last_run_utc": "2026-07-13T07:06:05Z",
+      "last_success_utc": "2026-07-13T07:06:05Z",
       "mode": "scheduled"
     }
   }
