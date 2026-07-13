@@ -4,10 +4,10 @@
       {
         "date": "2026-07-13",
         "fails": [
-          "CONF_FAIL(got 71.5, need 83)",
+          "CONF_FAIL(got 71.8, need 83)",
           "TQ_FAIL(got 63.8, need 73)"
         ],
-        "conf": 71.545
+        "conf": 71.795
       }
     ]
   },
@@ -16,10 +16,10 @@
       {
         "date": "2026-07-13",
         "fails": [
-          "CONF_FAIL(got 70.0, need 83)",
+          "CONF_FAIL(got 69.6, need 83)",
           "TQ_FAIL(got 62.6, need 73)"
         ],
-        "conf": 70.0
+        "conf": 69.6
       }
     ]
   },
@@ -40,10 +40,10 @@
       {
         "date": "2026-07-13",
         "fails": [
-          "CONF_FAIL(got 45.0, need 83)",
+          "CONF_FAIL(got 33.0, need 83)",
           "RR_FAIL(got 1.54, need 2.0)"
         ],
-        "conf": 45.02
+        "conf": 32.975
       }
     ]
   }

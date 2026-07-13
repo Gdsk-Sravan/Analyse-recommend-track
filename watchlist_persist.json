@@ -5,8 +5,8 @@
     "tier_since": "2026-07-13",
     "entry_ref": 583.2,
     "last_seen": "2026-07-13",
-    "conf": 71.545,
-    "conf_gap": 11.5,
+    "conf": 71.795,
+    "conf_gap": 11.2,
     "tq": 63.8,
     "rr_ratio": 2.1,
     "regime": "TRANSITION",
@@ -17,7 +17,7 @@
       "STRONG_ACCUMULATION: delivery 72% (20d avg 37%)"
     ],
     "fail_reasons": [
-      "CONF_FAIL(got 71.5, need 83)",
+      "CONF_FAIL(got 71.8, need 83)",
       "TQ_FAIL(got 63.8, need 73)"
     ],
     "blocker_reason": null,
@@ -30,8 +30,8 @@
     "tier_since": "2026-07-13",
     "entry_ref": 599.75,
     "last_seen": "2026-07-13",
-    "conf": 70.0,
-    "conf_gap": 13.0,
+    "conf": 69.6,
+    "conf_gap": 13.4,
     "tq": 62.6,
     "rr_ratio": 2.11,
     "regime": "TRANSITION",
@@ -43,7 +43,7 @@
       "STRONG_ACCUMULATION: delivery 72% (20d avg 51%)"
     ],
     "fail_reasons": [
-      "CONF_FAIL(got 70.0, need 83)",
+      "CONF_FAIL(got 69.6, need 83)",
       "TQ_FAIL(got 62.6, need 73)"
     ],
     "blocker_reason": null,
@@ -79,8 +79,8 @@
     "tier_since": "2026-07-13",
     "entry_ref": 66.93,
     "last_seen": "2026-07-13",
-    "conf": 45.02,
-    "conf_gap": 38.0,
+    "conf": 32.975,
+    "conf_gap": 50.0,
     "tq": 76.5,
     "rr_ratio": 1.54,
     "regime": "TRANSITION",
@@ -89,7 +89,7 @@
       "HIGH_GAP_RISK: p90 gap 6.6% \u00b7 effective stop 16.7%"
     ],
     "fail_reasons": [
-      "CONF_FAIL(got 45.0, need 83)",
+      "CONF_FAIL(got 33.0, need 83)",
       "RR_FAIL(got 1.54, need 2.0)"
     ],
     "blocker_reason": null,
