@@ -16769,6 +16769,16 @@ def _run_pipeline_inner():
     #      new rows for today are appended.
     #   4. Send tracking_workbook.xlsx to Telegram (SINGLE workbook delivery —
     #      shadow_master pipeline fully removed 2026-07-13).
+    #
+    # 2026-07-13 · MANUAL-RUN GATE:
+    #   • SCHEDULED run → full pipeline: seed → store.save() → snapshot append
+    #                     → build canonical tracking_workbook.xlsx → Telegram.
+    #   • MANUAL   run → PREVIEW ONLY:  no store.save(), no snapshot append,
+    #                     workbook built to tracking_workbook_manual_test.xlsx
+    #                     (scratch file, not the canonical one), Telegram send
+    #                     with clear ⚠️ MANUAL banner in caption. This lets you
+    #                     test Telegram wiring + workbook build logic without
+    #                     touching production state.
     # All four steps are idempotent — safe to re-run same-day. Non-fatal on
     # any error.
     try:
@@ -16887,12 +16897,19 @@ def _run_pipeline_inner():
             except Exception as _e_up:
                 _log(f"[tracking_store] upsert REJECTED {_r.get('symbol')} failed: {_e_up}")
 
-        _store.save()
-        _log(f"[tracking_store] seeded: {_seed_counts}")
+        _store.save() if IS_SCHEDULED else None
+        _log(f"[tracking_store] seeded: {_seed_counts}"
+             + ("" if IS_SCHEDULED else "  (manual run — store NOT persisted)"))
 
         # ── STEP 2/3: snapshot + rebuild workbook ──────────────────────
-        _dsj.append_from_store(_store, run_date=_run_date)
-        _xlsx_path = _Path("tracking_workbook.xlsx").resolve()
+        # MANUAL: skip snapshot append, write workbook to scratch path.
+        # SCHEDULED: append snapshot, write to canonical tracking_workbook.xlsx.
+        if IS_SCHEDULED:
+            _dsj.append_from_store(_store, run_date=_run_date)
+            _xlsx_path = _Path("tracking_workbook.xlsx").resolve()
+        else:
+            _log("[daily_snapshot] SKIPPED (manual run — no snapshot append)")
+            _xlsx_path = _Path("tracking_workbook_manual_test.xlsx").resolve()
         _twj.build_workbook(_store, _xlsx_path)
         _log(f"[tracking_workbook] rebuilt {_xlsx_path.name}")
 
@@ -16901,8 +16918,9 @@ def _run_pipeline_inner():
             from scripts.notify_telegram_document import send_document as _send_doc
             from datetime import datetime as _twb_dt
             _stats = _store.stats()
+            _mode_tag = "" if IS_SCHEDULED else "  ⚠️ MANUAL TEST — state NOT saved"
             _caption_lines = [
-                f"📊 Tracking Workbook — {_twb_dt.now().strftime('%Y-%m-%d %H:%M')}",
+                f"📊 Tracking Workbook — {_twb_dt.now().strftime('%Y-%m-%d %H:%M')}{_mode_tag}",
                 f"Total tracked: {_stats.get('total', 0)}"
                 f" · Active: {_stats.get('active', 0)}"
                 f" · T1: {_stats.get('t1_hit_active', 0)}"
@@ -16947,14 +16965,22 @@ def _run_pipeline_inner():
         _log("  Trade tracker NOT saved (manual run)")
 
     # ── 17. Save CSVs ──
+    # 2026-07-13 · Gated on IS_SCHEDULED so manual runs don't overwrite
+    # yesterday's committed CSVs with a test-run subset. Manual runs still
+    # log the counts so you can eyeball the pipeline; scheduled runs write
+    # the durable csv files that get cached + committed by main.yml.
     _log("[17/17] Saving output CSVs...")
     for s in top_40:
         s.pop("_df", None)
         s.pop("fundamentals", None)
         s.pop("promoter_data", None)
-    save_csv(top_40,           "analysis_output.csv")
-    save_csv(portfolio_alerts, "portfolio_monitor.csv")
-    save_csv(buys,             "buys_today.csv")
+    if IS_SCHEDULED:
+        save_csv(top_40,           "analysis_output.csv")
+        save_csv(portfolio_alerts, "portfolio_monitor.csv")
+        save_csv(buys,             "buys_today.csv")
+    else:
+        _log(f"  MANUAL run — CSV writes SKIPPED (top_40={len(top_40)}, "
+             f"portfolio_alerts={len(portfolio_alerts)}, buys={len(buys)})")
 
     # 2026-07-13 · A1 PURGE: save_recommendations_to_excel(...) removed.
     # The old shadow_master.xlsx workbook (Recommendations / Daily Tracking /
