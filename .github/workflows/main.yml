@@ -367,6 +367,14 @@ jobs:
             shadow_trades.csv
             shadow_report.xlsx
             reports/archive/**
+            # ── observation-dataset (2026-07-13): tracking store + append-only logs ──
+            # These MUST survive across runs so the weekly_review_job idempotency
+            # check (skip if (iso_week, category) already present) works, and so
+            # the daily-snapshot append log accumulates across evenings.
+            results/tracking_store.json
+            results/tracking_events.jsonl
+            results/weekly_review_history.jsonl
+            results/daily_snapshots.jsonl
             .fresh_start_marker
           key: stock-reviewer-data-${{ runner.os }}-${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
@@ -500,6 +508,13 @@ jobs:
             shadow_trades.csv
             shadow_report.xlsx
             reports/archive/**
+            # ── observation-dataset (2026-07-13): tracking store + append-only logs ──
+            # Mirror of the Restore-cache list above. If you add a file there,
+            # add it here too, or the next run's cache restore will miss it.
+            results/tracking_store.json
+            results/tracking_events.jsonl
+            results/weekly_review_history.jsonl
+            results/daily_snapshots.jsonl
             .fresh_start_marker
           key: stock-reviewer-data-${{ runner.os }}-${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}
 
@@ -544,6 +559,11 @@ jobs:
             last_known_good.json
             last_tradable.json
             portfolio.json
+            # ── observation-dataset (2026-07-13): tracking store + append-only logs ──
+            results/tracking_store.json
+            results/tracking_events.jsonl
+            results/weekly_review_history.jsonl
+            results/daily_snapshots.jsonl
           retention-days: 90
           if-no-files-found: warn
 
@@ -591,6 +611,14 @@ jobs:
             # ── jsonl append-only logs ──
             price_fetch_failures.jsonl
             tradable_dropouts.jsonl
+            # ── observation-dataset (2026-07-13): tracking store + append-only logs ──
+            # Feed the WEEKLY_REVIEW and WEEKLY_SUMMARY sheets; MUST persist to git
+            # so the weekly_review_job idempotency check works across runs (and so
+            # a Monday run can see "already appended" once Tuesday runs).
+            results/tracking_store.json
+            results/tracking_events.jsonl
+            results/weekly_review_history.jsonl
+            results/daily_snapshots.jsonl
             # ── main.py state (loaded, in-memory guarded) ──
             trade_tracker.json
             trade_tracker_v2.json
