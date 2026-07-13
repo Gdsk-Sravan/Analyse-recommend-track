@@ -357,8 +357,8 @@ def _write_sheet(writer, name: str, records: Dict[str, Dict[str, float]], key_co
 
 def build_attribution_report(
     tracker_json: str = "trade_tracker.json",
-    tracker_xlsx: str = "shadow_master.xlsx",
-    out_xlsx: str = "shadow_master.xlsx",
+    tracker_xlsx: str = "tracking_workbook.xlsx",
+    out_xlsx: str = "tracking_workbook.xlsx",
     lookback_days: int = 90,
 ) -> Dict[str, Any]:
     """
