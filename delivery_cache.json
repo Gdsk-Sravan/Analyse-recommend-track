@@ -144,14 +144,14 @@
   },
   "PHOENIXLTD": {
     "data": {
-      "delivery_pct_today": 58.56,
-      "delivery_pct_20d_avg": 55.2,
-      "delivery_ratio": 1.061,
+      "delivery_pct_today": 58.44,
+      "delivery_pct_20d_avg": 55.63,
+      "delivery_ratio": 1.05,
       "delivery_signal": "NEUTRAL",
       "series_days": 31,
       "source": "nselib"
     },
-    "cached_at": "2026-07-11T00:06:41.108696+05:30"
+    "cached_at": "2026-07-13T18:10:58.403790+05:30"
   },
   "EMBDL": {
     "data": {
@@ -177,14 +177,14 @@
   },
   "BORORENEW": {
     "data": {
-      "delivery_pct_today": 32.48,
-      "delivery_pct_20d_avg": 45.45,
-      "delivery_ratio": 0.715,
-      "delivery_signal": "WEAK",
+      "delivery_pct_today": 44.01,
+      "delivery_pct_20d_avg": 45.14,
+      "delivery_ratio": 0.975,
+      "delivery_signal": "NEUTRAL",
       "series_days": 31,
       "source": "nselib"
     },
-    "cached_at": "2026-07-11T00:06:44.455157+05:30"
+    "cached_at": "2026-07-13T18:10:59.182835+05:30"
   },
   "PRESTIGE": {
     "data": {
@@ -962,10 +962,10 @@
       "delivery_pct_20d_avg": 32.63,
       "delivery_ratio": 1.768,
       "delivery_signal": "STRONG_ACCUM",
-      "series_days": 31,
+      "series_days": 30,
       "source": "nselib"
     },
-    "cached_at": "2026-07-11T00:08:03.738159+05:30"
+    "cached_at": "2026-07-13T15:10:51.586925+05:30"
   },
   "MBAPL": {
     "data": {
@@ -1171,10 +1171,10 @@
       "delivery_pct_20d_avg": 52.08,
       "delivery_ratio": 1.089,
       "delivery_signal": "NEUTRAL",
-      "series_days": 31,
+      "series_days": 30,
       "source": "nselib"
     },
-    "cached_at": "2026-07-11T00:08:23.809876+05:30"
+    "cached_at": "2026-07-13T15:10:56.840751+05:30"
   },
   "WANBURY": {
     "data": {
@@ -1835,5 +1835,137 @@
       "source": "nselib"
     },
     "cached_at": "2026-07-13T12:31:33.940562+05:30"
+  },
+  "AEGISVOPAK": {
+    "data": {
+      "delivery_pct_today": 30.93,
+      "delivery_pct_20d_avg": 35.33,
+      "delivery_ratio": 0.875,
+      "delivery_signal": "NEUTRAL",
+      "series_days": 30,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-13T15:10:47.292065+05:30"
+  },
+  "PARKHOTELS": {
+    "data": {
+      "delivery_pct_today": 67.14,
+      "delivery_pct_20d_avg": 57.51,
+      "delivery_ratio": 1.168,
+      "delivery_signal": "ACCUM",
+      "series_days": 30,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-13T15:10:48.560698+05:30"
+  },
+  "BHARATSE": {
+    "data": {
+      "delivery_pct_today": 32.77,
+      "delivery_pct_20d_avg": 33.15,
+      "delivery_ratio": 0.989,
+      "delivery_signal": "NEUTRAL",
+      "series_days": 30,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-13T15:10:49.148475+05:30"
+  },
+  "SONATSOFTW": {
+    "data": {
+      "delivery_pct_today": 26.45,
+      "delivery_pct_20d_avg": 27.39,
+      "delivery_ratio": 0.966,
+      "delivery_signal": "NEUTRAL",
+      "series_days": 30,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-13T15:10:50.352391+05:30"
+  },
+  "MBEL": {
+    "data": {
+      "delivery_pct_today": 50.78,
+      "delivery_pct_20d_avg": 52.48,
+      "delivery_ratio": 0.968,
+      "delivery_signal": "NEUTRAL",
+      "series_days": 30,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-13T15:10:52.125253+05:30"
+  },
+  "HUHTAMAKI": {
+    "data": {
+      "delivery_pct_today": 58.82,
+      "delivery_pct_20d_avg": 58.08,
+      "delivery_ratio": 1.013,
+      "delivery_signal": "NEUTRAL",
+      "series_days": 30,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-13T15:10:53.228891+05:30"
+  },
+  "UNIVASTU": {
+    "data": {
+      "delivery_pct_today": 82.1,
+      "delivery_pct_20d_avg": 57.94,
+      "delivery_ratio": 1.417,
+      "delivery_signal": "STRONG_ACCUM",
+      "series_days": 23,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-13T15:10:53.835946+05:30"
+  },
+  "GCSL": {
+    "data": {
+      "delivery_pct_today": 28.93,
+      "delivery_pct_20d_avg": 37.59,
+      "delivery_ratio": 0.77,
+      "delivery_signal": "WEAK",
+      "series_days": 30,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-13T15:10:54.946536+05:30"
+  },
+  "KIRLOSENG": {
+    "data": {
+      "delivery_pct_today": 51.93,
+      "delivery_pct_20d_avg": 41.89,
+      "delivery_ratio": 1.24,
+      "delivery_signal": "ACCUM",
+      "series_days": 30,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-13T15:10:55.627170+05:30"
+  },
+  "FSL": {
+    "data": {
+      "delivery_pct_today": 33.88,
+      "delivery_pct_20d_avg": 35.5,
+      "delivery_ratio": 0.954,
+      "delivery_signal": "NEUTRAL",
+      "series_days": 30,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-13T15:10:57.629607+05:30"
+  },
+  "ONWARDTEC": {
+    "data": {
+      "delivery_pct_today": 56.77,
+      "delivery_pct_20d_avg": 47.52,
+      "delivery_ratio": 1.195,
+      "delivery_signal": "ACCUM",
+      "series_days": 30,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-13T15:10:58.163858+05:30"
+  },
+  "TIPSMUSIC": {
+    "data": {
+      "delivery_pct_today": 52.8,
+      "delivery_pct_20d_avg": 48.21,
+      "delivery_ratio": 1.095,
+      "delivery_signal": "NEUTRAL",
+      "series_days": 31,
+      "source": "nselib"
+    },
+    "cached_at": "2026-07-13T18:11:00.200041+05:30"
   }
 }

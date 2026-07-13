@@ -1,5 +1,1538 @@
 [
   {
+    "date": "2026-07-13",
+    "symbol": "UNIVASTU.NS",
+    "close": 104.49,
+    "reasons": [
+      "MARKET_CAP_LOW_\u20b9376Cr_(min_\u20b9500Cr)"
+    ],
+    "sector": "CAPITAL_GOODS",
+    "trade_quality": 68.4,
+    "confidence": 84.885,
+    "market_cap_cr": 376.0,
+    "avg_val_lakhs": 241.0
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "JAYBARMARU.NS",
+    "close": 197.15,
+    "reasons": [
+      "CONF_FAIL(got 82.0, need 83)",
+      "TQ_FAIL(got 45.3, need 73)",
+      "RR_FAIL(got 1.44, need 2.0)"
+    ],
+    "sector": "CONSUMER",
+    "trade_quality": 45.3,
+    "confidence": 82.02,
+    "market_cap_cr": 2129.0,
+    "avg_val_lakhs": 2074.2
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "HEXT.NS",
+    "close": 566.2,
+    "reasons": [
+      "CONF_FAIL(got 76.5, need 83)",
+      "TQ_FAIL(got 60.9, need 73)",
+      "RR_FAIL(got 1.65, need 2.0)"
+    ],
+    "sector": "IT",
+    "trade_quality": 60.9,
+    "confidence": 76.51,
+    "market_cap_cr": 34861.0,
+    "avg_val_lakhs": 8937.2
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "GRANULES.NS",
+    "close": 897.65,
+    "reasons": [
+      "CONF_FAIL(got 74.9, need 83)",
+      "TQ_FAIL(got 61.1, need 73)",
+      "RR_FAIL(got 1.43, need 2.0)"
+    ],
+    "sector": "PHARMA",
+    "trade_quality": 61.1,
+    "confidence": 74.86,
+    "market_cap_cr": 22227.0,
+    "avg_val_lakhs": 10962.7
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "CEMPRO.NS",
+    "close": 1583.7,
+    "reasons": [
+      "CONF_FAIL(got 74.4, need 83)",
+      "TQ_FAIL(got 51.5, need 73)",
+      "RR_FAIL(got 1.45, need 2.0)"
+    ],
+    "sector": "CAPITAL_GOODS",
+    "trade_quality": 51.5,
+    "confidence": 74.36,
+    "market_cap_cr": 27313.0,
+    "avg_val_lakhs": 7537.1
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "HUHTAMAKI.NS",
+    "close": 221.53,
+    "reasons": [
+      "CONF_FAIL(got 74.1, need 83)",
+      "TQ_FAIL(got 59.4, need 73)",
+      "RR_FAIL(got 1.33, need 2.0)"
+    ],
+    "sector": "CONSUMER",
+    "trade_quality": 59.4,
+    "confidence": 74.12,
+    "market_cap_cr": 1675.0,
+    "avg_val_lakhs": 491.4
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "OFSS.NS",
+    "close": 11746.0,
+    "reasons": [
+      "CONF_FAIL(got 74.1, need 83)",
+      "TQ_FAIL(got 68.9, need 73)",
+      "RR_FAIL(got 1.43, need 2.0)"
+    ],
+    "sector": "IT",
+    "trade_quality": 68.9,
+    "confidence": 74.08,
+    "market_cap_cr": 103178.0,
+    "avg_val_lakhs": 34290.2
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "WELCORP.NS",
+    "close": 1619.9,
+    "reasons": [
+      "CONF_FAIL(got 73.7, need 83)",
+      "TQ_FAIL(got 59.0, need 73)",
+      "RR_FAIL(got 1.44, need 2.0)"
+    ],
+    "sector": "METALS",
+    "trade_quality": 59.0,
+    "confidence": 73.69,
+    "market_cap_cr": 42741.0,
+    "avg_val_lakhs": 17449.7
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "WABAG.NS",
+    "close": 2205.7,
+    "reasons": [
+      "CONF_FAIL(got 72.8, need 83)",
+      "TQ_FAIL(got 56.7, need 73)",
+      "SECTOR_LAGGING"
+    ],
+    "sector": "CAPITAL_GOODS",
+    "trade_quality": 56.7,
+    "confidence": 72.775,
+    "market_cap_cr": 13858.0,
+    "avg_val_lakhs": 25646.4
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "IBULLSLTD.NS",
+    "close": 31.1,
+    "reasons": [
+      "CONF_FAIL(got 72.7, need 83)",
+      "TQ_FAIL(got 64.2, need 73)",
+      "RR_FAIL(got 1.43, need 2.0)"
+    ],
+    "sector": "REALTY",
+    "trade_quality": 64.2,
+    "confidence": 72.68,
+    "market_cap_cr": 7231.0,
+    "avg_val_lakhs": 2192.8
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "SUMICHEM.NS",
+    "close": 531.9,
+    "reasons": [
+      "CONF_FAIL(got 72.3, need 83)",
+      "TQ_FAIL(got 59.6, need 73)",
+      "RR_FAIL(got 1.45, need 2.0)"
+    ],
+    "sector": "METALS",
+    "trade_quality": 59.6,
+    "confidence": 72.28,
+    "market_cap_cr": 26545.0,
+    "avg_val_lakhs": 10504.1
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "SHREEJISPG.NS",
+    "close": 570.7,
+    "reasons": [
+      "CONF_FAIL(got 70.8, need 83)",
+      "TQ_FAIL(got 63.1, need 73)",
+      "RR_FAIL(got 1.43, need 2.0)"
+    ],
+    "sector": "CAPITAL_GOODS",
+    "trade_quality": 63.1,
+    "confidence": 70.81,
+    "market_cap_cr": 9267.0,
+    "avg_val_lakhs": 5246.1
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "SANGAMIND.NS",
+    "close": 622.55,
+    "reasons": [
+      "ROE_TOO_LOW(8.4%<10%)"
+    ],
+    "sector": "CONSUMER",
+    "trade_quality": 70.8,
+    "confidence": 70.45,
+    "market_cap_cr": 3097.0,
+    "avg_val_lakhs": 1190.3
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "VAIBHAVGBL.NS",
+    "close": 255.88,
+    "reasons": [
+      "CONF_FAIL(got 70.4, need 83)",
+      "TQ_FAIL(got 65.1, need 73)",
+      "RR_FAIL(got 1.42, need 2.0)"
+    ],
+    "sector": "CONSUMER",
+    "trade_quality": 65.1,
+    "confidence": 70.44,
+    "market_cap_cr": 4310.0,
+    "avg_val_lakhs": 1292.1
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "BAJAJCON.NS",
+    "close": 660.45,
+    "reasons": [
+      "CONF_FAIL(got 70.3, need 83)",
+      "TQ_FAIL(got 64.1, need 73)",
+      "RR_FAIL(got 1.46, need 2.0)"
+    ],
+    "sector": "FMCG",
+    "trade_quality": 64.1,
+    "confidence": 70.335,
+    "market_cap_cr": 8854.0,
+    "avg_val_lakhs": 5103.7
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "EMSLIMITED.NS",
+    "close": 441.15,
+    "reasons": [
+      "ROE_TOO_LOW(8.9%<10%)"
+    ],
+    "sector": "CAPITAL_GOODS",
+    "trade_quality": 57.4,
+    "confidence": 69.95,
+    "market_cap_cr": 2505.0,
+    "avg_val_lakhs": 10721.6
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "AETHER.NS",
+    "close": 1452.8,
+    "reasons": [
+      "ROE_TOO_LOW(9.7%<10%)"
+    ],
+    "sector": "METALS",
+    "trade_quality": 60.2,
+    "confidence": 69.93,
+    "market_cap_cr": 19311.0,
+    "avg_val_lakhs": 7607.8
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "SETL.NS",
+    "close": 277.55,
+    "reasons": [
+      "CONF_FAIL(got 69.2, need 83)",
+      "TQ_FAIL(got 48.5, need 73)",
+      "SECTOR_RANK_TOO_LOW(rank=15>top6)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 48.5,
+    "confidence": 69.16,
+    "market_cap_cr": 5648.0,
+    "avg_val_lakhs": 5132.8
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "SIGNPOST.NS",
+    "close": 321.15,
+    "reasons": [
+      "CONF_FAIL(got 68.7, need 83)",
+      "TQ_FAIL(got 54.0, need 73)",
+      "RR_FAIL(got 1.70, need 2.0)"
+    ],
+    "sector": "TELECOM",
+    "trade_quality": 54.0,
+    "confidence": 68.67,
+    "market_cap_cr": 1707.0,
+    "avg_val_lakhs": 4576.1
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "IOLCP.NS",
+    "close": 169.09,
+    "reasons": [
+      "ROE_TOO_LOW(8.4%<10%)"
+    ],
+    "sector": "HEALTHCARE",
+    "trade_quality": 54.1,
+    "confidence": 68.67,
+    "market_cap_cr": 4942.0,
+    "avg_val_lakhs": 10736.0
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "MIRZAINT.NS",
+    "close": 37.9,
+    "reasons": [
+      "CONF_FAIL(got 68.6, need 83)",
+      "TQ_FAIL(got 70.2, need 73)",
+      "SECTOR_RANK_TOO_LOW(rank=8>top6)"
+    ],
+    "sector": "CONSUMER",
+    "trade_quality": 70.2,
+    "confidence": 68.61,
+    "market_cap_cr": 522.0,
+    "avg_val_lakhs": 222.7
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "NYKAA.NS",
+    "close": 328.4,
+    "reasons": [
+      "CONF_FAIL(got 68.6, need 83)",
+      "TQ_FAIL(got 64.3, need 73)",
+      "RR_FAIL(got 1.41, need 2.0)"
+    ],
+    "sector": "CONSUMER",
+    "trade_quality": 64.3,
+    "confidence": 68.59,
+    "market_cap_cr": 94291.0,
+    "avg_val_lakhs": 31103.4
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "MMFL.NS",
+    "close": 516.4,
+    "reasons": [
+      "CONF_FAIL(got 67.8, need 83)",
+      "TQ_FAIL(got 66.4, need 73)",
+      "RR_FAIL(got 1.39, need 2.0)"
+    ],
+    "sector": "CAPITAL_GOODS",
+    "trade_quality": 66.4,
+    "confidence": 67.76,
+    "market_cap_cr": 2519.0,
+    "avg_val_lakhs": 738.2
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "ARKADE.NS",
+    "close": 140.85,
+    "reasons": [
+      "CONF_FAIL(got 67.6, need 83)",
+      "TQ_FAIL(got 72.5, need 73)",
+      "RR_FAIL(got 1.38, need 2.0)"
+    ],
+    "sector": "REALTY",
+    "trade_quality": 72.5,
+    "confidence": 67.56,
+    "market_cap_cr": 2532.0,
+    "avg_val_lakhs": 877.6
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "GODREJPROP.NS",
+    "close": 2162.6,
+    "reasons": [
+      "ROE_TOO_LOW(8.8%<10%)"
+    ],
+    "sector": "REALTY",
+    "trade_quality": 73.7,
+    "confidence": 67.41,
+    "market_cap_cr": 64193.0,
+    "avg_val_lakhs": 15000.8
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "GANECOS.NS",
+    "close": 1122.65,
+    "reasons": [
+      "ROE_TOO_LOW(3.1%<10%)"
+    ],
+    "sector": "CONSUMER",
+    "trade_quality": 59.2,
+    "confidence": 67.24000000000001,
+    "market_cap_cr": 3001.0,
+    "avg_val_lakhs": 2359.4
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "BORORENEW.NS",
+    "close": 647.3,
+    "reasons": [
+      "CONF_FAIL(got 67.2, need 83)",
+      "TQ_FAIL(got 63.8, need 73)",
+      "RR_FAIL(got 1.68, need 2.0)"
+    ],
+    "sector": "IT",
+    "trade_quality": 63.8,
+    "confidence": 67.19,
+    "market_cap_cr": 9074.0,
+    "avg_val_lakhs": 5327.4
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "EPACKPEB.NS",
+    "close": 278.32,
+    "reasons": [
+      "CONF_FAIL(got 67.1, need 83)",
+      "TQ_FAIL(got 69.2, need 73)",
+      "RR_FAIL(got 1.53, need 2.0)"
+    ],
+    "sector": "CAPITAL_GOODS",
+    "trade_quality": 69.2,
+    "confidence": 67.14,
+    "market_cap_cr": 2808.0,
+    "avg_val_lakhs": 3264.9
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "WANBURY.NS",
+    "close": 300.45,
+    "reasons": [
+      "CONF_FAIL(got 67.1, need 83)",
+      "RR_FAIL(got 1.70, need 2.0)",
+      "SECTOR_RANK_TOO_LOW(rank=7>top6)"
+    ],
+    "sector": "HEALTHCARE",
+    "trade_quality": 80.2,
+    "confidence": 67.13,
+    "market_cap_cr": 1061.0,
+    "avg_val_lakhs": 527.3
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "SUVEN.NS",
+    "close": 359.55,
+    "reasons": [
+      "CONF_FAIL(got 67.1, need 83)",
+      "TQ_FAIL(got 49.2, need 73)",
+      "RR_FAIL(got 1.65, need 2.0)"
+    ],
+    "sector": "HEALTHCARE",
+    "trade_quality": 49.2,
+    "confidence": 67.13,
+    "market_cap_cr": 10103.0,
+    "avg_val_lakhs": 6627.0
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "RAMCOIND.NS",
+    "close": 372.0,
+    "reasons": [
+      "ROE_TOO_LOW(6.9%<10%)"
+    ],
+    "sector": "BUILDING_MAT",
+    "trade_quality": 56.3,
+    "confidence": 67.11,
+    "market_cap_cr": 3256.0,
+    "avg_val_lakhs": 6187.9
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "SURYODAY.NS",
+    "close": 191.57,
+    "reasons": [
+      "ROE_TOO_LOW(7.6%<10%)"
+    ],
+    "sector": "FINANCE",
+    "trade_quality": 78.0,
+    "confidence": 67.06,
+    "market_cap_cr": 0.0,
+    "avg_val_lakhs": 1059.0
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "DDEVPLSTIK.NS",
+    "close": 294.15,
+    "reasons": [
+      "CONF_FAIL(got 67.0, need 83)",
+      "RR_FAIL(got 1.58, need 2.0)",
+      "SECTOR_LAGGING"
+    ],
+    "sector": "METALS",
+    "trade_quality": 74.6,
+    "confidence": 67.0,
+    "market_cap_cr": 0.0,
+    "avg_val_lakhs": 568.8
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "INDSWFTLAB.NS",
+    "close": 237.7,
+    "reasons": [
+      "ROE_TOO_LOW(3.9%<10%)"
+    ],
+    "sector": "PHARMA",
+    "trade_quality": 43.9,
+    "confidence": 66.925,
+    "market_cap_cr": 2113.0,
+    "avg_val_lakhs": 3354.7
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "KMEW.NS",
+    "close": 2425.4,
+    "reasons": [
+      "CONF_FAIL(got 66.9, need 83)",
+      "TQ_FAIL(got 59.3, need 73)",
+      "RR_FAIL(got 1.56, need 2.0)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 59.3,
+    "confidence": 66.91,
+    "market_cap_cr": 5978.0,
+    "avg_val_lakhs": 3402.9
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "CHOICEIN.NS",
+    "close": 820.15,
+    "reasons": [
+      "CONF_FAIL(got 66.9, need 83)",
+      "TQ_FAIL(got 63.7, need 73)",
+      "RR_FAIL(got 1.42, need 2.0)"
+    ],
+    "sector": "FINANCE",
+    "trade_quality": 63.7,
+    "confidence": 66.86,
+    "market_cap_cr": 18379.0,
+    "avg_val_lakhs": 11103.6
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "GCSL.NS",
+    "close": 511.4,
+    "reasons": [
+      "CONF_FAIL(got 66.7, need 83)",
+      "TQ_FAIL(got 59.0, need 73)",
+      "RR_FAIL(got 1.42, need 2.0)"
+    ],
+    "sector": "FINANCE",
+    "trade_quality": 59.0,
+    "confidence": 66.73,
+    "market_cap_cr": 1230.0,
+    "avg_val_lakhs": 3142.0
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "STYL.NS",
+    "close": 367.8,
+    "reasons": [
+      "CONF_FAIL(got 66.7, need 83)",
+      "TQ_FAIL(got 59.8, need 73)",
+      "RR_FAIL(got 1.40, need 2.0)"
+    ],
+    "sector": "IT",
+    "trade_quality": 59.8,
+    "confidence": 66.71,
+    "market_cap_cr": 5857.0,
+    "avg_val_lakhs": 660.6
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "PARKHOTELS.NS",
+    "close": 131.26,
+    "reasons": [
+      "CONF_FAIL(got 66.5, need 83)",
+      "RR_FAIL(got 1.29, need 2.0)",
+      "SECTOR_RANK_TOO_LOW(rank=8>top6)"
+    ],
+    "sector": "CONSUMER",
+    "trade_quality": 77.8,
+    "confidence": 66.48,
+    "market_cap_cr": 2800.0,
+    "avg_val_lakhs": 222.6
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "NACLIND.NS",
+    "close": 243.02,
+    "reasons": [
+      "ROE_TOO_LOW(2.4%<10%)"
+    ],
+    "sector": "CHEMICALS",
+    "trade_quality": 58.5,
+    "confidence": 66.46,
+    "market_cap_cr": 5637.0,
+    "avg_val_lakhs": 7499.2
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "PGEL.NS",
+    "close": 595.85,
+    "reasons": [
+      "ROE_TOO_LOW(6.7%<10%)"
+    ],
+    "sector": "IT",
+    "trade_quality": 74.8,
+    "confidence": 66.31,
+    "market_cap_cr": 17000.0,
+    "avg_val_lakhs": 15934.6
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "SAMBHV.NS",
+    "close": 120.92,
+    "reasons": [
+      "CONF_FAIL(got 66.2, need 83)",
+      "TQ_FAIL(got 64.3, need 73)",
+      "RR_FAIL(got 1.42, need 2.0)"
+    ],
+    "sector": "METALS",
+    "trade_quality": 64.3,
+    "confidence": 66.15,
+    "market_cap_cr": 3561.0,
+    "avg_val_lakhs": 1337.5
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "GRAVITA.NS",
+    "close": 1846.0,
+    "reasons": [
+      "CONF_FAIL(got 66.1, need 83)",
+      "TQ_FAIL(got 65.4, need 73)",
+      "RR_FAIL(got 1.44, need 2.0)"
+    ],
+    "sector": "CAPITAL_GOODS",
+    "trade_quality": 65.4,
+    "confidence": 66.11,
+    "market_cap_cr": 13544.0,
+    "avg_val_lakhs": 5411.4
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "AKUMS.NS",
+    "close": 683.85,
+    "reasons": [
+      "ROE_TOO_LOW(8.4%<10%)"
+    ],
+    "sector": "HEALTHCARE",
+    "trade_quality": 62.2,
+    "confidence": 66.1,
+    "market_cap_cr": 10844.0,
+    "avg_val_lakhs": 2023.6
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "ADFFOODS.NS",
+    "close": 319.45,
+    "reasons": [
+      "CONF_FAIL(got 66.0, need 83)",
+      "TQ_FAIL(got 67.3, need 73)",
+      "SECTOR_LAGGING"
+    ],
+    "sector": "FMCG",
+    "trade_quality": 67.3,
+    "confidence": 66.05,
+    "market_cap_cr": 3550.0,
+    "avg_val_lakhs": 3256.2
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "SENORES.NS",
+    "close": 1435.5,
+    "reasons": [
+      "CONF_FAIL(got 65.9, need 83)",
+      "TQ_FAIL(got 69.0, need 73)",
+      "RR_FAIL(got 1.69, need 2.0)"
+    ],
+    "sector": "HEALTHCARE",
+    "trade_quality": 69.0,
+    "confidence": 65.91,
+    "market_cap_cr": 6544.0,
+    "avg_val_lakhs": 4165.0
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "CNL.NS",
+    "close": 938.8,
+    "reasons": [
+      "CONF_FAIL(got 65.9, need 83)",
+      "TQ_FAIL(got 61.1, need 73)",
+      "RR_FAIL(got 1.44, need 2.0)"
+    ],
+    "sector": "IT",
+    "trade_quality": 61.1,
+    "confidence": 65.875,
+    "market_cap_cr": 1333.0,
+    "avg_val_lakhs": 2436.7
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "PHOENIXLTD.NS",
+    "close": 2154.0,
+    "reasons": [
+      "CONF_FAIL(got 65.8, need 83)",
+      "TQ_FAIL(got 68.1, need 73)",
+      "RR_FAIL(got 1.43, need 2.0)"
+    ],
+    "sector": "REALTY",
+    "trade_quality": 68.1,
+    "confidence": 65.83,
+    "market_cap_cr": 76923.0,
+    "avg_val_lakhs": 17727.8
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "LODHA.NS",
+    "close": 1198.65,
+    "reasons": [
+      "CONF_FAIL(got 65.7, need 83)",
+      "TQ_FAIL(got 60.3, need 73)",
+      "RR_FAIL(got 1.44, need 2.0)"
+    ],
+    "sector": "REALTY",
+    "trade_quality": 60.3,
+    "confidence": 65.72,
+    "market_cap_cr": 119492.0,
+    "avg_val_lakhs": 39196.0
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "STOVEKRAFT.NS",
+    "close": 791.15,
+    "reasons": [
+      "SETUP_EDGE_SKIP(REGIME_CHOP_NO_BREAKOUT(TRANSITION/OTHER))"
+    ],
+    "sector": "CONSUMER",
+    "trade_quality": 71.9,
+    "confidence": 65.63,
+    "market_cap_cr": 2642.0,
+    "avg_val_lakhs": 1272.0
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "INDOBORAX.NS",
+    "close": 472.65,
+    "reasons": [
+      "CONF_FAIL(got 65.5, need 83)",
+      "TQ_FAIL(got 57.1, need 73)",
+      "RR_FAIL(got 1.43, need 2.0)"
+    ],
+    "sector": "CHEMICALS",
+    "trade_quality": 57.1,
+    "confidence": 65.53,
+    "market_cap_cr": 1482.0,
+    "avg_val_lakhs": 1518.4
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "BHARATSE.NS",
+    "close": 254.62,
+    "reasons": [
+      "CONF_FAIL(got 65.2, need 83)",
+      "TQ_FAIL(got 56.3, need 73)",
+      "RR_FAIL(got 1.79, need 2.0)"
+    ],
+    "sector": "CONSUMER",
+    "trade_quality": 56.3,
+    "confidence": 65.25,
+    "market_cap_cr": 0.0,
+    "avg_val_lakhs": 4848.1
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "JASH.NS",
+    "close": 544.4,
+    "reasons": [
+      "CONF_FAIL(got 65.2, need 83)",
+      "TQ_FAIL(got 58.6, need 73)",
+      "RR_FAIL(got 1.50, need 2.0)"
+    ],
+    "sector": "CAPITAL_GOODS",
+    "trade_quality": 58.6,
+    "confidence": 65.17,
+    "market_cap_cr": 3403.0,
+    "avg_val_lakhs": 1649.1
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "ELLEN.NS",
+    "close": 296.05,
+    "reasons": [
+      "CONF_FAIL(got 64.7, need 83)",
+      "RR_FAIL(got 1.39, need 2.0)",
+      "SECTOR_LAGGING"
+    ],
+    "sector": "METALS",
+    "trade_quality": 77.8,
+    "confidence": 64.675,
+    "market_cap_cr": 0.0,
+    "avg_val_lakhs": 950.0
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "MBEL.NS",
+    "close": 337.7,
+    "reasons": [
+      "SETUP_EDGE_SKIP(REGIME_CHOP_NO_BREAKOUT(TRANSITION/OTHER))"
+    ],
+    "sector": "CAPITAL_GOODS",
+    "trade_quality": 77.2,
+    "confidence": 64.34,
+    "market_cap_cr": 1940.0,
+    "avg_val_lakhs": 618.7
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "UNICHEMLAB.NS",
+    "close": 596.95,
+    "reasons": [
+      "ROE_TOO_LOW(3.2%<10%)"
+    ],
+    "sector": "HEALTHCARE",
+    "trade_quality": 53.9,
+    "confidence": 64.11,
+    "market_cap_cr": 4287.0,
+    "avg_val_lakhs": 4300.2
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "TARSONS.NS",
+    "close": 315.9,
+    "reasons": [
+      "ROE_TOO_LOW(2.4%<10%)"
+    ],
+    "sector": "HEALTHCARE",
+    "trade_quality": 51.1,
+    "confidence": 63.135000000000005,
+    "market_cap_cr": 1669.0,
+    "avg_val_lakhs": 5759.8
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "IONEXCHANG.NS",
+    "close": 451.7,
+    "reasons": [
+      "CONF_FAIL(got 63.0, need 83)",
+      "TQ_FAIL(got 62.9, need 73)",
+      "RR_FAIL(got 1.45, need 2.0)"
+    ],
+    "sector": "CAPITAL_GOODS",
+    "trade_quality": 62.9,
+    "confidence": 63.010000000000005,
+    "market_cap_cr": 6688.0,
+    "avg_val_lakhs": 6569.8
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "GANDHAR.NS",
+    "close": 206.12,
+    "reasons": [
+      "CONF_FAIL(got 62.8, need 83)",
+      "TQ_FAIL(got 53.7, need 73)",
+      "RR_FAIL(got 1.42, need 2.0)"
+    ],
+    "sector": "ENERGY",
+    "trade_quality": 53.7,
+    "confidence": 62.845,
+    "market_cap_cr": 2030.0,
+    "avg_val_lakhs": 2969.3
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "BFINVEST.NS",
+    "close": 535.25,
+    "reasons": [
+      "ROE_TOO_LOW(3.6%<10%)"
+    ],
+    "sector": "FINANCE",
+    "trade_quality": 70.4,
+    "confidence": 62.84,
+    "market_cap_cr": 1972.0,
+    "avg_val_lakhs": 1675.7
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "MUTHOOTMF.NS",
+    "close": 246.31,
+    "reasons": [
+      "ROE_TOO_LOW(6.2%<10%)"
+    ],
+    "sector": "FINANCE",
+    "trade_quality": 71.4,
+    "confidence": 62.47,
+    "market_cap_cr": 0.0,
+    "avg_val_lakhs": 3359.4
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "PAYTM.NS",
+    "close": 1386.5,
+    "reasons": [
+      "ROE_TOO_LOW(4.7%<10%)"
+    ],
+    "sector": "FINANCE",
+    "trade_quality": 73.4,
+    "confidence": 62.34,
+    "market_cap_cr": 86820.0,
+    "avg_val_lakhs": 33695.5
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "GREAVESCOT.NS",
+    "close": 262.17,
+    "reasons": [
+      "ROE_TOO_LOW(8.1%<10%)"
+    ],
+    "sector": "CAPITAL_GOODS",
+    "trade_quality": 49.6,
+    "confidence": 62.129999999999995,
+    "market_cap_cr": 6150.0,
+    "avg_val_lakhs": 9129.2
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "AZAD.NS",
+    "close": 2378.5,
+    "reasons": [
+      "ROE_TOO_LOW(9.1%<10%)"
+    ],
+    "sector": "CAPITAL_GOODS",
+    "trade_quality": 68.4,
+    "confidence": 61.42,
+    "market_cap_cr": 15448.0,
+    "avg_val_lakhs": 15025.8
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "ITDC.NS",
+    "close": 704.4,
+    "reasons": [
+      "CONF_FAIL(got 60.7, need 83)",
+      "TQ_FAIL(got 63.6, need 73)",
+      "RR_FAIL(got 1.45, need 2.0)"
+    ],
+    "sector": "CONSUMER",
+    "trade_quality": 63.6,
+    "confidence": 60.675,
+    "market_cap_cr": 6058.0,
+    "avg_val_lakhs": 21433.3
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "HIKAL.NS",
+    "close": 245.69,
+    "reasons": [
+      "CONF_FAIL(got 59.2, need 83)",
+      "TQ_FAIL(got 69.8, need 73)",
+      "RR_FAIL(got 1.43, need 2.0)"
+    ],
+    "sector": "HEALTHCARE",
+    "trade_quality": 69.8,
+    "confidence": 59.2,
+    "market_cap_cr": 3053.0,
+    "avg_val_lakhs": 2331.1
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "UJJIVANSFB.NS",
+    "close": 66.87,
+    "reasons": [
+      "CONF_FAIL(got 59.0, need 83)",
+      "TQ_FAIL(got 64.3, need 73)",
+      "RR_FAIL(got 1.44, need 2.0)"
+    ],
+    "sector": "FINANCE",
+    "trade_quality": 64.3,
+    "confidence": 59.010000000000005,
+    "market_cap_cr": 0.0,
+    "avg_val_lakhs": 9296.6
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "KIRLOSENG.NS",
+    "close": 2436.2,
+    "reasons": [
+      "CONF_FAIL(got 56.3, need 83)",
+      "TQ_FAIL(got 57.0, need 73)",
+      "SECTOR_LAGGING"
+    ],
+    "sector": "CAPITAL_GOODS",
+    "trade_quality": 57.0,
+    "confidence": 56.33,
+    "market_cap_cr": 35462.0,
+    "avg_val_lakhs": 36465.1
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "JSWINFRA.NS",
+    "close": 351.2,
+    "reasons": [
+      "CONF_FAIL(got 56.0, need 83)",
+      "TQ_FAIL(got 69.9, need 73)",
+      "RR_FAIL(got 1.44, need 2.0)"
+    ],
+    "sector": "INFRA",
+    "trade_quality": 69.9,
+    "confidence": 55.97,
+    "market_cap_cr": 81422.0,
+    "avg_val_lakhs": 21188.1
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "ATHERENERG.NS",
+    "close": 1184.6,
+    "reasons": [
+      "CONF_FAIL(got 54.8, need 83)",
+      "TQ_FAIL(got 69.6, need 73)",
+      "RR_FAIL(got 1.80, need 2.0)"
+    ],
+    "sector": "CONSUMER",
+    "trade_quality": 69.6,
+    "confidence": 54.79,
+    "market_cap_cr": 0.0,
+    "avg_val_lakhs": 42933.1
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "IFBIND.NS",
+    "close": 1423.4,
+    "reasons": [
+      "CONF_FAIL(got 54.4, need 83)",
+      "RR_FAIL(got 1.42, need 2.0)",
+      "SECTOR_RANK_TOO_LOW(rank=8>top6)"
+    ],
+    "sector": "CONSUMER",
+    "trade_quality": 81.4,
+    "confidence": 54.42,
+    "market_cap_cr": 5815.0,
+    "avg_val_lakhs": 1444.2
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "HOMEFIRST.NS",
+    "close": 1261.0,
+    "reasons": [
+      "CONF_FAIL(got 54.4, need 83)",
+      "TQ_FAIL(got 65.1, need 73)",
+      "RR_FAIL(got 1.42, need 2.0)"
+    ],
+    "sector": "FINANCE",
+    "trade_quality": 65.1,
+    "confidence": 54.4,
+    "market_cap_cr": 0.0,
+    "avg_val_lakhs": 3039.6
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "SHAREINDIA.NS",
+    "close": 179.04,
+    "reasons": [
+      "CONF_FAIL(got 53.4, need 83)",
+      "TQ_FAIL(got 62.1, need 73)",
+      "RR_FAIL(got 1.45, need 2.0)"
+    ],
+    "sector": "FINANCE",
+    "trade_quality": 62.1,
+    "confidence": 53.43,
+    "market_cap_cr": 3929.0,
+    "avg_val_lakhs": 11875.6
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "FSL.NS",
+    "close": 265.06,
+    "reasons": [
+      "CONF_FAIL(got 52.3, need 83)",
+      "TQ_FAIL(got 72.0, need 73)",
+      "RR_FAIL(got 1.43, need 2.0)"
+    ],
+    "sector": "IT",
+    "trade_quality": 72.0,
+    "confidence": 52.28,
+    "market_cap_cr": 18775.0,
+    "avg_val_lakhs": 3395.8
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "FUSION.NS",
+    "close": 237.14,
+    "reasons": [
+      "ROE_TOO_LOW(0.7%<10%)"
+    ],
+    "sector": "FINANCE",
+    "trade_quality": 60.8,
+    "confidence": 47.78,
+    "market_cap_cr": 0.0,
+    "avg_val_lakhs": 2990.1
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "SKMEGGPROD.NS",
+    "close": 360.9,
+    "reasons": [
+      "CONF_FAIL(got 47.7, need 83)",
+      "TQ_FAIL(got 62.8, need 73)",
+      "RR_FAIL(got 1.85, need 2.0)"
+    ],
+    "sector": "FMCG",
+    "trade_quality": 62.8,
+    "confidence": 47.68,
+    "market_cap_cr": 1923.0,
+    "avg_val_lakhs": 3493.5
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "MBAPL.NS",
+    "close": 132.85,
+    "reasons": [
+      "DE_TOO_HIGH(1.57>1.50)"
+    ],
+    "sector": "METALS",
+    "trade_quality": 63.1,
+    "confidence": 47.225,
+    "market_cap_cr": 0.0,
+    "avg_val_lakhs": 1465.0
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "PURVA.NS",
+    "close": 248.4,
+    "reasons": [
+      "ROE_TOO_LOW(3.6%<10%)"
+    ],
+    "sector": "REALTY",
+    "trade_quality": 73.3,
+    "confidence": 47.0,
+    "market_cap_cr": 5988.0,
+    "avg_val_lakhs": 1846.7
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "OPTIEMUS.NS",
+    "close": 579.9,
+    "reasons": [
+      "ROE_TOO_LOW(9.2%<10%)"
+    ],
+    "sector": "IT",
+    "trade_quality": 59.9,
+    "confidence": 46.605000000000004,
+    "market_cap_cr": 4986.0,
+    "avg_val_lakhs": 1773.2
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "TTKPRESTIG.NS",
+    "close": 665.65,
+    "reasons": [
+      "CONF_FAIL(got 46.5, need 83)",
+      "TQ_FAIL(got 67.9, need 73)",
+      "RR_FAIL(got 1.39, need 2.0)"
+    ],
+    "sector": "CONSUMER",
+    "trade_quality": 67.9,
+    "confidence": 46.47,
+    "market_cap_cr": 9022.0,
+    "avg_val_lakhs": 922.8
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "SUDARSCHEM.NS",
+    "close": 1038.05,
+    "reasons": [
+      "ROE_TOO_LOW(0.5%<10%)"
+    ],
+    "sector": "METALS",
+    "trade_quality": 76.0,
+    "confidence": 46.01,
+    "market_cap_cr": 8350.0,
+    "avg_val_lakhs": 2329.6
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "FILATEX.NS",
+    "close": 64.38,
+    "reasons": [
+      "CONF_FAIL(got 45.9, need 83)",
+      "RR_FAIL(got 1.44, need 2.0)",
+      "SECTOR_RANK_TOO_LOW(rank=8>top6)"
+    ],
+    "sector": "CONSUMER",
+    "trade_quality": 73.3,
+    "confidence": 45.94,
+    "market_cap_cr": 2816.0,
+    "avg_val_lakhs": 1384.6
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "SIGMAADV.NS",
+    "close": 582.95,
+    "reasons": [
+      "CONF_FAIL(got 45.2, need 83)",
+      "TQ_FAIL(got 50.7, need 73)",
+      "SECTOR_LAGGING"
+    ],
+    "sector": "CAPITAL_GOODS",
+    "trade_quality": 50.7,
+    "confidence": 45.17,
+    "market_cap_cr": 10416.0,
+    "avg_val_lakhs": 2158.9
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "DATAMATICS.NS",
+    "close": 896.3,
+    "reasons": [
+      "CONF_FAIL(got 44.2, need 83)",
+      "TQ_FAIL(got 68.6, need 73)",
+      "RR_FAIL(got 1.43, need 2.0)"
+    ],
+    "sector": "IT",
+    "trade_quality": 68.6,
+    "confidence": 44.165,
+    "market_cap_cr": 5344.0,
+    "avg_val_lakhs": 1535.7
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "BEPL.NS",
+    "close": 108.1,
+    "reasons": [
+      "CONF_FAIL(got 44.2, need 83)",
+      "RR_FAIL(got 1.38, need 2.0)",
+      "SECTOR_LAGGING"
+    ],
+    "sector": "METALS",
+    "trade_quality": 76.1,
+    "confidence": 44.155,
+    "market_cap_cr": 2683.0,
+    "avg_val_lakhs": 961.6
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "TRIVENI.NS",
+    "close": 477.15,
+    "reasons": [
+      "ROE_TOO_LOW(8.7%<10%)"
+    ],
+    "sector": "FMCG",
+    "trade_quality": 72.7,
+    "confidence": 43.96,
+    "market_cap_cr": 10480.0,
+    "avg_val_lakhs": 3025.9
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "TBZ.NS",
+    "close": 225.11,
+    "reasons": [
+      "CONF_FAIL(got 43.1, need 83)",
+      "TQ_FAIL(got 56.9, need 73)",
+      "RR_FAIL(got 1.67, need 2.0)"
+    ],
+    "sector": "CONSUMER",
+    "trade_quality": 56.9,
+    "confidence": 43.07,
+    "market_cap_cr": 1546.0,
+    "avg_val_lakhs": 3472.0
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "MOBIKWIK.NS",
+    "close": 225.29,
+    "reasons": [
+      "CONF_FAIL(got 42.1, need 83)",
+      "RR_FAIL(got 1.42, need 2.0)",
+      "INSTITUTIONAL_EXIT"
+    ],
+    "sector": "IT",
+    "trade_quality": 76.7,
+    "confidence": 42.1,
+    "market_cap_cr": 1745.0,
+    "avg_val_lakhs": 3295.2
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "UTLSOLAR.NS",
+    "close": 401.1,
+    "reasons": [
+      "CONF_FAIL(got 41.3, need 83)",
+      "TQ_FAIL(got 66.7, need 73)",
+      "RR_FAIL(got 1.43, need 2.0)"
+    ],
+    "sector": "IT",
+    "trade_quality": 66.7,
+    "confidence": 41.34,
+    "market_cap_cr": 12015.0,
+    "avg_val_lakhs": 1434.9
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "GODREJIND.NS",
+    "close": 1382.4,
+    "reasons": [
+      "DE_TOO_HIGH(2.22>1.50)"
+    ],
+    "sector": "CAPITAL_GOODS",
+    "trade_quality": 62.2,
+    "confidence": 40.54,
+    "market_cap_cr": 46874.0,
+    "avg_val_lakhs": 4041.5
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "AEQUS.NS",
+    "close": 244.69,
+    "reasons": [
+      "CONF_FAIL(got 37.3, need 83)",
+      "TQ_FAIL(got 65.6, need 73)",
+      "SECTOR_RANK_TOO_LOW(rank=15>top6)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 65.6,
+    "confidence": 37.27,
+    "market_cap_cr": 16425.0,
+    "avg_val_lakhs": 27434.0
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "GOODLUCK.NS",
+    "close": 1629.4,
+    "reasons": [
+      "CONF_FAIL(got 35.8, need 83)",
+      "TQ_FAIL(got 70.4, need 73)",
+      "RR_FAIL(got 1.42, need 2.0)"
+    ],
+    "sector": "METALS",
+    "trade_quality": 70.4,
+    "confidence": 35.775,
+    "market_cap_cr": 5348.0,
+    "avg_val_lakhs": 4661.3
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "GNA.NS",
+    "close": 529.25,
+    "reasons": [
+      "CONF_FAIL(got 35.8, need 83)",
+      "TQ_FAIL(got 60.9, need 73)",
+      "RR_FAIL(got 1.44, need 2.0)"
+    ],
+    "sector": "CONSUMER",
+    "trade_quality": 60.9,
+    "confidence": 35.77,
+    "market_cap_cr": 2171.0,
+    "avg_val_lakhs": 3305.9
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "KOPRAN.NS",
+    "close": 206.66,
+    "reasons": [
+      "ROE_TOO_LOW(4.9%<10%)"
+    ],
+    "sector": "HEALTHCARE",
+    "trade_quality": 74.3,
+    "confidence": 35.185,
+    "market_cap_cr": 985.0,
+    "avg_val_lakhs": 234.8
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "SOBHA.NS",
+    "close": 1517.6,
+    "reasons": [
+      "ROE_TOO_LOW(4.2%<10%)"
+    ],
+    "sector": "REALTY",
+    "trade_quality": 77.7,
+    "confidence": 34.59,
+    "market_cap_cr": 16184.0,
+    "avg_val_lakhs": 2559.2
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "PICCADIL.NS",
+    "close": 718.9,
+    "reasons": [
+      "CONF_FAIL(got 34.0, need 83)",
+      "TQ_FAIL(got 72.7, need 73)",
+      "RR_FAIL(got 1.42, need 2.0)"
+    ],
+    "sector": "FMCG",
+    "trade_quality": 72.7,
+    "confidence": 34.04,
+    "market_cap_cr": 7043.0,
+    "avg_val_lakhs": 1495.9
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "KABRAEXTRU.NS",
+    "close": 315.65,
+    "reasons": [
+      "CONF_FAIL(got 33.9, need 83)",
+      "TQ_FAIL(got 70.5, need 73)",
+      "RR_FAIL(got 1.45, need 2.0)"
+    ],
+    "sector": "CAPITAL_GOODS",
+    "trade_quality": 70.5,
+    "confidence": 33.91,
+    "market_cap_cr": 1125.0,
+    "avg_val_lakhs": 379.9
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "JUBLINGREA.NS",
+    "close": 733.2,
+    "reasons": [
+      "ROE_TOO_LOW(9.5%<10%)"
+    ],
+    "sector": "METALS",
+    "trade_quality": 69.0,
+    "confidence": 33.43,
+    "market_cap_cr": 11612.0,
+    "avg_val_lakhs": 2472.7
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "NORTHARC.NS",
+    "close": 324.95,
+    "reasons": [
+      "CONF_FAIL(got 32.9, need 83)",
+      "TQ_FAIL(got 72.2, need 73)",
+      "RR_FAIL(got 1.59, need 2.0)"
+    ],
+    "sector": "FINANCE",
+    "trade_quality": 72.2,
+    "confidence": 32.875,
+    "market_cap_cr": 5303.0,
+    "avg_val_lakhs": 2147.4
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "SFL.NS",
+    "close": 806.95,
+    "reasons": [
+      "ROE_TOO_LOW(4.8%<10%)"
+    ],
+    "sector": "CONSUMER",
+    "trade_quality": 70.8,
+    "confidence": 32.76,
+    "market_cap_cr": 8916.0,
+    "avg_val_lakhs": 1799.4
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "AEGISVOPAK.NS",
+    "close": 303.3,
+    "reasons": [
+      "CONF_FAIL(got 32.3, need 83)",
+      "TQ_FAIL(got 61.4, need 73)",
+      "RR_FAIL(got 1.47, need 2.0)"
+    ],
+    "sector": "ENERGY",
+    "trade_quality": 61.4,
+    "confidence": 32.33,
+    "market_cap_cr": 33594.0,
+    "avg_val_lakhs": 7017.8
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "CYIENTDLM.NS",
+    "close": 525.65,
+    "reasons": [
+      "ROE_TOO_LOW(7.5%<10%)"
+    ],
+    "sector": "CAPITAL_GOODS",
+    "trade_quality": 61.9,
+    "confidence": 32.14,
+    "market_cap_cr": 4318.0,
+    "avg_val_lakhs": 2654.0
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "RAIN.NS",
+    "close": 213.41,
+    "reasons": [
+      "ROE_TOO_LOW(0.6%<10%)"
+    ],
+    "sector": "METALS",
+    "trade_quality": 73.5,
+    "confidence": 30.57,
+    "market_cap_cr": 7121.0,
+    "avg_val_lakhs": 9514.6
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "BUILDPRO.NS",
+    "close": 1298.4,
+    "reasons": [
+      "CONF_FAIL(got 30.5, need 83)",
+      "TQ_FAIL(got 71.1, need 73)",
+      "RR_FAIL(got 1.44, need 2.0)"
+    ],
+    "sector": "CONSUMER",
+    "trade_quality": 71.1,
+    "confidence": 30.53,
+    "market_cap_cr": 3138.0,
+    "avg_val_lakhs": 1452.1
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "SUMEETINDS.NS",
+    "close": 32.63,
+    "reasons": [
+      "CONF_FAIL(got 30.5, need 83)",
+      "RR_FAIL(got 1.42, need 2.0)",
+      "SECTOR_RANK_TOO_LOW(rank=8>top6)"
+    ],
+    "sector": "CONSUMER",
+    "trade_quality": 80.3,
+    "confidence": 30.47,
+    "market_cap_cr": 2254.0,
+    "avg_val_lakhs": 1973.2
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "BLUEJET.NS",
+    "close": 606.3,
+    "reasons": [
+      "CONF_FAIL(got 29.6, need 83)",
+      "TQ_FAIL(got 63.4, need 73)",
+      "RR_FAIL(got 1.45, need 2.0)"
+    ],
+    "sector": "PHARMA",
+    "trade_quality": 63.4,
+    "confidence": 29.6,
+    "market_cap_cr": 10685.0,
+    "avg_val_lakhs": 5234.5
+  },
+  {
+    "date": "2026-07-13",
+    "symbol": "STALLION.NS",
+    "close": 209.88,
+    "reasons": [
+      "ROE_TOO_LOW(8.9%<10%)"
+    ],
+    "sector": "METALS",
+    "trade_quality": 71.4,
+    "confidence": 24.5,
+    "market_cap_cr": 0.0,
+    "avg_val_lakhs": 4414.8
+  },
+  {
     "date": "2026-07-11",
     "symbol": "CEMPRO.NS",
     "close": 1566.8,
