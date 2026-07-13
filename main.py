@@ -16763,6 +16763,11 @@ def _run_pipeline_inner():
     #      today's price.
     #   2. Snapshot: daily_snapshot_job appends one row per (record × bucket)
     #      to results/daily_snapshots.jsonl (immutable audit log).
+    #   2b. Weekly review: weekly_review_job.append_weekly_history appends one
+    #       row per (iso_week, category) to results/weekly_review_history.jsonl.
+    #       IDEMPOTENT per (iso_week, category) — every evening after the first
+    #       run of an ISO week is a no-op (logs "skip already appended").
+    #       Feeds the WEEKLY_REVIEW sheet in step 3.
     #   3. Rebuild tracking_workbook.xlsx (16 sheets: 5 stage + 5 setup +
     #      ACTIVE_TRACKING + DONE + WEEKLY_SUMMARY + WEEKLY_REVIEW +
     #      RESEARCH + _LEGEND). Old rows are refreshed with today's prices;
@@ -16772,11 +16777,13 @@ def _run_pipeline_inner():
     #
     # 2026-07-13 · MANUAL-RUN GATE:
     #   • SCHEDULED run → full pipeline: seed → store.save() → snapshot append
-    #                     → build canonical tracking_workbook.xlsx → Telegram.
+    #                     → weekly-review append → build canonical
+    #                     tracking_workbook.xlsx → Telegram.
     #   • MANUAL   run → PREVIEW ONLY:  no store.save(), no snapshot append,
-    #                     workbook built to tracking_workbook_manual_test.xlsx
-    #                     (scratch file, not the canonical one), Telegram send
-    #                     with clear ⚠️ MANUAL banner in caption. This lets you
+    #                     no weekly-review append (jsonl untouched), workbook
+    #                     built to tracking_workbook_manual_test.xlsx (scratch
+    #                     file, not the canonical one), Telegram send with
+    #                     clear ⚠️ MANUAL banner in caption. This lets you
     #                     test Telegram wiring + workbook build logic without
     #                     touching production state.
     # All four steps are idempotent — safe to re-run same-day. Non-fatal on
@@ -16910,6 +16917,26 @@ def _run_pipeline_inner():
         else:
             _log("[daily_snapshot] SKIPPED (manual run — no snapshot append)")
             _xlsx_path = _Path("tracking_workbook_manual_test.xlsx").resolve()
+
+        # ── STEP 2b (2026-07-13): weekly review history append ─────────
+        # Feeds the WEEKLY_REVIEW sheet inside tracking_workbook.xlsx.
+        # `append_weekly_history` is idempotent per (iso_week, category) —
+        # re-running the same week is a no-op, so calling it every evening
+        # is safe. First run in an ISO week writes the 6 category rows;
+        # subsequent evenings that week just log "skip (already appended)".
+        # MANUAL runs are skipped so we never pollute results/weekly_review_history.jsonl
+        # from a testing dispatch.
+        if IS_SCHEDULED:
+            try:
+                import weekly_review_job as _wrj
+                _wrows = _wrj.append_weekly_history(_store)
+                _log(f"[weekly_review] appended {len(_wrows)} category rows "
+                     f"(idempotent — 0 means this ISO week is already recorded)")
+            except Exception as _e_wrj:
+                _log(f"[weekly_review] non-fatal error: {_e_wrj}")
+        else:
+            _log("[weekly_review] SKIPPED (manual run — jsonl not touched)")
+
         _twj.build_workbook(_store, _xlsx_path)
         _log(f"[tracking_workbook] rebuilt {_xlsx_path.name}")
 
