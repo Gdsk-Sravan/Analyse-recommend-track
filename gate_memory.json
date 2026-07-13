@@ -1,148 +1,13 @@
 {
-  "DATAMATICS.NS": {
-    "history": [
-      {
-        "date": "2026-07-11",
-        "fails": [
-          "CONF_FAIL(got 70.1, need 83)",
-          "RR_FAIL(got 1.43, need 2.0)"
-        ],
-        "conf": 70.145
-      }
-    ]
-  },
-  "ARKADE.NS": {
-    "history": [
-      {
-        "date": "2026-07-11",
-        "fails": [
-          "CONF_FAIL(got 50.7, need 83)"
-        ],
-        "conf": 50.72
-      }
-    ]
-  },
-  "ANANTRAJ.NS": {
-    "history": [
-      {
-        "date": "2026-07-11",
-        "fails": [
-          "CONF_FAIL(got 48.5, need 83)",
-          "RR_FAIL(got 1.44, need 2.0)"
-        ],
-        "conf": 48.53
-      },
-      {
-        "date": "2026-07-13",
-        "fails": [
-          "CONF_FAIL(got 65.2, need 83)",
-          "RR_FAIL(got 1.44, need 2.0)"
-        ],
-        "conf": 65.22
-      }
-    ]
-  },
-  "ORCHPHARMA.NS": {
-    "history": [
-      {
-        "date": "2026-07-11",
-        "fails": [
-          "CONF_FAIL(got 48.4, need 83)",
-          "TQ_FAIL(got 59.9, need 73)"
-        ],
-        "conf": 48.415
-      }
-    ]
-  },
-  "RPTECH.NS": {
-    "history": [
-      {
-        "date": "2026-07-11",
-        "fails": [
-          "CONF_FAIL(got 39.0, need 83)",
-          "TQ_FAIL(got 56.1, need 73)"
-        ],
-        "conf": 39.05
-      }
-    ]
-  },
-  "EMBDL.NS": {
-    "history": [
-      {
-        "date": "2026-07-11",
-        "fails": [
-          "CONF_FAIL(got 33.4, need 83)",
-          "RR_FAIL(got 1.79, need 2.0)"
-        ],
-        "conf": 33.37
-      },
-      {
-        "date": "2026-07-13",
-        "fails": [
-          "CONF_FAIL(got 44.9, need 83)",
-          "RR_FAIL(got 1.54, need 2.0)"
-        ],
-        "conf": 44.88
-      }
-    ]
-  },
-  "CDSL.NS": {
-    "history": [
-      {
-        "date": "2026-07-13",
-        "fails": [
-          "CONF_FAIL(got 73.9, need 83)",
-          "RR_FAIL(got 1.41, need 2.0)"
-        ],
-        "conf": 73.89
-      }
-    ]
-  },
-  "SONATSOFTW.NS": {
-    "history": [
-      {
-        "date": "2026-07-13",
-        "fails": [
-          "CONF_FAIL(got 73.7, need 83)",
-          "RR_FAIL(got 1.45, need 2.0)"
-        ],
-        "conf": 73.66
-      }
-    ]
-  },
-  "ONWARDTEC.NS": {
-    "history": [
-      {
-        "date": "2026-07-13",
-        "fails": [
-          "CONF_FAIL(got 74.9, need 83)",
-          "TQ_FAIL(got 62.2, need 73)"
-        ],
-        "conf": 74.88
-      }
-    ]
-  },
   "AMAGI.NS": {
     "history": [
       {
         "date": "2026-07-13",
         "fails": [
-          "CONF_FAIL(got 67.2, need 83)",
+          "CONF_FAIL(got 71.5, need 83)",
           "TQ_FAIL(got 63.8, need 73)"
         ],
-        "conf": 67.165
-      }
-    ]
-  },
-  "TIPSMUSIC.NS": {
-    "history": [
-      {
-        "date": "2026-07-13",
-        "fails": [
-          "CONF_FAIL(got 66.0, need 83)",
-          "RR_FAIL(got 1.41, need 2.0)"
-        ],
-        "conf": 66.0
+        "conf": 71.545
       }
     ]
   },
@@ -151,70 +16,34 @@
       {
         "date": "2026-07-13",
         "fails": [
-          "CONF_FAIL(got 65.6, need 83)",
+          "CONF_FAIL(got 70.0, need 83)",
           "TQ_FAIL(got 62.6, need 73)"
         ],
-        "conf": 65.61
+        "conf": 70.0
       }
     ]
   },
-  "ROUTE.NS": {
+  "ANANTRAJ.NS": {
     "history": [
       {
         "date": "2026-07-13",
         "fails": [
-          "CONF_FAIL(got 64.2, need 83)",
-          "RR_FAIL(got 1.41, need 2.0)"
+          "CONF_FAIL(got 63.8, need 83)",
+          "RR_FAIL(got 1.44, need 2.0)"
         ],
-        "conf": 64.165
+        "conf": 63.760000000000005
       }
     ]
   },
-  "63MOONS.NS": {
+  "EMBDL.NS": {
     "history": [
       {
         "date": "2026-07-13",
         "fails": [
-          "CONF_FAIL(got 63.6, need 83)",
-          "RR_FAIL(got 1.57, need 2.0)"
+          "CONF_FAIL(got 45.0, need 83)",
+          "RR_FAIL(got 1.54, need 2.0)"
         ],
-        "conf": 63.56
-      }
-    ]
-  },
-  "TANLA.NS": {
-    "history": [
-      {
-        "date": "2026-07-13",
-        "fails": [
-          "CONF_FAIL(got 63.5, need 83)",
-          "RR_FAIL(got 1.40, need 2.0)"
-        ],
-        "conf": 63.45
-      }
-    ]
-  },
-  "SAKSOFT.NS": {
-    "history": [
-      {
-        "date": "2026-07-13",
-        "fails": [
-          "CONF_FAIL(got 56.6, need 83)",
-          "TQ_FAIL(got 59.2, need 73)"
-        ],
-        "conf": 56.64
-      }
-    ]
-  },
-  "SATIN.NS": {
-    "history": [
-      {
-        "date": "2026-07-13",
-        "fails": [
-          "CONF_FAIL(got 33.0, need 83)",
-          "RR_FAIL(got 1.43, need 2.0)"
-        ],
-        "conf": 32.95
+        "conf": 45.02
       }
     ]
   }
