@@ -65,20 +65,13 @@ try:
 except ImportError:
     _SHADOW_LOG_OK = False
 
-# ── 2026-07-09 Consolidation D3: shadow master job ──────────────────────────
-# Builds shadow_master.xlsx with 4 bucket sheets (A_TAKEN, B_WATCH_ME,
-# C_NOT_MY_STYLE, D_SO_CLOSE) + rollups (Summary, Bucket_Comparison,
-# Live_Positions, Resolved_Today, Change_Log). Runs after tracker_job.py so
-# the base Recommendations / Daily Tracking / Performance sheets exist. In
-# CI, the workflow also runs `python shadow_master_job.py` as a separate step
-# for full visibility — the in-process call here is kept for local runs
-# (run-locally.ps1) and produces a preview when SCHEDULED_RUN is false.
-# Toggle: SHADOW_REPORT_ENABLED=false disables the in-process call.
-try:
-    import shadow_master_job
-    _SHADOW_REPORT_OK = True
-except ImportError:
-    _SHADOW_REPORT_OK = False
+# ── 2026-07-13: shadow_master pipeline REMOVED ─────────────────────────────
+# The old shadow_master.xlsx workbook + Telegram push has been fully replaced
+# by the observation-dataset pipeline (daily_snapshot_job +
+# tracking_workbook_job). See the block near line ~16790 for the current
+# implementation. Any legacy references to shadow_master_job below are
+# no-ops.
+_SHADOW_REPORT_OK = False
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -482,13 +475,14 @@ if FRESH_START:
     # below and remove it from here.
     _fresh_delete_files = [
         # ── xlsx workbooks (formerly renamed for audit; now deleted) ──
-        "shadow_master.xlsx",             # main shadow log workbook
-        "shadow_report.xlsx",              # weekly rollup workbook
-        "shadow_report_weekly.xlsx",       # alternate weekly xlsx name
+        "shadow_master.xlsx",             # LEGACY — pipeline removed 2026-07-13, delete if left over
+        "shadow_report.xlsx",              # LEGACY weekly rollup workbook
+        "shadow_report_weekly.xlsx",       # LEGACY alternate weekly xlsx name
         "recommendation_tracker.xlsx",     # legacy v1 tracker
+        "tracking_workbook.xlsx",          # NEW canonical observation-dataset workbook
 
         # ── csv accumulators (formerly renamed; now deleted) ──
-        "shadow_trades.csv",               # 4-bucket A/B/C/D shadow rows
+        "shadow_trades.csv",               # LEGACY 4-bucket A/B/C/D shadow rows
         "portfolio_state.csv",             # portfolio snapshot log
         "telegram_daily.csv",              # per-day telegram audit trail
 
@@ -526,6 +520,14 @@ if FRESH_START:
         # transient job flags
         "yfinance_down.flag",
         "manual_in_ci.flag",
+        # ── observation-dataset redesign (2026-07-13): new pipeline artefacts ──
+        # A FRESH_START must also wipe the canonical tracking store and its
+        # append-only logs so the daily-snapshot workbook rebuilds cleanly.
+        "tracking_workbook.xlsx",          # rebuilt by tracking_workbook_job.py
+        "results/tracking_store.json",     # canonical (symbol, first_seen) records
+        "results/tracking_events.jsonl",   # per-upsert audit log
+        "results/weekly_review_history.jsonl",  # weekly summary append log
+        "results/daily_snapshots.jsonl",   # daily bucket-append log
         # marker file (a hard wipe guarantees no cross-day leak on fresh start)
         ".fresh_start_marker",
     ]
@@ -16753,32 +16755,167 @@ def _run_pipeline_inner():
     # Send BUY signals to dedicated buy channel
     send_buy_telegram(buys, regime, timestamp)
 
-    # ── 2026-07-09 Consolidation D3: shadow master report ─────────────────
-    # Runs the bucket-tracking flow (A/B/C/D) on shadow_master.xlsx. This
-    # is the same job the workflow runs as a separate step under CI; keeping
-    # it here means run-locally.ps1 and manual runs also get a preview file
-    # + Telegram push. shadow_master_job internally gates save-vs-preview
-    # via SCHEDULED_RUN so double-runs under CI are safe (idempotent).
-    if _SHADOW_REPORT_OK and os.getenv("SHADOW_REPORT_ENABLED", "true").lower() != "false":
-        try:
-            _rep = shadow_master_job.run_scan_and_update(quiet=True)
-            if _rep.get("ok") and not _rep.get("skipped"):
-                _stats = _rep.get("stats", {}) or {}
-                _n_appended = _rep.get("n_appended", 0)
-                _n_resolved = len(_stats.get("resolved_today", []) or [])
-                _log(
-                    f"[shadow_master] {_rep.get('mode', '?')} · "
-                    f"xlsx={_rep.get('xlsx_path')} · "
-                    f"appended={_n_appended} · "
-                    f"updated={_stats.get('n_rows_updated', 0)} · "
-                    f"resolved={_n_resolved}"
+    # ── 2026-07-13 Observation-Dataset — SOLE post-run workbook pipeline ──
+    # After every daily run, refresh the observation-dataset pipeline:
+    #   1. Seed TrackingStore from today's decisions (buys, watchlist, rejects)
+    #      — upsert one record per (symbol, first_seen) with entry snapshot.
+    #      Existing active records get their current_* fields refreshed with
+    #      today's price.
+    #   2. Snapshot: daily_snapshot_job appends one row per (record × bucket)
+    #      to results/daily_snapshots.jsonl (immutable audit log).
+    #   3. Rebuild tracking_workbook.xlsx (16 sheets: 5 stage + 5 setup +
+    #      ACTIVE_TRACKING + DONE + WEEKLY_SUMMARY + WEEKLY_REVIEW +
+    #      RESEARCH + _LEGEND). Old rows are refreshed with today's prices;
+    #      new rows for today are appended.
+    #   4. Send tracking_workbook.xlsx to Telegram (SINGLE workbook delivery —
+    #      shadow_master pipeline fully removed 2026-07-13).
+    # All four steps are idempotent — safe to re-run same-day. Non-fatal on
+    # any error.
+    try:
+        from tracking_store import TrackingStore as _TS
+        import daily_snapshot_job as _dsj
+        import tracking_workbook_job as _twj
+        from pathlib import Path as _Path
+        _store = _TS.load()
+
+        # ── STEP 1: seed today's decisions into the store ──────────────
+        # buys → stage=BUY, watchlist_stocks by tier, rejected → REJECTED.
+        _run_date = ist_today().isoformat()
+        _regime_name = str((regime_data or {}).get("regime", "") or "SIDEWAYS")
+
+        def _entry_snapshot_from_stock(s: dict, stage: str) -> dict:
+            """Build a full entry snapshot dict for TrackingStore.upsert."""
+            _entry = float(s.get("entry") or s.get("entry_price") or s.get("price") or 0) or 0.0
+            _stop  = float(s.get("stop") or s.get("stop_loss") or s.get("sl") or 0) or 0.0
+            _t1    = float(s.get("target_1") or s.get("tp1") or s.get("t1") or 0) or 0.0
+            _t2    = float(s.get("target_2") or s.get("tp2") or s.get("t2") or 0) or 0.0
+            _setup = str(s.get("setup_type") or s.get("setup") or "OTHER").upper()
+            _conf  = float(s.get("final_confidence") or s.get("confidence") or 0) or 0.0
+            _tq    = float(s.get("tq") or s.get("trade_quality_score") or 0) or 0.0
+            _opp   = float(s.get("opportunity_score") or 0) or 0.0
+            _rr    = 0.0
+            if _entry and _stop and _entry > _stop and _t1:
+                _rr = round((_t1 - _entry) / (_entry - _stop), 2)
+            _bucket = "REJECTED" if stage == "REJECTED" else stage
+            return {
+                "stage": stage,
+                "bucket": _bucket,
+                "origin": "main_pipeline",
+                "setup_type": _setup,
+                "sector": s.get("sector", "OTHERS"),
+                "regime": _regime_name,
+                "reference_entry_price": _entry,
+                "t1_price": _t1,
+                "t2_price": _t2,
+                "stop_price": _stop,
+                "confidence": _conf,
+                "tq": _tq,
+                "rr_ratio": _rr,
+                "opportunity_score": _opp,
+                "factors": s.get("factors") or {},
+                "fail_reasons": s.get("fail_reasons") or [],
+            }
+
+        _seed_counts = {"BUY": 0, "NEAR_MISS": 0, "DEVELOPING": 0,
+                        "MONITOR": 0, "REJECTED": 0}
+        # (a) Today's BUYs.
+        for _s in (buys or []):
+            try:
+                _sym = _s.get("symbol")
+                if not _sym:
+                    continue
+                _stage = "BUY"
+                _store.upsert(
+                    symbol=_sym,
+                    stage=_stage,
+                    entry_snapshot=_entry_snapshot_from_stock(_s, _stage),
+                    origin="main_pipeline",
+                    as_of=_run_date,
+                    current_snapshot={
+                        "stage": _stage,
+                        "close": float(_s.get("price") or _s.get("current_price") or
+                                       _s.get("entry") or 0) or None,
+                    },
                 )
-            elif _rep.get("skipped"):
-                _log(f"[shadow_master] skipped: {_rep.get('reason', '?')}")
-            else:
-                _log(f"[shadow_master] build failed: {_rep.get('error', '?')}")
-        except Exception as _ex:
-            _log(f"[shadow_master] non-fatal error: {_ex}")
+                _seed_counts["BUY"] += 1
+            except Exception as _e_up:
+                _log(f"[tracking_store] upsert BUY {_s.get('symbol')} failed: {_e_up}")
+
+        # (b) Watchlist by tier → NEAR_MISS / DEVELOPING / MONITOR.
+        for _w in (watchlist_stocks or []):
+            try:
+                _sym = _w.get("symbol")
+                if not _sym:
+                    continue
+                _tier = str(_w.get("tier") or "").upper()
+                _stage = _tier if _tier in ("NEAR_MISS", "DEVELOPING", "MONITOR") else "MONITOR"
+                _store.upsert(
+                    symbol=_sym,
+                    stage=_stage,
+                    entry_snapshot=_entry_snapshot_from_stock(_w, _stage),
+                    origin="main_pipeline",
+                    as_of=_run_date,
+                    current_snapshot={
+                        "stage": _stage,
+                        "close": float(_w.get("price") or _w.get("current_price") or
+                                       _w.get("entry") or 0) or None,
+                    },
+                )
+                _seed_counts[_stage] += 1
+            except Exception as _e_up:
+                _log(f"[tracking_store] upsert watchlist {_w.get('symbol')} failed: {_e_up}")
+
+        # (c) Rejects.
+        for _r in (rejected or []):
+            try:
+                _sym = _r.get("symbol")
+                if not _sym:
+                    continue
+                _store.upsert(
+                    symbol=_sym,
+                    stage="REJECTED",
+                    entry_snapshot=_entry_snapshot_from_stock(_r, "REJECTED"),
+                    origin="main_pipeline",
+                    as_of=_run_date,
+                    current_snapshot={
+                        "stage": "REJECTED",
+                        "close": float(_r.get("price") or _r.get("current_price") or
+                                       _r.get("entry") or 0) or None,
+                    },
+                )
+                _seed_counts["REJECTED"] += 1
+            except Exception as _e_up:
+                _log(f"[tracking_store] upsert REJECTED {_r.get('symbol')} failed: {_e_up}")
+
+        _store.save()
+        _log(f"[tracking_store] seeded: {_seed_counts}")
+
+        # ── STEP 2/3: snapshot + rebuild workbook ──────────────────────
+        _dsj.append_from_store(_store, run_date=_run_date)
+        _xlsx_path = _Path("tracking_workbook.xlsx").resolve()
+        _twj.build_workbook(_store, _xlsx_path)
+        _log(f"[tracking_workbook] rebuilt {_xlsx_path.name}")
+
+        # ── STEP 4: Telegram delivery of the observation workbook ──────
+        try:
+            from scripts.notify_telegram_document import send_document as _send_doc
+            from datetime import datetime as _twb_dt
+            _stats = _store.stats()
+            _caption_lines = [
+                f"📊 Tracking Workbook — {_twb_dt.now().strftime('%Y-%m-%d %H:%M')}",
+                f"Total tracked: {_stats.get('total', 0)}"
+                f" · Active: {_stats.get('active', 0)}"
+                f" · T1: {_stats.get('t1_hit_active', 0)}"
+                f" · T2: {_stats.get('t2_hit', 0)}"
+                f" · Stopped: {_stats.get('stopped', 0) + _stats.get('stopped_after_t1', 0)}",
+                "16 sheets · append-only daily log · live refresh on rebuild",
+            ]
+            _rc = _send_doc(file_path=str(_xlsx_path), caption="\n".join(_caption_lines))
+            _log(f"[tracking_workbook] Telegram send rc={_rc}")
+        except Exception as _tex:
+            _log(f"[tracking_workbook] Telegram send failed (non-fatal): {_tex}")
+    except Exception as _ex:
+        _log(f"[tracking_workbook] non-fatal error: {_ex}")
 
     # ── 16. Trade Tracker updates ──
     _log("[16/17] Updating trade tracker...")
@@ -16809,8 +16946,8 @@ def _run_pipeline_inner():
     else:
         _log("  Trade tracker NOT saved (manual run)")
 
-    # ── 17. Save CSVs + Excel ──
-    _log("[17/17] Saving output CSVs + Excel...")
+    # ── 17. Save CSVs ──
+    _log("[17/17] Saving output CSVs...")
     for s in top_40:
         s.pop("_df", None)
         s.pop("fundamentals", None)
@@ -16819,20 +16956,16 @@ def _run_pipeline_inner():
     save_csv(portfolio_alerts, "portfolio_monitor.csv")
     save_csv(buys,             "buys_today.csv")
 
-    # Save recommendations to Excel tracker (PART C)
-    # Always persist — the Excel is the system-of-record for the tracker job
-    # and downstream artifacts. Manual runs MUST still write it, otherwise the
-    # Recommendation Tracker workflow has nothing to download.
-    today_str_pipe = ist_today().isoformat()
-    save_recommendations_to_excel(
-        buys, watchlist_stocks,
-        {"regime": regime, "score": regime_data.get("score", 0)},
-        today_str_pipe,
-        rejected=rejected,   # 2026-07-06: also persist rejects for 3-week retrospective
-    )
+    # 2026-07-13 · A1 PURGE: save_recommendations_to_excel(...) removed.
+    # The old shadow_master.xlsx workbook (Recommendations / Daily Tracking /
+    # Performance / Rejected / A_TAKEN...D_SO_CLOSE) is fully replaced by the
+    # tracking_workbook.xlsx observation-dataset already written above.
+    # Downstream jobs (tracker_job / research_job / weekly_summary_job) are
+    # deleted in the same purge — nothing reads shadow_master.xlsx anymore.
 
-    # ── Phase G-BATCH1 (2026-07-07): post-trade attribution report ────────
-    # Appends 3 sheets to shadow_master.xlsx:
+    # ── Phase G-BATCH1 (2026-07-07 · updated 2026-07-13): attribution ─────
+    # Appends 3 sheets to tracking_workbook.xlsx (redirected from the removed
+    # shadow_master.xlsx):
     #   Attribution_Factor  — per-factor IC (rank-correlation with P&L)
     #   Attribution_Gate    — per-gate P&L delta vs population avg
     #   Attribution_Regime  — per-regime win-rate + expectancy
@@ -16842,8 +16975,8 @@ def _run_pipeline_inner():
             import attribution as _attr
             _summary_attr = _attr.build_attribution_report(
                 tracker_json="trade_tracker.json",
-                tracker_xlsx="shadow_master.xlsx",
-                out_xlsx="shadow_master.xlsx",
+                tracker_xlsx="tracking_workbook.xlsx",
+                out_xlsx="tracking_workbook.xlsx",
                 lookback_days=int(os.environ.get("ATTRIBUTION_LOOKBACK", "90")),
             )
             _log(
