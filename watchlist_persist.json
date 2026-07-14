@@ -1,99 +1,181 @@
 {
-  "AMAGI.NS": {
-    "first_seen": "2026-07-13",
-    "tier": "DEVELOPING",
-    "tier_since": "2026-07-13",
-    "entry_ref": 583.2,
-    "last_seen": "2026-07-13",
-    "conf": 71.795,
-    "conf_gap": 11.2,
-    "tq": 63.8,
-    "rr_ratio": 2.1,
+  "JBCHEPHARM.NS": {
+    "first_seen": "2026-07-14",
+    "tier": "NEAR_MISS",
+    "tier_since": "2026-07-14",
+    "entry_ref": 2487.6,
+    "last_seen": "2026-07-14",
+    "conf": 85.39999999999999,
+    "conf_gap": 0.0,
+    "tq": 82.8,
+    "rr_ratio": 1.41,
     "regime": "TRANSITION",
     "warnings": [
-      "WIDE_STOP_WARN(got 11.1%, soft cap 7.0% \u2014 R/R gate handles this)",
-      "NEAR_52W_HIGH_RESISTANCE",
-      "HIGH_GAP_RISK: p90 gap 10.8% \u00b7 effective stop 21.9%",
-      "STRONG_ACCUMULATION: delivery 72% (20d avg 37%)"
-    ],
-    "fail_reasons": [
-      "CONF_FAIL(got 71.8, need 83)",
-      "TQ_FAIL(got 63.8, need 73)"
-    ],
-    "blocker_reason": null,
-    "monitor_reason": null,
-    "trajectory": ""
-  },
-  "STARHEALTH.NS": {
-    "first_seen": "2026-07-13",
-    "tier": "DEVELOPING",
-    "tier_since": "2026-07-13",
-    "entry_ref": 599.75,
-    "last_seen": "2026-07-13",
-    "conf": 69.6,
-    "conf_gap": 13.4,
-    "tq": 62.6,
-    "rr_ratio": 2.11,
-    "regime": "TRANSITION",
-    "warnings": [
-      "MCAP_MISSING (proxy ~\u20b914874Cr)",
-      "FUND_DATA_MISSING: ROE/D/E/pledge unavailable (src=SCREENER+YF_RL) \u2014 ownership_quality weight redistributed to present factors",
-      "NEAR_52W_HIGH_RESISTANCE",
-      "HIGH_GAP_RISK: p90 gap 4.3% \u00b7 effective stop 9.3%",
-      "STRONG_ACCUMULATION: delivery 72% (20d avg 51%)"
-    ],
-    "fail_reasons": [
-      "CONF_FAIL(got 69.6, need 83)",
-      "TQ_FAIL(got 62.6, need 73)"
-    ],
-    "blocker_reason": null,
-    "monitor_reason": null,
-    "trajectory": ""
-  },
-  "ANANTRAJ.NS": {
-    "first_seen": "2026-07-13",
-    "tier": "DEVELOPING",
-    "tier_since": "2026-07-13",
-    "entry_ref": 589.15,
-    "last_seen": "2026-07-13",
-    "conf": 63.760000000000005,
-    "conf_gap": 19.2,
-    "tq": 77.2,
-    "rr_ratio": 1.44,
-    "regime": "TRANSITION",
-    "warnings": [
-      "WIDE_STOP_WARN(got 11.0%, soft cap 7.0% \u2014 R/R gate handles this)",
+      "WIDE_STOP_WARN(got 8.0%, soft cap 7.0% \u2014 R/R gate handles this)",
       "NEAR_52W_HIGH_RESISTANCE"
     ],
     "fail_reasons": [
-      "CONF_FAIL(got 63.8, need 83)",
-      "RR_FAIL(got 1.44, need 2.0)"
+      "RR_FAIL(got 1.41, need 2.0)"
     ],
     "blocker_reason": null,
     "monitor_reason": null,
     "trajectory": ""
   },
-  "EMBDL.NS": {
-    "first_seen": "2026-07-13",
-    "tier": "MONITOR",
-    "tier_since": "2026-07-13",
-    "entry_ref": 66.93,
-    "last_seen": "2026-07-13",
-    "conf": 32.975,
-    "conf_gap": 50.0,
-    "tq": 76.5,
-    "rr_ratio": 1.54,
+  "AARTIDRUGS.NS": {
+    "first_seen": "2026-07-14",
+    "tier": "NEAR_MISS",
+    "tier_since": "2026-07-14",
+    "entry_ref": 405.7,
+    "last_seen": "2026-07-14",
+    "conf": 70.85,
+    "conf_gap": 13.2,
+    "tq": 76.2,
+    "rr_ratio": 1.43,
     "regime": "TRANSITION",
     "warnings": [
-      "WIDE_STOP_WARN(got 10.1%, soft cap 7.0% \u2014 R/R gate handles this)",
-      "HIGH_GAP_RISK: p90 gap 6.6% \u00b7 effective stop 16.7%"
+      "WIDE_STOP_WARN(got 8.1%, soft cap 7.0% \u2014 R/R gate handles this)"
     ],
     "fail_reasons": [
-      "CONF_FAIL(got 33.0, need 83)",
-      "RR_FAIL(got 1.54, need 2.0)"
+      "CONF_FAIL(got 70.8, need 84)",
+      "RR_FAIL(got 1.43, need 2.0)"
     ],
     "blocker_reason": null,
-    "monitor_reason": "CONF_FAR",
+    "monitor_reason": null,
+    "trajectory": ""
+  },
+  "MARKSANS.NS": {
+    "first_seen": "2026-07-14",
+    "tier": "NEAR_MISS",
+    "tier_since": "2026-07-14",
+    "entry_ref": 270.95,
+    "last_seen": "2026-07-14",
+    "conf": 69.065,
+    "conf_gap": 14.9,
+    "tq": 77.5,
+    "rr_ratio": 2.9,
+    "regime": "TRANSITION",
+    "warnings": [
+      "HIGH_GAP_RISK: p90 gap 5.2% \u00b7 effective stop 10.6%"
+    ],
+    "fail_reasons": [
+      "CONF_FAIL(got 69.1, need 84)"
+    ],
+    "blocker_reason": null,
+    "monitor_reason": null,
+    "trajectory": ""
+  },
+  "CAPLIPOINT.NS": {
+    "first_seen": "2026-07-14",
+    "tier": "DEVELOPING",
+    "tier_since": "2026-07-14",
+    "entry_ref": 2658.4,
+    "last_seen": "2026-07-14",
+    "conf": 73.92,
+    "conf_gap": 10.1,
+    "tq": 66.6,
+    "rr_ratio": 2.29,
+    "regime": "TRANSITION",
+    "warnings": [
+      "NEAR_52W_HIGH_RESISTANCE",
+      "HIGH_GAP_RISK: p90 gap 4.4% \u00b7 effective stop 10.7%"
+    ],
+    "fail_reasons": [
+      "CONF_FAIL(got 73.9, need 84)",
+      "TQ_FAIL(got 66.6, need 73)"
+    ],
+    "blocker_reason": null,
+    "monitor_reason": null,
+    "trajectory": ""
+  },
+  "HEXT.NS": {
+    "first_seen": "2026-07-14",
+    "tier": "DEVELOPING",
+    "tier_since": "2026-07-14",
+    "entry_ref": 558.65,
+    "last_seen": "2026-07-14",
+    "conf": 72.7,
+    "conf_gap": 11.3,
+    "tq": 63.6,
+    "rr_ratio": 2.25,
+    "regime": "TRANSITION",
+    "warnings": [
+      "WIDE_STOP_WARN(got 8.7%, soft cap 7.0% \u2014 R/R gate handles this)"
+    ],
+    "fail_reasons": [
+      "CONF_FAIL(got 72.7, need 84)",
+      "TQ_FAIL(got 63.6, need 73)"
+    ],
+    "blocker_reason": null,
+    "monitor_reason": null,
+    "trajectory": ""
+  },
+  "BORORENEW.NS": {
+    "first_seen": "2026-07-14",
+    "tier": "DEVELOPING",
+    "tier_since": "2026-07-14",
+    "entry_ref": 634.6,
+    "last_seen": "2026-07-14",
+    "conf": 67.06,
+    "conf_gap": 16.9,
+    "tq": 62.0,
+    "rr_ratio": 2.09,
+    "regime": "TRANSITION",
+    "warnings": [
+      "WIDE_STOP_WARN(got 7.9%, soft cap 7.0% \u2014 R/R gate handles this)"
+    ],
+    "fail_reasons": [
+      "CONF_FAIL(got 67.1, need 84)",
+      "TQ_FAIL(got 62.0, need 73)"
+    ],
+    "blocker_reason": null,
+    "monitor_reason": null,
+    "trajectory": ""
+  },
+  "AMAGI.NS": {
+    "first_seen": "2026-07-13",
+    "tier": "MONITOR",
+    "tier_since": "2026-07-14",
+    "entry_ref": 574.95,
+    "last_seen": "2026-07-14",
+    "conf": 71.595,
+    "conf_gap": 12.4,
+    "tq": 56.7,
+    "rr_ratio": 2.28,
+    "regime": "TRANSITION",
+    "warnings": [
+      "WIDE_STOP_WARN(got 9.8%, soft cap 7.0% \u2014 R/R gate handles this)",
+      "HIGH_GAP_RISK: p90 gap 10.8% \u00b7 effective stop 20.6%",
+      "STRONG_ACCUMULATION: delivery 72% (20d avg 37%)"
+    ],
+    "fail_reasons": [
+      "CONF_FAIL(got 71.6, need 84)",
+      "TQ_FAIL(got 56.7, need 73)"
+    ],
+    "blocker_reason": null,
+    "monitor_reason": "TQ_LOW",
+    "trajectory": ""
+  },
+  "RPTECH.NS": {
+    "first_seen": "2026-07-14",
+    "tier": "MONITOR",
+    "tier_since": "2026-07-14",
+    "entry_ref": 777.7,
+    "last_seen": "2026-07-14",
+    "conf": 70.83,
+    "conf_gap": 13.2,
+    "tq": 58.8,
+    "rr_ratio": 2.9,
+    "regime": "TRANSITION",
+    "warnings": [
+      "HIGH_GAP_RISK: p90 gap 8.7% \u00b7 effective stop 15.3%",
+      "STRONG_ACCUMULATION: delivery 40% (20d avg 28%)"
+    ],
+    "fail_reasons": [
+      "CONF_FAIL(got 70.8, need 84)",
+      "TQ_FAIL(got 58.8, need 73)"
+    ],
+    "blocker_reason": null,
+    "monitor_reason": "TQ_LOW",
     "trajectory": ""
   }
 }
