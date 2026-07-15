@@ -3109,8 +3109,33 @@ _NSE_DELAY_RANGE = (0.3, 1.0)
 # Flushed to price_fetch_failures.jsonl at end of _run_pipeline_inner.
 _PRICE_FETCH_FAILURES: list = []
 
+# Fix #8a (2026-07-15): in-memory OHLC cache for one pipeline run.
+# Keyed by (symbol, period). Cleared on each _run_pipeline_inner entry.
+# Rationale: scanner + tracker + backfill often ask for the same symbol
+# multiple times per evening. yfinance is rate-limited and slow.
+# Cache lasts ONE RUN only — next evening always gets fresh data because
+# the process restarts, so we never accidentally trade on stale prices.
+_OHLC_CACHE: dict = {}
+_OHLC_CACHE_STATS = {"hits": 0, "misses": 0, "fetches": 0}
+
+
+def _reset_ohlc_cache() -> None:
+    """Called at the start of every pipeline run — one-run TTL."""
+    global _OHLC_CACHE, _OHLC_CACHE_STATS
+    _OHLC_CACHE = {}
+    _OHLC_CACHE_STATS = {"hits": 0, "misses": 0, "fetches": 0}
+
 
 def fetch_price_data(symbol: str, period: str = "6mo"):
+    # Fix #8a: in-memory cache lookup FIRST — same-run duplicate fetches
+    # (scanner + tracker + backfill) return the identical DataFrame with
+    # zero API calls.
+    _cache_key = (symbol, period)
+    if _cache_key in _OHLC_CACHE:
+        _OHLC_CACHE_STATS["hits"] += 1
+        return _OHLC_CACHE[_cache_key]
+    _OHLC_CACHE_STATS["misses"] += 1
+
     # #54: capture the specific failure reason so we can distinguish
     # rate-limit vs delisted vs data-quality issues in post-mortem.
     _fail_reason = "UNKNOWN"
@@ -3123,12 +3148,16 @@ def fetch_price_data(symbol: str, period: str = "6mo"):
             df = yf.download(symbol, period=period, interval="1d",
                              progress=False, auto_adjust=True,
                              multi_level_index=False)
+        _OHLC_CACHE_STATS["fetches"] += 1
         if df is None:
             _fail_reason = "NONE_RETURNED"
         elif len(df) <= 20:
             _fail_reason = f"INSUFFICIENT_ROWS_{len(df)}"
         else:
             df.columns = [c[0] if isinstance(c, tuple) else c for c in df.columns]
+            # Fix #8a: cache successful fetches (and only successful ones —
+            # we don't want to cache a transient network failure).
+            _OHLC_CACHE[_cache_key] = df
             return df
     except Exception as e:
         _fail_reason = f"EXC_{type(e).__name__}:{str(e)[:60]}"
@@ -4596,8 +4625,15 @@ def delivery_score_from_signal(signal: str, ratio: float) -> float:
 
 
 def fetch_promoter_data_cached(symbol_clean: str, cache: dict,
-                                cache_ttl_hours: int = 24) -> dict:
-    """Returns cached data if fresher than cache_ttl_hours; otherwise fetches live."""
+                                cache_ttl_hours: int = 168) -> dict:
+    """Returns cached data if fresher than cache_ttl_hours; otherwise fetches live.
+
+    Fix #8b (2026-07-15): TTL extended 24h → 168h (7 days). Fundamentals
+    are published quarterly, so daily re-fetching wastes screener.in
+    credits and increases rate-limit risk. 7 days is still well below the
+    quarterly-refresh window and gives ~85% API-call reduction week-over-
+    week. FRESH_START env still forces a full re-fetch when set.
+    """
     now    = ist_now()
     cached = cache.get(symbol_clean)
     if cached:
@@ -4653,7 +4689,9 @@ def fetch_all_fundamentals_cached(top_40: list, max_stocks: int = 30) -> list:
     for i, stock in enumerate(to_fetch):
         sym_clean = stock["symbol"].replace(".NS", "")
         _log(f"  [{i+1}/{max_stocks}] {sym_clean}")
-        pdata = fetch_promoter_data_cached(sym_clean, cache, cache_ttl_hours=24)
+        # Fix #8b (2026-07-15): 7-day TTL (was 24h). Fundamentals are
+        # quarterly — daily re-fetch is wasteful and rate-limit-risky.
+        pdata = fetch_promoter_data_cached(sym_clean, cache, cache_ttl_hours=168)
         stock["promoter_data"]       = pdata
         stock["ownership_quality"]   = ownership_quality_score(pdata)
         stock["promoter_pledge_pct"] = pdata.get("promoter_pledge_pct", 0.0)
@@ -15145,6 +15183,10 @@ def _run_pipeline_inner():
     _log("=== NSE SWING TRADE PIPELINE v6.0 STARTING ===")
     _log(f"  Capital: Rs{PORTFOLIO_CAPITAL:,.0f} | Groq keys: {len(GROQ_KEYS)}")
     _log(f"  Run mode: {'SCHEDULED — day counters will advance' if IS_SCHEDULED else 'MANUAL — day counters frozen, history not written'}")
+    # Fix #8a (2026-07-15): reset OHLC in-memory cache at pipeline entry.
+    # Ensures every run starts with an empty cache — no risk of stale prices
+    # across runs. Same-run duplicate fetches will hit the cache.
+    _reset_ohlc_cache()
     # Phase 3a #34 (2026-07-05): reset _PIPELINE_REGIME at pipeline entry so a
     # premature abort (market-closed, no tradable, no Nifty) can't leak the
     # PREVIOUS run's regime into sibling scripts (morning_check, exit
@@ -16169,6 +16211,34 @@ def _run_pipeline_inner():
 
     _log(f"  Gate results: {len(buys)} BUY | {len(watchlist_stocks)} WATCHLIST | {len(rejected)} REJECTED")
 
+    # Fix #19 (2026-07-15): Market regime WARNING (not block).
+    # If today's regime is bearish AND we're still generating BUYs, log a
+    # loud warning so the user sees it in the evening Telegram + log tail.
+    # This is INFORMATION, NOT SUPPRESSION — the BUYs still get written and
+    # tracked. Every BUY record's entry snapshot already stamps `regime` so
+    # weekly-review can later show win-rate by entry regime empirically.
+    # Rationale: silently blocking BUY signals because "market looks weak"
+    # is dangerous — some of the biggest winners are born in corrections.
+    # We surface the risk; the user (or a future filter that they explicitly
+    # enable) makes the call.
+    try:
+        _reg_name = str((regime_data or {}).get("regime") or "").upper()
+        _bearish  = _reg_name in ("BEAR", "STRONG_BEAR", "HIGH_VOLATILITY")
+        _cautious = _reg_name in ("TRANSITION", "SIDEWAYS")
+        if buys and _bearish:
+            _log("  " + "=" * 60)
+            _log(f"  ⚠️  REGIME WARNING: {len(buys)} BUY(s) generated in "
+                 f"BEARISH regime ({_reg_name}).")
+            _log("      Historically, breakouts in this regime have LOWER win rate.")
+            _log("      Every BUY record is tagged with entry regime for weekly review.")
+            _log("      Consider tighter position sizing until regime turns.")
+            _log("  " + "=" * 60)
+        elif buys and _cautious:
+            _log(f"  ℹ️  REGIME NOTE: {len(buys)} BUY(s) in {_reg_name} regime "
+                 f"— proceed with normal caution.")
+    except Exception as _reg_exc:
+        _log(f"  [WARN] regime warning check failed (non-fatal): {_reg_exc}")
+
     # Phase R3 (2026-07-06): institutional taxonomy breakdown for BUY tier.
     # Shows how the 4 buy sub-tiers distribute — high-quality signal for post-mortem.
     if buys:
@@ -17097,6 +17167,19 @@ def _run_pipeline_inner():
             )
         except Exception as _e_attr:
             _log(f"  [WARN] attribution report failed (non-fatal): {_e_attr}")
+
+    # ── 17b(cache). Fix #8a (2026-07-15): OHLC cache stats ─────────────
+    # Log same-run cache efficiency so we can see how many yfinance calls
+    # the in-memory cache saved. Purely informational — never fails.
+    try:
+        _cs = _OHLC_CACHE_STATS
+        _total_lookups = _cs.get('hits', 0) + _cs.get('misses', 0)
+        if _total_lookups > 0:
+            _hit_pct = 100.0 * _cs.get('hits', 0) / _total_lookups
+            _log(f"  [OHLC cache] {_cs.get('hits',0)} hits / {_cs.get('misses',0)} misses "
+                 f"({_hit_pct:.1f}% hit rate) → saved {_cs.get('hits',0)} yfinance calls")
+    except Exception as _cs_exc:
+        _log(f"  [WARN] OHLC cache stats log failed (non-fatal): {_cs_exc}")
 
     # ── 17b. Phase 1 #54 (2026-07-05): flush price-fetch failures ─────────
     # Every fetch_price_data(...) that returned None (any reason) is here.
