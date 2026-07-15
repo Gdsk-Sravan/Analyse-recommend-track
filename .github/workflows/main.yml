@@ -441,32 +441,18 @@ jobs:
             echo "[INFO] reject_watch.json not yet populated — skipping"
           fi
 
-      # ── 2026-07-13 · A1 PURGE ──
-      # The former "Run shadow master job" step (python shadow_master_job.py
-      # --mode scan-and-update) and the "Send shadow_master.xlsx to Telegram"
-      # dedicated step are DELETED. main.py's observation-dataset block now
-      # writes tracking_workbook.xlsx and sends it to Telegram inline. If that
-      # inline Telegram send fails on the runner (e.g. transient 5xx), the
-      # artifact upload step below still preserves the workbook for 90 days.
-      # Belt-and-suspenders: fall back to a fresh Telegram send here iff the
-      # workbook exists AND we're on a scheduled run — this only fires when
-      # main.py's inline send returned non-zero (i.e. workbook on disk but
-      # never delivered).
-      - name: Send tracking_workbook.xlsx to Telegram (fallback, scheduled only)
-        if: ${{ always() && env.SCHEDULED_RUN == 'true' && hashFiles('tracking_workbook.xlsx') != '' }}
-        continue-on-error: true
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: |
-          set +e
-          today=$(date +%Y-%m-%d)
-          weekday=$(date +%A)
-          size_bytes=$(stat -c%s tracking_workbook.xlsx 2>/dev/null || echo 0)
-          size_human=$(numfmt --to=iec --suffix=B "$size_bytes" 2>/dev/null || echo "${size_bytes}B")
-          caption=$(printf '%b' "📊 Tracking Workbook — ${today} (${weekday})\nSize: ${size_human}\nObservation-dataset workbook — 16 sheets (stage / setup / summary).")
-          python scripts/notify_telegram_document.py tracking_workbook.xlsx --caption "$caption"
-          echo "tracking_workbook.xlsx fallback send rc=$?"
+      # ── 2026-07-13 · A1 PURGE ; 2026-07-15 · CI fallback send REMOVED ──
+      # The former "Run shadow master job" step and the fallback
+      # "Send tracking_workbook.xlsx to Telegram" step have both been
+      # DELETED. main.py's observation-dataset block writes
+      # tracking_workbook.xlsx AND circuit_tracker_workbook.xlsx and sends
+      # both to Telegram inline (scheduled runs only). If either inline
+      # send fails on the runner, the artifact-upload step below preserves
+      # both workbooks for 90 days so nothing is lost.
+      #
+      # Rationale (user directive 2026-07-15): reduce Telegram noise from
+      # 3 daily attachments → 2 (tracking + circuit workbooks). The CI
+      # fallback duplicated the tracking-workbook delivery, so it's gone.
 
       - name: Show summary
         if: always()
