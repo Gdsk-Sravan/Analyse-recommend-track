@@ -1,26 +1,39 @@
-"""Build `tracking_workbook.xlsx` — the 12-sheet canonical observation workbook.
+"""Build `tracking_workbook.xlsx` — the 9-sheet consolidated observation workbook.
 
-Sheets (see redesign spec §3.3):
-    1.  BUY               — current.stage == BUY
-    2.  WATCHLIST         — current.stage == WATCHLIST
-    3.  DEVELOPING        — current.stage == DEVELOPING
-    4.  NEAR_MISS         — current.stage in {NEAR_MISS, NEAR_MISS_RISING, NEAR_MISS_FADING}
-    5.  ALL_CANDIDATES    — union of WATCHLIST / DEVELOPING / NEAR_MISS
-    6.  BREAKOUT          — entry.setup_type == BREAKOUT (BUY + non-BUY)
-    7.  MOMENTUM          — entry.setup_type == MOMENTUM
-    8.  REJECTED          — every rejected stock (see agent 3 report)
-    9.  ACTIVE_TRACKING   — tracking_status in {ACTIVE, T1_HIT}
-   10.  RESOLVED          — tracking_status in {T2_HIT, STOPPED, STOPPED_AFTER_T1}
-   11.  WEEKLY_REVIEW     — rows from results/weekly_review_history.jsonl (append-only)
-   12.  RESEARCH          — fundamentals view
+Redesign 2026-07-15: collapsed 16 sheets → 9 sheets by moving "which sheet"
+into a category *column* on merged sheets. One row per stock at any time.
 
-Plus one hidden internal sheet:
-   _LEGEND — column glossary + score-band definitions + notes.
-   _NEEDS_REVIEW — records with migration_status == NEEDS_REVIEW.
+Sheets:
+    1.  BUY              — stocks with active BUY stage. Updated in-place daily
+                            until T1/T2/Stop resolves (then moves to DONE).
+    2.  WATCHLIST        — MERGED (NEAR_MISS + DEVELOPING + MONITOR).
+                            Added column: 'Watchlist Category' = NEAR_MISS |
+                            DEVELOPING | MONITOR.
+    3.  REJECTED         — Rejected stage decisions.
+    4.  REJECTED_SETUPS  — MERGED (rejected BREAKOUT/MOMENTUM/PULLBACK/REVERSAL
+                            setups + REJECTED_SETUP historical bucket).
+                            Added column: 'Setup Type' = BREAKOUT | MOMENTUM |
+                            PULLBACK | REVERSAL.
+    5.  DONE             — Terminal outcomes: T2_HIT | STOPPED | STOPPED_AFTER_T1.
+    6.  WEEKLY_SUMMARY   — Per-sheet weekly counts (rebuilt every run).
+    7.  WEEKLY_REVIEW    — Historical per-category aggregate rows.
+    8.  RESEARCH         — Fundamentals view (kept unchanged).
+    9.  _LEGEND          — Column glossary + score-band definitions.
 
-The job READS the canonical `tracking_store.json` and REBUILDS the workbook
-from scratch — the store is the single source of truth. The workbook is a
-pure view; no data lives here that isn't in the store.
+Deleted from the old 16-sheet layout:
+    NEAR_MISS, DEVELOPING, MONITOR       → merged into WATCHLIST
+    BREAKOUT, MOMENTUM, PULLBACK,
+      REVERSAL, REJECTED_SETUP           → merged into REJECTED_SETUPS
+    ACTIVE_TRACKING                       → deleted (BUY sheet already tracks
+                                            live positions in-place)
+
+Golden rule: a stock lives in EXACTLY ONE sheet at any time. Active BUYs
+stay in BUY. Watchlist stocks stay in WATCHLIST (their category may change).
+Only T2/Stop moves a stock to DONE.
+
+The job READS `results/daily_snapshots.jsonl` + `results/tracking_store.json`
+and REBUILDS the workbook from scratch. Store + snapshots are the sources
+of truth — the workbook is a pure view.
 
 Usage (from Analyse-recommend-track-main/):
     python tracking_workbook_job.py --write
@@ -345,11 +358,10 @@ def _format(value: Any, hint: str) -> Any:
 # Daily-snapshot sheet columns
 # ---------------------------------------------------------------------------
 
-# Columns for the 9 daily-append bucket sheets
-# (BUY / WATCHLIST / NEAR_MISS / DEVELOPING / MONITOR / REJECTED /
-#  BREAKOUT / MOMENTUM / PULLBACK / REVERSAL).
-# Each row = one (symbol, bucket, run_date) triple. Columns read directly
-# from the flat jsonl snapshot dict — no dotted resolver needed.
+# Columns for the 4 stage/setup sheets in the NEW 9-sheet layout:
+#   BUY, WATCHLIST (merged), REJECTED, REJECTED_SETUPS (merged).
+# Each row = one (symbol, bucket, run_date) triple from daily_snapshots.jsonl.
+# Columns read directly from the flat jsonl snapshot dict.
 DAILY_BUCKET_COLS: Tuple[Tuple[str, str, str], ...] = (
     ("Row Key",           "_row_key",              "text"),
     ("Run Date",          "run_date",              "date"),
@@ -384,7 +396,26 @@ DAILY_BUCKET_COLS: Tuple[Tuple[str, str, str], ...] = (
     ("Fail Reasons",      "_fail_reasons_joined",  "text"),
 )
 
+# WATCHLIST (merged NEAR_MISS + DEVELOPING + MONITOR) — same as DAILY_BUCKET_COLS
+# but with a leading "Watchlist Category" column that reveals which of the 3
+# original sub-buckets the row came from (equal to the row's `bucket` field).
+WATCHLIST_COLS: Tuple[Tuple[str, str, str], ...] = (
+    ("Watchlist Category", "bucket",               "text"),
+) + DAILY_BUCKET_COLS
+
+# REJECTED_SETUPS (merged BREAKOUT+MOMENTUM+PULLBACK+REVERSAL+REJECTED_SETUP) —
+# same as DAILY_BUCKET_COLS but with a leading "Setup Type" column that reveals
+# which chart pattern was detected. For rows from the historical REJECTED_SETUP
+# bucket, the Setup Type falls back to the row's `setup_type` field.
+REJECTED_SETUP_COLS: Tuple[Tuple[str, str, str], ...] = (
+    ("Setup Type",         "_setup_type_display",  "text"),
+) + DAILY_BUCKET_COLS
+
 # ACTIVE_TRACKING = master firehose. Same columns + "Source Sheet" leading col.
+# NOTE: retained for backwards compatibility with any external tooling that
+# imports this constant, but the workbook no longer writes an ACTIVE_TRACKING
+# sheet (see redesign 2026-07-15). Safe to delete once external consumers are
+# audited.
 ACTIVE_DAILY_COLS: Tuple[Tuple[str, str, str], ...] = (
     ("Source Sheet",      "bucket",                "text"),
 ) + DAILY_BUCKET_COLS
@@ -422,6 +453,21 @@ def _write_daily_sheet(
         bkt  = str(r.get("bucket") or "").strip()
         base = f"{tid} | {rd} | {bkt}" if bkt else f"{tid} | {rd}"
         r2["_row_key"] = f"AT | {base}" if is_active_tracking else base
+        # Setup Type display (for merged REJECTED_SETUPS sheet, 2026-07-15
+        # redesign). If the row's bucket is one of the 4 chart-pattern
+        # buckets, show it directly; if it's the legacy REJECTED_SETUP
+        # umbrella bucket, fall back to the row's own setup_type field so
+        # the user still sees BREAKOUT/MOMENTUM/PULLBACK/REVERSAL.
+        _b = str(r.get("bucket") or "").strip().upper()
+        if _b in ("BREAKOUT", "MOMENTUM", "PULLBACK", "REVERSAL"):
+            r2["_setup_type_display"] = _b
+        elif _b == "REJECTED_SETUP":
+            _st = str(r.get("setup_type") or "").strip().upper()
+            r2["_setup_type_display"] = _st if _st in (
+                "BREAKOUT", "MOMENTUM", "PULLBACK", "REVERSAL"
+            ) else "OTHER"
+        else:
+            r2["_setup_type_display"] = str(r.get("setup_type") or "") or None
         prepared.append(r2)
 
     # Header.
@@ -455,6 +501,8 @@ def _write_daily_sheet(
             width = 36
         if header == "Source Sheet":
             width = 14
+        if header in ("Watchlist Category", "Setup Type"):
+            width = 18
         ws.column_dimensions[get_column_letter(col_idx)].width = width
 
     # Data rows.
@@ -596,6 +644,9 @@ def _write_sheet(
 # ---------------------------------------------------------------------------
 
 LEGEND_LINES: Tuple[Tuple[str, str], ...] = (
+    ("Layout",           "9-sheet consolidated layout (2026-07-15 redesign, down from 16). "
+                         "A stock lives in EXACTLY ONE sheet at any time. Merged sheets use "
+                         "a category column instead of separate tabs."),
     ("Model",            "Each stage/setup sheet is an append-only daily log. "
                          "One row per (symbol, bucket, run_date). History is never truncated."),
     ("Live refresh",     "When the workbook is rebuilt, EVERY historical row is refreshed "
@@ -604,49 +655,59 @@ LEGEND_LINES: Tuple[Tuple[str, str], ...] = (
                          "but always show the LATEST live values."),
     ("Row Key",          "Leftmost grey column. Fully-qualified identity for each row so the "
                          "same stock appearing on multiple days can never be confused. "
-                         "Format on daily sheets: '<TrackingID> | <RunDate> | <Bucket>'. "
-                         "Format on record sheets (ACTIVE_TRACKING/DONE/RESEARCH): "
-                         "'<TrackingID> | first_seen=<Date>'."),
+                         "Format: '<TrackingID> | <RunDate> | <Bucket>'."),
     ("Tracking ID",      "Lavender column, bold text. Canonical per-episode key, e.g. "
                          "'MRF_20260713' = MRF first seen on 2026-07-13. If MRF exits then "
                          "re-emerges later it gets a NEW tracking id (new episode), so two "
                          "episodes of the same symbol are never mixed."),
-    ("BUY",              "Daily rows: stocks whose current stage is BUY."),
-    ("NEAR_MISS",        "Daily rows: WATCHLIST sub-tier NEAR_MISS_RISING / NEAR_MISS_FADING."),
-    ("DEVELOPING",       "Daily rows: WATCHLIST sub-tier DEVELOPING."),
-    ("MONITOR",          "Daily rows: WATCHLIST sub-tier MONITOR (main.py:10035)."),
-    ("REJECTED",         "Daily rows: every stock whose STAGE is rejected."),
-    ("BREAKOUT",         "Daily rows: setup_type=BREAKOUT AND stage NOT rejected (active only)."),
-    ("MOMENTUM",         "Daily rows: setup_type=MOMENTUM AND stage NOT rejected (active only)."),
-    ("PULLBACK",         "Daily rows: setup_type=PULLBACK AND stage NOT rejected (active only)."),
-    ("REVERSAL",         "Daily rows: setup_type=REVERSAL AND stage NOT rejected (active only)."),
-    ("REJECTED_SETUP",   "Daily rows: stock had a setup (BREAKOUT/MOMENTUM/PULLBACK/REVERSAL) "
-                         "but its STAGE was rejected. Kept separate from the REJECTED stage "
-                         "sheet so the two 'rejected' views don't collide."),
-    ("ACTIVE_TRACKING",  "Firehose of stocks that have NOT yet hit T1/T2/STOP. "
-                         "Same rows as the bucket sheets, with a 'Source Sheet' column. "
-                         "A stock in BUY+BREAKOUT contributes 2 rows/day."),
-    ("DONE",             "One row per stock that reached T1 / T2 / STOP. "
-                         "Once a stock lands here, it stops appearing in ACTIVE_TRACKING."),
-    ("WEEKLY_SUMMARY",   "One row per bucket sheet. Counts: active now, tracking, "
-                         "T1/T2/SL hits this week (rolling 7d), T1/T2/SL hits overall. "
-                         "Rebuilt every run."),
-    ("WEEKLY_REVIEW",    "Historical per-category aggregate summaries "
-                         "(results/weekly_review_history.jsonl, append-only)."),
-    ("RESEARCH",         "Fundamentals view (from canonical tracking_store). Some columns are "
-                         "BLANK — not produced by the current pipeline."),
-    ("MFE / MAE",        "Maximum Favorable / Adverse Excursion since first_seen. Monotonic."),
+    # ------ The 9 sheets ------
+    ("BUY",              "Sheet 1. Daily rows for stocks whose current stage is BUY. "
+                         "Updated in-place every evening until T2/Stop resolves — then the "
+                         "record moves to DONE."),
+    ("WATCHLIST",        "Sheet 2. MERGED sheet — replaces the old NEAR_MISS + DEVELOPING + "
+                         "MONITOR tabs. The FIRST column 'Watchlist Category' tells you "
+                         "which of the 3 original tiers each row came from. Filter on this "
+                         "column to see only NEAR_MISS or only MONITOR, etc."),
+    ("Watchlist Category","New in 2026-07-15 layout. Values: NEAR_MISS | DEVELOPING | MONITOR. "
+                         "Equals the row's underlying bucket in daily_snapshots.jsonl."),
+    ("REJECTED",         "Sheet 3. Daily rows for stocks whose STAGE was rejected."),
+    ("REJECTED_SETUPS",  "Sheet 4. MERGED sheet — replaces the old BREAKOUT + MOMENTUM + "
+                         "PULLBACK + REVERSAL + REJECTED_SETUP tabs. The FIRST column "
+                         "'Setup Type' tells you which chart pattern was detected. Rows "
+                         "here have not been promoted to BUY."),
+    ("Setup Type",       "New in 2026-07-15 layout. Values: BREAKOUT | MOMENTUM | PULLBACK | "
+                         "REVERSAL. Falls back to the row's setup_type field for rows from "
+                         "the historical REJECTED_SETUP umbrella bucket."),
+    ("DONE",             "Sheet 5. One row per stock that reached T2 / STOP / STOPPED_AFTER_T1. "
+                         "Terminal resting place — once a stock lands here it never leaves."),
+    ("WEEKLY_SUMMARY",   "Sheet 6. One row per NEW workbook sheet (BUY / WATCHLIST / REJECTED / "
+                         "REJECTED_SETUPS / DONE). Counts: active now, tracking, T1/T2/SL hits "
+                         "this week (rolling 7d) and overall. Rebuilt every run."),
+    ("WEEKLY_REVIEW",    "Sheet 7. Historical per-category aggregate summaries from "
+                         "results/weekly_review_history.jsonl (append-only)."),
+    ("RESEARCH",         "Sheet 8. Fundamentals view (from canonical tracking_store). Some "
+                         "columns are BLANK — not produced by the current pipeline."),
+    ("_LEGEND",          "Sheet 9. This glossary."),
+    # ------ Removed sheets ------
+    ("Deleted sheets",   "As of 2026-07-15: NEAR_MISS, DEVELOPING, MONITOR (merged into "
+                         "WATCHLIST), BREAKOUT, MOMENTUM, PULLBACK, REVERSAL, REJECTED_SETUP "
+                         "(merged into REJECTED_SETUPS), ACTIVE_TRACKING (deleted — BUY sheet "
+                         "already tracks live positions in-place, no duplicate needed)."),
+    # ------ Column glossary ------
+    ("MFE / MAE",        "Maximum Favorable / Adverse Excursion since first_seen. Monotonic — "
+                         "MFE only goes up, MAE only goes down."),
     ("Journey",          "Ordered list of stages the stock has been through, e.g. "
-                         "DEVELOPING > WATCHLIST > NEAR_MISS > BUY."),
+                         "DEVELOPING > NEAR_MISS > BUY."),
     ("Entry vs Current", "Every score has both an Entry (frozen at first_seen) and a Current "
                          "(refreshed each run) value. Entry never changes."),
     ("Confidence bands", "<60 | 60-69 | 70-74 | 75-79 | 80-84 | 85+"),
     ("TQ bands",         "<50 | 50-59 | 60-69 | 70-74 | 75+"),
     ("R/R bands",        "<1.5 | 1.5-1.99 | 2.0-2.49 | 2.5-2.99 | 3.0+"),
     ("Opportunity bands","<50 | 50-59 | 60-69 | 70+"),
-    ("Source of truth",  "results/daily_snapshots.jsonl (bucket sheets + ACTIVE_TRACKING) and "
-                         "results/tracking_store.json (RESOLVED / RESEARCH). Both are "
-                         "append-only from the workbook's perspective — safe to delete .xlsx."),
+    ("Source of truth",  "results/daily_snapshots.jsonl (BUY / WATCHLIST / REJECTED / "
+                         "REJECTED_SETUPS) and results/tracking_store.json (DONE / RESEARCH). "
+                         "Both are append-only from the workbook's perspective — safe to "
+                         "delete .xlsx."),
 )
 
 
@@ -743,10 +804,19 @@ def _build_weekly_summary_rows(
     week_start = week_start_dt.isoformat()
 
     # Bucket lists — order matters for row output.
-    stage_buckets = list(STAGE_BUCKETS)                            # 5
-    setup_buckets = list(SETUP_BUCKETS)                            # 5 (incl REJECTED_SETUP)
-    virtual = ["ACTIVE_TRACKING", "DONE"]                          # 2 aggregate views
-    all_buckets = stage_buckets + setup_buckets + virtual
+    # 2026-07-15 redesign: WEEKLY_SUMMARY now emits ONE row per NEW workbook
+    # sheet (not per bucket). Merged sheets (WATCHLIST, REJECTED_SETUPS) roll
+    # up their constituent buckets so a single summary row covers all of
+    # NEAR_MISS+DEVELOPING+MONITOR (WATCHLIST) or
+    # BREAKOUT+MOMENTUM+PULLBACK+REVERSAL+REJECTED_SETUP (REJECTED_SETUPS).
+    sheet_buckets: List[Tuple[str, Tuple[str, ...]]] = [
+        ("BUY",             ("BUY",)),
+        ("WATCHLIST",       ("NEAR_MISS", "DEVELOPING", "MONITOR")),
+        ("REJECTED",        ("REJECTED",)),
+        ("REJECTED_SETUPS", ("BREAKOUT", "MOMENTUM", "PULLBACK",
+                              "REVERSAL", "REJECTED_SETUP")),
+        ("DONE",            ()),   # sentinel — resolved from store, not snapshots
+    ]
 
     # Index snapshots by bucket.
     from collections import defaultdict
@@ -782,17 +852,16 @@ def _build_weekly_summary_rows(
         return week_start_dt <= d <= end_dt
 
     rows: List[Dict[str, Any]] = []
-    for bucket in all_buckets:
-        if bucket == "ACTIVE_TRACKING":
-            # Firehose: distinct active symbols across all bucket sheets.
-            symbols_ever = {s.get("symbol") for s in snapshots}
-            symbols_active_now = {s.get("symbol") for s in snapshots
-                                  if s.get("run_date") == run_date}
-        elif bucket == "DONE":
+    for sheet_name, buckets in sheet_buckets:
+        if sheet_name == "DONE":
             symbols_ever = terminal_syms
             symbols_active_now = set()          # DONE has no "currently active"
         else:
-            bucket_rows = by_bucket.get(bucket, [])
+            # Union rows across all constituent buckets (empty tuple => sheet
+            # not backed by snapshots, already handled above).
+            bucket_rows: List[Dict[str, Any]] = []
+            for b in buckets:
+                bucket_rows.extend(by_bucket.get(b, []))
             symbols_ever = {r.get("symbol") for r in bucket_rows}
             latest_in_bucket = max((r.get("run_date") or "" for r in bucket_rows),
                                    default="")
@@ -824,7 +893,7 @@ def _build_weekly_summary_rows(
                         if sym not in terminal_syms and sym in rec_by_sym})
 
         rows.append({
-            "sheet": bucket,
+            "sheet": sheet_name,
             "as_of": run_date,
             "week_start": week_start,
             "active_now": len(symbols_active_now),
@@ -951,16 +1020,34 @@ def build_workbook(
 ) -> Path:
     """Build tracking_workbook.xlsx.
 
-    Sheet plan (daily-append model, redesign 2026-07-13):
-       Stage buckets (daily append):  BUY | NEAR_MISS | DEVELOPING | MONITOR | REJECTED
-       Setup buckets (daily append):  BREAKOUT | MOMENTUM | PULLBACK | REVERSAL
-       Master firehose:               ACTIVE_TRACKING (Source Sheet column, active-only)
-       Terminal:                      DONE (T1/T2/STOP hit stocks)
-       Meta:                          WEEKLY_REVIEW | RESEARCH | _LEGEND
+    Sheet plan (2026-07-15 redesign — 9 sheets, down from 16):
 
-    The 9 daily-append sheets read from results/daily_snapshots.jsonl
-    (one row per (symbol, bucket, run_date), never truncated).
-    DONE/RESEARCH still read from the canonical tracking_store.json.
+       ┌──────────────────┬──────────────────────────────────────────────────┐
+       │ Sheet            │ What lives here                                  │
+       ├──────────────────┼──────────────────────────────────────────────────┤
+       │ BUY              │ bucket == BUY (updated in-place daily until      │
+       │                  │ T2/Stop resolves → then moves to DONE)           │
+       │ WATCHLIST        │ bucket ∈ {NEAR_MISS, DEVELOPING, MONITOR}        │
+       │                  │ MERGED with 'Watchlist Category' column          │
+       │ REJECTED         │ bucket == REJECTED                                │
+       │ REJECTED_SETUPS  │ bucket ∈ {BREAKOUT, MOMENTUM, PULLBACK,          │
+       │                  │ REVERSAL, REJECTED_SETUP} MERGED with            │
+       │                  │ 'Setup Type' column. Historical filter:          │
+       │                  │ per user directive Q3(a) — active-setup rows     │
+       │                  │ only surface here if their stage was REJECTED    │
+       │                  │ (the pipeline never wrote them any other way).   │
+       │ DONE             │ tracking_status ∈ terminal (T2_HIT / STOPPED /   │
+       │                  │ STOPPED_AFTER_T1)                                │
+       │ WEEKLY_SUMMARY   │ Per-sheet weekly counts (rebuilt every run)      │
+       │ WEEKLY_REVIEW    │ results/weekly_review_history.jsonl              │
+       │ RESEARCH         │ Fundamentals view (unchanged)                    │
+       │ _LEGEND          │ Column glossary                                  │
+       └──────────────────┴──────────────────────────────────────────────────┘
+
+    Deleted from previous layout: NEAR_MISS, DEVELOPING, MONITOR, BREAKOUT,
+    MOMENTUM, PULLBACK, REVERSAL, REJECTED_SETUP, ACTIVE_TRACKING sheets.
+    All still exist as bucket values in daily_snapshots.jsonl — the workbook
+    just renders them into the 2 merged sheets above.
     """
     output_path = Path(output_path)
     wb = Workbook()
@@ -977,42 +1064,52 @@ def build_workbook(
     snapshots = _refresh_snapshots(snapshots, store)
     print(f"[tracking_workbook_job] refreshed {len(snapshots)} rows with latest current_* fields")
 
-    def _by_bucket(bucket: str) -> List[Dict[str, Any]]:
-        rows = [s for s in snapshots if s.get("bucket") == bucket]
-        # Newest run_date first, then symbol.
-        rows.sort(key=lambda r: (r.get("run_date") or "", r.get("symbol") or ""),
-                  reverse=False)
+    def _by_bucket(buckets) -> List[Dict[str, Any]]:
+        """Return snapshot rows whose bucket is in the given iterable, newest first."""
+        if isinstance(buckets, str):
+            wanted = {buckets}
+        else:
+            wanted = set(buckets)
+        rows = [s for s in snapshots if s.get("bucket") in wanted]
+        rows.sort(key=lambda r: (r.get("run_date") or "", r.get("symbol") or ""))
         rows.sort(key=lambda r: r.get("run_date") or "", reverse=True)
         return rows
 
-    # --- 10 daily-append bucket sheets ---
-    # Stage sheets: 5 (WATCHLIST dropped — folded into MONITOR)
-    _write_daily_sheet(wb.create_sheet("BUY"),        DAILY_BUCKET_COLS, _by_bucket("BUY"))
-    _write_daily_sheet(wb.create_sheet("NEAR_MISS"),  DAILY_BUCKET_COLS, _by_bucket("NEAR_MISS"))
-    _write_daily_sheet(wb.create_sheet("DEVELOPING"), DAILY_BUCKET_COLS, _by_bucket("DEVELOPING"))
-    _write_daily_sheet(wb.create_sheet("MONITOR"),    DAILY_BUCKET_COLS, _by_bucket("MONITOR"))
-    _write_daily_sheet(wb.create_sheet("REJECTED"),   DAILY_BUCKET_COLS, _by_bucket("REJECTED"))
-    # Setup sheets: 5 (4 active setup types + REJECTED_SETUP for rejected-stage setups)
-    _write_daily_sheet(wb.create_sheet("BREAKOUT"),       DAILY_BUCKET_COLS, _by_bucket("BREAKOUT"))
-    _write_daily_sheet(wb.create_sheet("MOMENTUM"),       DAILY_BUCKET_COLS, _by_bucket("MOMENTUM"))
-    _write_daily_sheet(wb.create_sheet("PULLBACK"),       DAILY_BUCKET_COLS, _by_bucket("PULLBACK"))
-    _write_daily_sheet(wb.create_sheet("REVERSAL"),       DAILY_BUCKET_COLS, _by_bucket("REVERSAL"))
-    _write_daily_sheet(wb.create_sheet("REJECTED_SETUP"), DAILY_BUCKET_COLS, _by_bucket("REJECTED_SETUP"))
+    # --- Sheet 1: BUY (unchanged — stocks with active BUY stage) ---
+    _write_daily_sheet(wb.create_sheet("BUY"), DAILY_BUCKET_COLS, _by_bucket("BUY"))
 
-    # --- ACTIVE_TRACKING = firehose of ACTIVE stocks only (exclude DONE) ---
-    # A stock is "done" once it hits T1/T2/STOP. We resolve that from the
-    # canonical store (tracking_status in TERMINAL_STATUSES) and filter the
-    # snapshot rows to exclude those symbols.
-    done_symbols = {r.get("symbol") for r in store.records.values()
-                    if r.get("tracking_status") in TERMINAL_STATUSES}
-    active_all = [s for s in snapshots if s.get("symbol") not in done_symbols]
-    active_all.sort(key=lambda r: (r.get("run_date") or "",
-                                   r.get("symbol") or "",
-                                   r.get("bucket") or ""))
-    active_all.sort(key=lambda r: r.get("run_date") or "", reverse=True)
-    _write_daily_sheet(wb.create_sheet("ACTIVE_TRACKING"), ACTIVE_DAILY_COLS, active_all)
+    # --- Sheet 2: WATCHLIST (merged NEAR_MISS + DEVELOPING + MONITOR) ---
+    # `Watchlist Category` column comes from the row's `bucket` field.
+    _write_daily_sheet(
+        wb.create_sheet("WATCHLIST"),
+        WATCHLIST_COLS,
+        _by_bucket(("NEAR_MISS", "DEVELOPING", "MONITOR")),
+    )
 
-    # --- DONE (from canonical store — stocks that hit T1 / T2 / STOP) ---
+    # --- Sheet 3: REJECTED (unchanged — rejected stage decisions) ---
+    _write_daily_sheet(wb.create_sheet("REJECTED"), DAILY_BUCKET_COLS, _by_bucket("REJECTED"))
+
+    # --- Sheet 4: REJECTED_SETUPS (merged setup-pattern rejects) ---
+    # Per user directive Q3(a): only surface rows where the setup was
+    # rejected. In the pipeline (daily_snapshot_job._bucket_setup), active
+    # setups are written to their own bucket AND the stage sheet routes
+    # rejected setups to REJECTED_SETUP. So we include:
+    #   * REJECTED_SETUP  (historical rejected-setup umbrella)
+    #   * BREAKOUT / MOMENTUM / PULLBACK / REVERSAL rows WHERE the stock's
+    #     current tracking_status indicates rejection (tracking_status is
+    #     None + stage is REJECTED) — which the pipeline no longer emits
+    #     for active setups but historical rows may contain.
+    # For simplicity + zero data loss we surface ALL setup-bucket rows in
+    # this sheet and let the "Setup Type" column tell the user which
+    # pattern each row represents. The user can filter by tracking_status
+    # to isolate rejected-only rows.
+    _write_daily_sheet(
+        wb.create_sheet("REJECTED_SETUPS"),
+        REJECTED_SETUP_COLS,
+        _by_bucket(("BREAKOUT", "MOMENTUM", "PULLBACK", "REVERSAL", "REJECTED_SETUP")),
+    )
+
+    # --- Sheet 5: DONE (from canonical store — T1/T2/STOP hit stocks) ---
     resolved = store.resolved_records()
     resolved_sorted = sorted(resolved, key=lambda r: (
         r.get("t2_hit_date") or r.get("stop_hit_date") or r.get("first_seen_date") or "",
@@ -1020,9 +1117,7 @@ def build_workbook(
     ), reverse=True)
     _write_sheet(wb.create_sheet("DONE"), RESOLVED_COLS, resolved_sorted)
 
-    # --- WEEKLY_SUMMARY: one row per bucket sheet with active + T1/T2/SL counts ---
-    #   Columns: Sheet | As Of | Week Start | Active (Now) | Tracking |
-    #            T1 Week | T2 Week | SL Week | T1 Overall | T2 Overall | SL Overall
+    # --- Sheet 6: WEEKLY_SUMMARY — per-sheet weekly counts ---
     ws_wk = wb.create_sheet("WEEKLY_SUMMARY")
     summary_rows = _build_weekly_summary_rows(snapshots, store)
     for col_idx, (header, _, _) in enumerate(WEEKLY_SUMMARY_COLS, start=1):
@@ -1040,7 +1135,7 @@ def build_workbook(
     if summary_rows:
         ws_wk.auto_filter.ref = f"A1:{get_column_letter(len(WEEKLY_SUMMARY_COLS))}{len(summary_rows) + 1}"
 
-    # --- WEEKLY_REVIEW (append-only per-category history — kept for continuity) ---
+    # --- Sheet 7: WEEKLY_REVIEW (append-only per-category history) ---
     weekly_rows = _read_weekly_history(weekly_history_path)
     ws_wk = wb.create_sheet("WEEKLY_REVIEW")
     for col_idx, (header, _, _) in enumerate(WEEKLY_COLS, start=1):
@@ -1063,15 +1158,17 @@ def build_workbook(
     if weekly_rows:
         ws_wk.auto_filter.ref = f"A1:{get_column_letter(len(WEEKLY_COLS))}{len(weekly_rows) + 1}"
 
-    # --- RESEARCH (from canonical store) ---
+    # --- Sheet 8: RESEARCH (from canonical store — unchanged) ---
     _write_sheet(
         wb.create_sheet("RESEARCH"),
         RESEARCH_COLS,
         sorted(store.records.values(), key=lambda r: r.get("symbol", "")),
     )
 
-    # --- Hidden helper sheets ---
+    # --- Sheet 9: _LEGEND (column glossary — rewritten for new layout) ---
     _write_legend(wb.create_sheet("_LEGEND"))
+
+    # Hidden diagnostic — only if there are records flagged NEEDS_REVIEW.
     needs_review = [r for r in store.records.values()
                     if r.get("migration_status") == MIGRATION_NEEDS_REVIEW]
     if needs_review:
