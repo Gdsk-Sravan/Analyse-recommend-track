@@ -754,6 +754,14 @@ LEGEND_LINES: Tuple[Tuple[str, str], ...] = (
                          "(upside gain). Pure display — read-only view of the numbers "
                          "already in the Stop / T1 / T2 columns. Formula: "
                          "(level - entry) / entry × 100."),
+    ("Days to T1 / T2 / Stop","New 2026-07-15. Number of calendar days from first_seen "
+                         "to the day the level was hit. Write-once — set on the run when the "
+                         "outcome fires and never changes after. Blank until the outcome "
+                         "fires. Pairs with the matching 'T1 Date / T2 Date / Stop Date' "
+                         "columns so you can see WHEN and HOW LONG in one glance. Same "
+                         "columns appear on BUY, WATCHLIST, REJECTED, REJECTED_SETUPS "
+                         "and DONE (durations flow from tracking_store → snapshot jsonl → "
+                         "workbook)."),
     ("Journey",          "Ordered list of stages the stock has been through, e.g. "
                          "DEVELOPING > NEAR_MISS > BUY."),
     ("Entry vs Current", "Every score has both an Entry (frozen at first_seen) and a Current "
