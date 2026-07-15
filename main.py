@@ -23,6 +23,34 @@ import itertools
 import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+# ─────────────────────────────────────────────────────────────────────────────
+# CRITICAL — module identity alias (2026-07-15)
+# ─────────────────────────────────────────────────────────────────────────────
+# When main.py is run as `python3 main.py`, Python registers this file as
+# `__main__` in sys.modules — there is NO module named `main` yet.
+#
+# Downstream helpers (circuit_tracker.py, etc.) do `from main import _log`
+# / `from main import fetch_price_data`. Without the alias below, Python
+# would import main.py AGAIN as a FRESH module named `main`, re-executing
+# the entire top-level scope — including the FRESH_START block that deletes
+# state files (tracking_workbook.xlsx, run_log_YYYYMMDD.txt, etc.).
+#
+# The alias below makes `main` resolve to the same module object as
+# `__main__`, so `from main import ...` becomes a no-op cached lookup and
+# the top-level code runs exactly once.
+#
+# Root cause proof (run #130 log, 2026-07-15):
+#   [23:35:11] [Snapshot] 120 rows → daily_snapshots/2026-07-15.jsonl
+#   [FRESH_START] Enabled — old tracker/audit/memory state will be ignored
+#   [FRESH_START] DELETED  run_log_20260715.txt (glob run_log_*.txt)
+#   [23:35:12] [circuit_tracker] log not found: run_log_20260715.txt
+#
+# The middle two lines have NO [HH:MM:SS] prefix because they came from
+# module-top-level `print()`, not `_log()`. That's the fingerprint of the
+# double-execution.
+if __name__ == "__main__" and "main" not in sys.modules:
+    sys.modules["main"] = sys.modules[__name__]
+
 try:
     from dotenv import load_dotenv
     load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), ".env"), override=False)
