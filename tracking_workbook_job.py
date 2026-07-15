@@ -396,8 +396,19 @@ DAILY_BUCKET_COLS: Tuple[Tuple[str, str, str], ...] = (
     ("MFE %",             "mfe_pct",               "pct"),
     ("MAE %",             "mae_pct",               "pct"),
     ("T1 Hit",            "t1_hit",                "bool"),
+    # 2026-07-15: duration-to-outcome columns — answer "how many calendar
+    # days did this stock take to reach T1 / T2 / Stop?" for every row in
+    # every daily sheet. Fields flow from tracking_store.py →
+    # daily_snapshot_job._row_from → this workbook. Blank until the outcome
+    # fires; write-once in the store, so rows never flicker after the hit.
+    ("T1 Date",           "t1_hit_date",           "date"),
+    ("Days to T1",        "days_to_t1",            "int"),
     ("T2 Hit",            "t2_hit",                "bool"),
+    ("T2 Date",           "t2_hit_date",           "date"),
+    ("Days to T2",        "days_to_t2",            "int"),
     ("Stop Hit",          "stop_hit",              "bool"),
+    ("Stop Date",         "stop_hit_date",         "date"),
+    ("Days to Stop",      "days_to_stop",          "int"),
     ("Status",            "tracking_status",       "text"),
     ("Fail Reasons",      "_fail_reasons_joined",  "text"),
 )
