@@ -17044,24 +17044,23 @@ def _run_pipeline_inner():
              + ("" if IS_SCHEDULED else "  (manual run — store NOT persisted)"))
 
         # ── STEP 2/3: snapshot + rebuild workbook ──────────────────────
-        # MANUAL: skip snapshot append, write workbook to scratch path.
-        # SCHEDULED: append snapshot, write to canonical tracking_workbook.xlsx.
-        if IS_SCHEDULED:
+        # 2026-07-15 (user directive):  workbook rebuild + Telegram send both
+        # gated behind IS_SCHEDULED. Manual runs seed the store in-memory,
+        # log preview stats, and STOP — no xlsx write, no snapshot append,
+        # no Telegram delivery. Rationale: manual runs are for testing
+        # pipeline logic, not for producing artefacts.
+        if not IS_SCHEDULED:
+            _log("[tracking_workbook] SKIPPED entirely (manual run — "
+                 "no snapshot append, no xlsx write, no Telegram send)")
+        else:
             _dsj.append_from_store(_store, run_date=_run_date)
             _xlsx_path = _Path("tracking_workbook.xlsx").resolve()
-        else:
-            _log("[daily_snapshot] SKIPPED (manual run — no snapshot append)")
-            _xlsx_path = _Path("tracking_workbook_manual_test.xlsx").resolve()
 
-        # ── STEP 2b (2026-07-13): weekly review history append ─────────
-        # Feeds the WEEKLY_REVIEW sheet inside tracking_workbook.xlsx.
-        # `append_weekly_history` is idempotent per (iso_week, category) —
-        # re-running the same week is a no-op, so calling it every evening
-        # is safe. First run in an ISO week writes the 6 category rows;
-        # subsequent evenings that week just log "skip (already appended)".
-        # MANUAL runs are skipped so we never pollute results/weekly_review_history.jsonl
-        # from a testing dispatch.
-        if IS_SCHEDULED:
+            # ── STEP 2b (2026-07-13): weekly review history append ─────────
+            # Feeds the WEEKLY_REVIEW sheet inside tracking_workbook.xlsx.
+            # `append_weekly_history` is idempotent per (iso_week, category)
+            # — re-running the same week is a no-op, so calling it every
+            # evening is safe.
             try:
                 import weekly_review_job as _wrj
                 _wrows = _wrj.append_weekly_history(_store)
@@ -17069,31 +17068,29 @@ def _run_pipeline_inner():
                      f"(idempotent — 0 means this ISO week is already recorded)")
             except Exception as _e_wrj:
                 _log(f"[weekly_review] non-fatal error: {_e_wrj}")
-        else:
-            _log("[weekly_review] SKIPPED (manual run — jsonl not touched)")
 
-        _twj.build_workbook(_store, _xlsx_path)
-        _log(f"[tracking_workbook] rebuilt {_xlsx_path.name}")
+            _twj.build_workbook(_store, _xlsx_path)
+            _log(f"[tracking_workbook] rebuilt {_xlsx_path.name}")
 
-        # ── STEP 4: Telegram delivery of the observation workbook ──────
-        try:
-            from scripts.notify_telegram_document import send_document as _send_doc
-            from datetime import datetime as _twb_dt
-            _stats = _store.stats()
-            _mode_tag = "" if IS_SCHEDULED else "  ⚠️ MANUAL TEST — state NOT saved"
-            _caption_lines = [
-                f"📊 Tracking Workbook — {_twb_dt.now().strftime('%Y-%m-%d %H:%M')}{_mode_tag}",
-                f"Total tracked: {_stats.get('total', 0)}"
-                f" · Active: {_stats.get('active', 0)}"
-                f" · T1: {_stats.get('t1_hit_active', 0)}"
-                f" · T2: {_stats.get('t2_hit', 0)}"
-                f" · Stopped: {_stats.get('stopped', 0) + _stats.get('stopped_after_t1', 0)}",
-                "16 sheets · append-only daily log · live refresh on rebuild",
-            ]
-            _rc = _send_doc(file_path=str(_xlsx_path), caption="\n".join(_caption_lines))
-            _log(f"[tracking_workbook] Telegram send rc={_rc}")
-        except Exception as _tex:
-            _log(f"[tracking_workbook] Telegram send failed (non-fatal): {_tex}")
+            # ── STEP 4: Telegram delivery of the observation workbook ──────
+            try:
+                from scripts.notify_telegram_document import send_document as _send_doc
+                from datetime import datetime as _twb_dt
+                _stats = _store.stats()
+                _caption_lines = [
+                    f"📊 Tracking Workbook — {_twb_dt.now().strftime('%Y-%m-%d %H:%M')}",
+                    f"Total tracked: {_stats.get('total', 0)}"
+                    f" · Active: {_stats.get('active', 0)}"
+                    f" · T1: {_stats.get('t1_hit_active', 0)}"
+                    f" · T2: {_stats.get('t2_hit', 0)}"
+                    f" · Stopped: {_stats.get('stopped', 0) + _stats.get('stopped_after_t1', 0)}",
+                    "9 sheets · append-only daily log · live refresh on rebuild",
+                ]
+                _rc = _send_doc(file_path=str(_xlsx_path),
+                                caption="\n".join(_caption_lines))
+                _log(f"[tracking_workbook] Telegram send rc={_rc}")
+            except Exception as _tex:
+                _log(f"[tracking_workbook] Telegram send failed (non-fatal): {_tex}")
     except Exception as _ex:
         _log(f"[tracking_workbook] non-fatal error: {_ex}")
 
@@ -17314,31 +17311,30 @@ def _run_pipeline_inner():
         _log(f"[circuit_tracker] non-fatal error: {_ct_exc}")
 
     # ── 17c. Circuit-tracker workbook build + Telegram delivery ('26-07-15) ──
-    # Rebuild the standalone circuit_tracker_workbook.xlsx from the current
-    # circuit_tracker.json state and (only on scheduled runs) send it to
-    # Telegram alongside tracking_workbook.xlsx.
+    # 2026-07-15 (user directive): BOTH the workbook write AND the Telegram
+    # send are gated behind IS_SCHEDULED. Manual runs do NOT touch the xlsx
+    # on disk and do NOT hit Telegram — same rule as tracking_workbook.
+    # Rationale: manual runs are for pipeline-logic testing; artefact
+    # generation is a scheduled-run responsibility only.
     #
-    # MANUAL run policy:
-    #   • We still REBUILD the workbook so you can eyeball layout locally.
-    #   • We do NOT send it — avoids polluting the Telegram channel with
-    #     dev-machine test runs.
+    # (The circuit_tracker.json store itself is already correctly gated
+    # inside circuit_tracker.run_circuit_tracker() via is_scheduled=IS_SCHEDULED.)
     #
     # Fully non-fatal: any exception here logs and continues.
-    try:
-        import circuit_tracker_workbook as _ctwb
-        from pathlib import Path as _CtwbPath
-        if IS_SCHEDULED:
+    if not IS_SCHEDULED:
+        _log("[circuit_tracker_workbook] SKIPPED entirely (manual run — "
+             "no xlsx write, no Telegram send)")
+    else:
+        try:
+            import circuit_tracker_workbook as _ctwb
+            from pathlib import Path as _CtwbPath
             _ctwb_path = _CtwbPath("circuit_tracker_workbook.xlsx").resolve()
-        else:
-            _ctwb_path = _CtwbPath("circuit_tracker_workbook_manual_test.xlsx").resolve()
-        _ctwb.build_workbook(_ctwb_path)
-        _log(f"[circuit_tracker_workbook] rebuilt {_ctwb_path.name}")
+            _ctwb.build_workbook(_ctwb_path)
+            _log(f"[circuit_tracker_workbook] rebuilt {_ctwb_path.name}")
 
-        if IS_SCHEDULED:
             try:
                 from scripts.notify_telegram_document import send_document as _send_doc
                 from datetime import datetime as _cwb_dt
-                # Load a small stats blurb for the caption.
                 try:
                     _ct_stats = _circuit_tracker.summary_stats() or {}
                 except Exception:
@@ -17356,10 +17352,8 @@ def _run_pipeline_inner():
             except Exception as _cwb_tex:
                 _log(f"[circuit_tracker_workbook] Telegram send failed "
                      f"(non-fatal): {_cwb_tex}")
-        else:
-            _log("[circuit_tracker_workbook] MANUAL run — Telegram send SKIPPED")
-    except Exception as _cwb_ex:
-        _log(f"[circuit_tracker_workbook] non-fatal error: {_cwb_ex}")
+        except Exception as _cwb_ex:
+            _log(f"[circuit_tracker_workbook] non-fatal error: {_cwb_ex}")
 
     # ── 18. Done ──
     _log("[DONE] Pipeline complete.")
