@@ -121,6 +121,17 @@ def _snap_from_record(rec: Dict[str, Any], run_date: str, bucket: str,
         "t1_hit": rec.get("t1_hit"),
         "t2_hit": rec.get("t2_hit"),
         "stop_hit": rec.get("stop_hit"),
+        # 2026-07-15: propagate durations + hit dates so all daily sheets
+        # (BUY / WATCHLIST / REJECTED / REJECTED_SETUPS) can show how long
+        # each stock took to reach T1 / T2 / Stop. These fields are already
+        # tracked in tracking_store.py (write-once when the outcome fires).
+        # None until the outcome fires — rendered blank in the workbook.
+        "t1_hit_date":   rec.get("t1_hit_date"),
+        "t2_hit_date":   rec.get("t2_hit_date"),
+        "stop_hit_date": rec.get("stop_hit_date"),
+        "days_to_t1":    rec.get("days_to_t1"),
+        "days_to_t2":    rec.get("days_to_t2"),
+        "days_to_stop":  rec.get("days_to_stop"),
         "tracking_status": rec.get("tracking_status"),
         "fail_reasons": entry.get("fail_reasons") or [],
     }
