@@ -17281,6 +17281,29 @@ def _run_pipeline_inner():
     except Exception as _snap_exc:
         _log(f"  [WARN] daily snapshot writer failed (non-fatal): {_snap_exc}")
 
+    # ── 17b. Circuit-move tracker (2026-07-15) ──
+    # Tracks stocks that the pipeline SKIPPED due to |1-day return| > 15%
+    # (the "circuit move" hard filter in compute_all_factors). Each skipped
+    # stock is added as a NEW parallel track (SYMBOL#YYYYMMDD track_id) and
+    # tracked for 30 calendar days forward to test whether the filter is
+    # throwing away real momentum (POS circuits) or protecting against
+    # pump-and-dumps. NEG circuits are tracked in parallel to see whether
+    # they bounce.
+    #
+    # Fully isolated module — cannot break the main pipeline. Non-fatal on
+    # any error. Manual runs do NOT persist state.
+    try:
+        import circuit_tracker as _circuit_tracker
+        _ct_log = f"run_log_{ist_today().strftime('%Y%m%d')}.txt"
+        _ct_counts = _circuit_tracker.run_circuit_tracker(
+            log_path     = _ct_log,
+            as_of_date   = ist_today().isoformat(),
+            is_scheduled = IS_SCHEDULED,
+        )
+        _log(f"[circuit_tracker] counts: {_ct_counts}")
+    except Exception as _ct_exc:
+        _log(f"[circuit_tracker] non-fatal error: {_ct_exc}")
+
     # ── 18. Done ──
     _log("[DONE] Pipeline complete.")
     _log(f"  BUY: {len(buys)} | WATCHLIST: {len(watchlist_stocks)} | SHORTS: {len(shorts)}")
