@@ -528,6 +528,14 @@ if FRESH_START:
         "results/tracking_events.jsonl",   # per-upsert audit log
         "results/weekly_review_history.jsonl",  # weekly summary append log
         "results/daily_snapshots.jsonl",   # daily bucket-append log
+        # ── circuit-move tracker (2026-07-15): user directive "start fresh" ──
+        # The circuit-tracker JSON store, its dated backups, and the rebuilt
+        # workbook must ALL be wiped on FRESH_START so the 30-day tracking
+        # window starts from scratch. main.py's post-run step will re-seed
+        # the store from today's run_log_YYYYMMDD.txt and rebuild the workbook.
+        "results/circuit_tracker.json",             # canonical circuit-track store
+        "circuit_tracker_workbook.xlsx",            # 2-sheet standalone workbook
+        "circuit_tracker_workbook_manual_test.xlsx",  # scratch file (manual dev runs)
         # marker file (a hard wipe guarantees no cross-day leak on fresh start)
         ".fresh_start_marker",
     ]
@@ -541,6 +549,11 @@ if FRESH_START:
         "decision_audit_*.jsonl",
         "run_log_*.txt",
         "*.stale_*",                       # sweep legacy .stale_<date>* residue
+        # 2026-07-15: wipe all dated circuit-tracker backups on FRESH_START so
+        # the 30-day tracking window truly starts from scratch. The primary
+        # circuit_tracker.json is deleted by the file list above; this catches
+        # results/backups/circuit_tracker.YYYY-MM-DD.bak.json rollups.
+        "results/backups/circuit_tracker.*.bak.json",
     ]
 
     # (C) DOCUMENTED PRESERVATION LIST — files that FRESH_START explicitly
@@ -16811,17 +16824,13 @@ def _run_pipeline_inner():
         )
         message = banner + message
     send_telegram(message)
-    # Send the CSV attachment (v2 only). Non-fatal on failure.
-    if _csv_path:
-        try:
-            _csv_caption = (
-                f"📎 Full universe scan · {os.path.basename(_csv_path)}\n"
-                f"Every stock with score, verdict, reject reason. "
-                f"Open in Excel to sort/filter."
-            )
-            send_telegram_document(_csv_path, caption=_csv_caption)
-        except Exception as _e_doc:
-            _log(f"[telegram] CSV send failed (non-fatal): {_e_doc}")
+    # 2026-07-15: CSV Telegram attachment REMOVED (user directive — 3 sends
+    # → 2 sends). The daily CSV is still written to disk by
+    # _v2_write_daily_csv() above and picked up by the CI artifact upload,
+    # so nothing is lost — only the redundant Telegram delivery is gone.
+    # The 2 kept Telegram attachments are:
+    #   1. tracking_workbook.xlsx        (sent below, section 15)
+    #   2. circuit_tracker_workbook.xlsx (sent below, section 17c)
     # Send BUY signals to dedicated buy channel
     send_buy_telegram(buys, regime, timestamp)
 
@@ -17303,6 +17312,54 @@ def _run_pipeline_inner():
         _log(f"[circuit_tracker] counts: {_ct_counts}")
     except Exception as _ct_exc:
         _log(f"[circuit_tracker] non-fatal error: {_ct_exc}")
+
+    # ── 17c. Circuit-tracker workbook build + Telegram delivery ('26-07-15) ──
+    # Rebuild the standalone circuit_tracker_workbook.xlsx from the current
+    # circuit_tracker.json state and (only on scheduled runs) send it to
+    # Telegram alongside tracking_workbook.xlsx.
+    #
+    # MANUAL run policy:
+    #   • We still REBUILD the workbook so you can eyeball layout locally.
+    #   • We do NOT send it — avoids polluting the Telegram channel with
+    #     dev-machine test runs.
+    #
+    # Fully non-fatal: any exception here logs and continues.
+    try:
+        import circuit_tracker_workbook as _ctwb
+        from pathlib import Path as _CtwbPath
+        if IS_SCHEDULED:
+            _ctwb_path = _CtwbPath("circuit_tracker_workbook.xlsx").resolve()
+        else:
+            _ctwb_path = _CtwbPath("circuit_tracker_workbook_manual_test.xlsx").resolve()
+        _ctwb.build_workbook(_ctwb_path)
+        _log(f"[circuit_tracker_workbook] rebuilt {_ctwb_path.name}")
+
+        if IS_SCHEDULED:
+            try:
+                from scripts.notify_telegram_document import send_document as _send_doc
+                from datetime import datetime as _cwb_dt
+                # Load a small stats blurb for the caption.
+                try:
+                    _ct_stats = _circuit_tracker.summary_stats() or {}
+                except Exception:
+                    _ct_stats = {}
+                _pos = _ct_stats.get("pos", {}) or {}
+                _neg = _ct_stats.get("neg", {}) or {}
+                _caption = (
+                    f"📈 Circuit Tracker — {_cwb_dt.now().strftime('%Y-%m-%d %H:%M')}\n"
+                    f"POS active: {_pos.get('active', 0)} · retired: {_pos.get('retired', 0)}\n"
+                    f"NEG active: {_neg.get('active', 0)} · retired: {_neg.get('retired', 0)}\n"
+                    f"30-day forward-return study of stocks skipped by ±15% circuit filter"
+                )
+                _rc = _send_doc(file_path=str(_ctwb_path), caption=_caption)
+                _log(f"[circuit_tracker_workbook] Telegram send rc={_rc}")
+            except Exception as _cwb_tex:
+                _log(f"[circuit_tracker_workbook] Telegram send failed "
+                     f"(non-fatal): {_cwb_tex}")
+        else:
+            _log("[circuit_tracker_workbook] MANUAL run — Telegram send SKIPPED")
+    except Exception as _cwb_ex:
+        _log(f"[circuit_tracker_workbook] non-fatal error: {_cwb_ex}")
 
     # ── 18. Done ──
     _log("[DONE] Pipeline complete.")
