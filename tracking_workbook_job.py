@@ -370,10 +370,10 @@ DAILY_BUCKET_COLS: Tuple[Tuple[str, str, str], ...] = (
     ("Current Stage",     "current_stage",         "text"),
     ("Setup",             "setup_type",            "text"),
     ("Sector",            "sector",                "text"),
-    ("Regime",            "regime",                "text"),
     ("First Seen",        "first_seen_date",       "date"),
     ("Days Active",       "days_active",           "int"),
     ("Journey",           "_journey_joined",       "text"),
+    ("Entry Regime",      "regime",                "text"),
     ("Entry Confidence",  "entry_confidence",      "one_dec"),
     ("Current Confidence","current_confidence",    "one_dec"),
     ("Entry TQ",          "entry_tq",              "one_dec"),
@@ -386,6 +386,12 @@ DAILY_BUCKET_COLS: Tuple[Tuple[str, str, str], ...] = (
     ("T1",                "t1_price",              "two_dec"),
     ("T2",                "t2_price",              "two_dec"),
     ("Stop",              "stop_price",            "two_dec"),
+    # Fix #2 (2026-07-15): display-only columns showing % distance from
+    # entry for Stop / T1 / T2. Pure math — no strategy change. Helps eye-
+    # test whether a target/stop is realistic BEFORE committing capital.
+    ("Stop %",            "_stop_pct_from_entry",  "pct"),
+    ("T1 %",              "_t1_pct_from_entry",    "pct"),
+    ("T2 %",              "_t2_pct_from_entry",    "pct"),
     ("Current Price",     "current_price",         "two_dec"),
     ("MFE %",             "mfe_pct",               "pct"),
     ("MAE %",             "mae_pct",               "pct"),
@@ -468,6 +474,37 @@ def _write_daily_sheet(
             ) else "OTHER"
         else:
             r2["_setup_type_display"] = str(r.get("setup_type") or "") or None
+
+        # Fix #2 (2026-07-15): compute % distance from entry for Stop / T1 / T2.
+        # Display-only — never affects trading math. Formula:
+        #   Stop %  =  (stop  - entry) / entry * 100   (negative = downside risk)
+        #   T1   %  =  (T1    - entry) / entry * 100   (positive = upside gain)
+        #   T2   %  =  (T2    - entry) / entry * 100   (positive = upside gain)
+        # Rendered as e.g. "-2.35%" / "+3.14%" / "+6.28%" so the user sees at
+        # a glance whether the target/stop is realistic before committing.
+        try:
+            _entry = float(r.get("reference_entry_price") or 0.0)
+        except (TypeError, ValueError):
+            _entry = 0.0
+        if _entry > 0:
+            for _lvl_key, _dst_key in (
+                ("stop_price", "_stop_pct_from_entry"),
+                ("t1_price",   "_t1_pct_from_entry"),
+                ("t2_price",   "_t2_pct_from_entry"),
+            ):
+                try:
+                    _lvl = float(r.get(_lvl_key) or 0.0)
+                except (TypeError, ValueError):
+                    _lvl = 0.0
+                if _lvl > 0:
+                    r2[_dst_key] = round((_lvl - _entry) / _entry * 100.0, 2)
+                else:
+                    r2[_dst_key] = None
+        else:
+            r2["_stop_pct_from_entry"] = None
+            r2["_t1_pct_from_entry"]   = None
+            r2["_t2_pct_from_entry"]   = None
+
         prepared.append(r2)
 
     # Header.
@@ -696,6 +733,16 @@ LEGEND_LINES: Tuple[Tuple[str, str], ...] = (
     # ------ Column glossary ------
     ("MFE / MAE",        "Maximum Favorable / Adverse Excursion since first_seen. Monotonic — "
                          "MFE only goes up, MAE only goes down."),
+    ("Entry Regime",     "New 2026-07-15 (Fix #19). Nifty market regime AT THE TIME the "
+                         "record was first seen. Values: STRONG_BULL | BULL | SIDEWAYS | "
+                         "TRANSITION | HIGH_VOLATILITY | BEAR | STRONG_BEAR. Enables "
+                         "later weekly-review analysis: 'what's my win rate for BUYs born "
+                         "in a BEAR regime vs a BULL regime?' Frozen at first_seen."),
+    ("Stop % / T1 % / T2 %","New 2026-07-15 (Fix #2). % distance from entry price for each "
+                         "level. Stop % is negative (downside risk); T1/T2 % are positive "
+                         "(upside gain). Pure display — read-only view of the numbers "
+                         "already in the Stop / T1 / T2 columns. Formula: "
+                         "(level - entry) / entry × 100."),
     ("Journey",          "Ordered list of stages the stock has been through, e.g. "
                          "DEVELOPING > NEAR_MISS > BUY."),
     ("Entry vs Current", "Every score has both an Entry (frozen at first_seen) and a Current "
