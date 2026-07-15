@@ -1212,6 +1212,19 @@ def build_workbook(
         sorted(store.records.values(), key=lambda r: r.get("symbol", "")),
     )
 
+    # --- Sheet 8b: CIRCUIT_TRACKER (2026-07-15) ---
+    # Tracks stocks the pipeline SKIPPED due to |1-day return| > 15%.
+    # Two views on the same data:
+    #   CIRCUIT_TRACKER         — milestone columns (D+1, D+3, D+5, D+7,
+    #                              D+10, D+15, D+20, D+25, D+30) + summary strip
+    #   CIRCUIT_TRACKER_DETAIL  — all 30 daily columns (D+1 through D+30)
+    # Fully non-fatal: if circuit_tracker.py is missing or the JSON is empty,
+    # the sheets are created empty rather than aborting the workbook build.
+    try:
+        _write_circuit_sheets(wb)
+    except Exception as _ct_exc:
+        print(f"[tracking_workbook_job] circuit sheet build failed (non-fatal): {_ct_exc}")
+
     # --- Sheet 9: _LEGEND (column glossary — rewritten for new layout) ---
     _write_legend(wb.create_sheet("_LEGEND"))
 
