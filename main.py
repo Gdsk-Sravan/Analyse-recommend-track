@@ -16904,6 +16904,62 @@ def _run_pipeline_inner():
             except Exception as _e_up:
                 _log(f"[tracking_store] upsert REJECTED {_r.get('symbol')} failed: {_e_up}")
 
+        # ── STEP 1b (2026-07-15): refresh price-derived fields for ALL tracked symbols ──
+        # Bug fix: without this call, current_price / MFE / MAE / T1 / T2 / STOP
+        # detection were only ever running for symbols in today's decision batch.
+        # Symbols already tracked from earlier days would have their prices frozen
+        # forever, and T1/T2/STOP hit flags would never fire. This block feeds
+        # today's OHLC bar for every currently-tracked non-terminal symbol into
+        # store.update_prices(), which then advances MFE (monotone up), MAE
+        # (monotone down), sets T1/T2/STOP hit_date on first crossing (write-once),
+        # advances days_active, and refreshes current.current_price.
+        #
+        # Skipped on MANUAL runs (no persistence).
+        # Non-fatal: any yfinance failure for a single symbol is logged and
+        # skipped; the whole block is wrapped in try/except so a network glitch
+        # cannot break the evening pipeline.
+        if IS_SCHEDULED:
+            try:
+                _bars: dict = {}
+                _tracked_syms = [
+                    _rec.get("symbol")
+                    for _rec in _store.records.values()
+                    if _rec.get("symbol")
+                    and _rec.get("tracking_status") not in (
+                        "T2_HIT", "STOPPED", "STOPPED_AFTER_T1"
+                    )
+                ]
+                _log(f"[tracking_store] update_prices: fetching bars for "
+                     f"{len(_tracked_syms)} active tracked symbols")
+                for _tsym in _tracked_syms:
+                    try:
+                        _df_px = fetch_price_data(_tsym, period="5d")
+                        if _df_px is None or _df_px.empty:
+                            continue
+                        _last = _df_px.iloc[-1]
+                        _hi = float(_last.get("High") if "High" in _df_px.columns
+                                    else _last.get("high", 0)) or 0.0
+                        _lo = float(_last.get("Low") if "Low" in _df_px.columns
+                                    else _last.get("low", 0)) or 0.0
+                        _cl = float(_last.get("Close") if "Close" in _df_px.columns
+                                    else _last.get("close", 0)) or 0.0
+                        if _hi > 0 and _lo > 0:
+                            _bars[_tsym] = {"high": _hi, "low": _lo, "close": _cl}
+                    except Exception as _e_bar:
+                        _log(f"[tracking_store] price fetch failed for "
+                             f"{_tsym}: {_e_bar}")
+                        continue
+                if _bars:
+                    _store.update_prices(_bars, as_of=_run_date)
+                    _log(f"[tracking_store] update_prices: applied {len(_bars)} bars"
+                         f"  (skipped {len(_tracked_syms) - len(_bars)} due to fetch failure/insufficient data)")
+                else:
+                    _log("[tracking_store] update_prices: no bars fetched — MFE/MAE/T1/T2/STOP not advanced this run")
+            except Exception as _e_upd:
+                _log(f"[tracking_store] update_prices non-fatal error: {_e_upd}")
+        else:
+            _log("[tracking_store] update_prices SKIPPED (manual run)")
+
         _store.save() if IS_SCHEDULED else None
         _log(f"[tracking_store] seeded: {_seed_counts}"
              + ("" if IS_SCHEDULED else "  (manual run — store NOT persisted)"))
