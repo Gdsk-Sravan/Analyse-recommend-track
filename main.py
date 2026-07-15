@@ -535,7 +535,11 @@ if FRESH_START:
         # the store from today's run_log_YYYYMMDD.txt and rebuild the workbook.
         "results/circuit_tracker.json",             # canonical circuit-track store
         "circuit_tracker_workbook.xlsx",            # 2-sheet standalone workbook
-        "circuit_tracker_workbook_manual_test.xlsx",  # scratch file (manual dev runs)
+        # 2026-07-15: manual runs no longer produce *_manual_test.xlsx
+        # files at all (workbook build is now scheduled-only), but wipe
+        # any legacy scratch files left over from earlier manual runs.
+        "tracking_workbook_manual_test.xlsx",         # legacy scratch (pre-'26-07-15)
+        "circuit_tracker_workbook_manual_test.xlsx",  # legacy scratch (pre-'26-07-15)
         # marker file (a hard wipe guarantees no cross-day leak on fresh start)
         ".fresh_start_marker",
     ]
@@ -16854,19 +16858,18 @@ def _run_pipeline_inner():
     #   4. Send tracking_workbook.xlsx to Telegram (SINGLE workbook delivery —
     #      shadow_master pipeline fully removed 2026-07-13).
     #
-    # 2026-07-13 · MANUAL-RUN GATE:
-    #   • SCHEDULED run → full pipeline: seed → store.save() → snapshot append
-    #                     → weekly-review append → build canonical
-    #                     tracking_workbook.xlsx → Telegram.
-    #   • MANUAL   run → PREVIEW ONLY:  no store.save(), no snapshot append,
-    #                     no weekly-review append (jsonl untouched), workbook
-    #                     built to tracking_workbook_manual_test.xlsx (scratch
-    #                     file, not the canonical one), Telegram send with
-    #                     clear ⚠️ MANUAL banner in caption. This lets you
-    #                     test Telegram wiring + workbook build logic without
-    #                     touching production state.
-    # All four steps are idempotent — safe to re-run same-day. Non-fatal on
-    # any error.
+    # 2026-07-15 · MANUAL-RUN GATE (tightened from 2026-07-13):
+    #   • SCHEDULED run → full pipeline: seed → store.save() → snapshot
+    #                    append → weekly-review append → build canonical
+    #                    tracking_workbook.xlsx → Telegram send.
+    #   • MANUAL   run → IN-MEMORY SEED ONLY. No store.save(), no snapshot
+    #                    append, no weekly-review append, NO xlsx write,
+    #                    NO Telegram send. The same rule applies to the
+    #                    circuit-tracker workbook block (§17c below).
+    #                    Manual runs are for testing pipeline logic — they
+    #                    do NOT produce artefacts on disk or push to chat.
+    # All scheduled steps are idempotent — safe to re-run same-day.
+    # Non-fatal on any error.
     try:
         from tracking_store import TrackingStore as _TS
         import daily_snapshot_job as _dsj
