@@ -1,1 +1,142 @@
-{}
+{
+  "ACUTAAS.NS": {
+    "history": [
+      {
+        "date": "2026-07-16",
+        "fails": [
+          "TQ_FAIL(got 67.8, need 68)"
+        ],
+        "conf": 70.38
+      }
+    ]
+  },
+  "KAJARIACER.NS": {
+    "history": [
+      {
+        "date": "2026-07-16",
+        "fails": [
+          "SECTOR_RANK_TOO_LOW(rank=8>top6)",
+          "EVENT_BLOCK_RESULTS_IN_5D"
+        ],
+        "conf": 71.82
+      }
+    ]
+  },
+  "OFSS.NS": {
+    "history": [
+      {
+        "date": "2026-07-16",
+        "fails": [
+          "RR_FAIL(got 1.52, need 1.7)"
+        ],
+        "conf": 74.68
+      }
+    ]
+  },
+  "POLYMED.NS": {
+    "history": [
+      {
+        "date": "2026-07-16",
+        "fails": [
+          "TQ_FAIL(got 65.2, need 68)"
+        ],
+        "conf": 71.09
+      }
+    ]
+  },
+  "BEPL.NS": {
+    "history": [
+      {
+        "date": "2026-07-16",
+        "fails": [
+          "CONF_FAIL(got 65.8, need 70)",
+          "RR_FAIL(got 1.38, need 1.7)"
+        ],
+        "conf": 65.75
+      }
+    ]
+  },
+  "DIXON.NS": {
+    "history": [
+      {
+        "date": "2026-07-16",
+        "fails": [
+          "CONF_FAIL(got 63.6, need 70)",
+          "RR_FAIL(got 1.44, need 1.7)"
+        ],
+        "conf": 63.56999999999999
+      }
+    ]
+  },
+  "COSMOFIRST.NS": {
+    "history": [
+      {
+        "date": "2026-07-16",
+        "fails": [
+          "CONF_FAIL(got 53.4, need 70)"
+        ],
+        "conf": 53.4
+      }
+    ]
+  },
+  "IPCALAB.NS": {
+    "history": [
+      {
+        "date": "2026-07-16",
+        "fails": [
+          "CONF_FAIL(got 47.3, need 70)",
+          "RR_FAIL(got 1.40, need 1.7)"
+        ],
+        "conf": 47.33
+      }
+    ]
+  },
+  "TIMETECHNO.NS": {
+    "history": [
+      {
+        "date": "2026-07-16",
+        "fails": [
+          "CONF_FAIL(got 46.0, need 70)",
+          "RR_FAIL(got 1.44, need 1.7)"
+        ],
+        "conf": 45.97
+      }
+    ]
+  },
+  "DIVISLAB.NS": {
+    "history": [
+      {
+        "date": "2026-07-16",
+        "fails": [
+          "CONF_FAIL(got 45.4, need 70)",
+          "RR_FAIL(got 1.41, need 1.7)"
+        ],
+        "conf": 45.449999999999996
+      }
+    ]
+  },
+  "WELCORP.NS": {
+    "history": [
+      {
+        "date": "2026-07-16",
+        "fails": [
+          "TQ_FAIL(got 57.2, need 68)",
+          "RR_FAIL(got 1.44, need 1.7)"
+        ],
+        "conf": 75.95
+      }
+    ]
+  },
+  "AEGISLOG.NS": {
+    "history": [
+      {
+        "date": "2026-07-16",
+        "fails": [
+          "CONF_FAIL(got 69.6, need 70)",
+          "TQ_FAIL(got 49.7, need 68)"
+        ],
+        "conf": 69.57000000000001
+      }
+    ]
+  }
+}
