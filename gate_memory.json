@@ -136,6 +136,26 @@
           "TQ_FAIL(got 49.7, need 68)"
         ],
         "conf": 69.57000000000001
+      },
+      {
+        "date": "2026-07-17",
+        "fails": [
+          "CONF_FAIL(got 65.0, need 83)",
+          "TQ_FAIL(got 45.4, need 73)"
+        ],
+        "conf": 64.96000000000001
+      }
+    ]
+  },
+  "BHARATFORG.NS": {
+    "history": [
+      {
+        "date": "2026-07-17",
+        "fails": [
+          "CONF_FAIL(got 62.5, need 83)",
+          "TQ_FAIL(got 71.8, need 73)"
+        ],
+        "conf": 62.510000000000005
       }
     ]
   }
