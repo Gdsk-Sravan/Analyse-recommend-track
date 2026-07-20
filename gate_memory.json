@@ -7,6 +7,14 @@
           "TQ_FAIL(got 67.8, need 68)"
         ],
         "conf": 70.38
+      },
+      {
+        "date": "2026-07-20",
+        "fails": [
+          "CONF_FAIL(got 66.8, need 70)",
+          "TQ_FAIL(got 60.3, need 68)"
+        ],
+        "conf": 66.825
       }
     ]
   },
@@ -41,6 +49,14 @@
           "TQ_FAIL(got 65.2, need 68)"
         ],
         "conf": 71.09
+      },
+      {
+        "date": "2026-07-20",
+        "fails": [
+          "CONF_FAIL(got 66.6, need 70)",
+          "TQ_FAIL(got 67.7, need 68)"
+        ],
+        "conf": 66.59
       }
     ]
   },
@@ -53,6 +69,14 @@
           "RR_FAIL(got 1.38, need 1.7)"
         ],
         "conf": 65.75
+      },
+      {
+        "date": "2026-07-20",
+        "fails": [
+          "TQ_FAIL(got 59.9, need 68)",
+          "RR_FAIL(got 1.45, need 1.7)"
+        ],
+        "conf": 73.815
       }
     ]
   },
@@ -112,6 +136,13 @@
           "RR_FAIL(got 1.41, need 1.7)"
         ],
         "conf": 45.449999999999996
+      },
+      {
+        "date": "2026-07-20",
+        "fails": [
+          "RR_FAIL(got 1.41, need 1.7)"
+        ],
+        "conf": 74.345
       }
     ]
   },
@@ -144,6 +175,14 @@
           "TQ_FAIL(got 45.4, need 73)"
         ],
         "conf": 64.96000000000001
+      },
+      {
+        "date": "2026-07-20",
+        "fails": [
+          "CONF_FAIL(got 69.3, need 70)",
+          "TQ_FAIL(got 59.3, need 68)"
+        ],
+        "conf": 69.35
       }
     ]
   },
@@ -156,6 +195,167 @@
           "TQ_FAIL(got 71.8, need 73)"
         ],
         "conf": 62.510000000000005
+      }
+    ]
+  },
+  "COMSYN.NS": {
+    "history": [
+      {
+        "date": "2026-07-20",
+        "fails": [
+          "SECTOR_RANK_TOO_LOW(rank=8>top6)"
+        ],
+        "conf": 76.13
+      }
+    ]
+  },
+  "RADICO.NS": {
+    "history": [
+      {
+        "date": "2026-07-20",
+        "fails": [
+          "SECTOR_RANK_TOO_LOW(rank=7>top6)"
+        ],
+        "conf": 72.81
+      }
+    ]
+  },
+  "TALBROAUTO.NS": {
+    "history": [
+      {
+        "date": "2026-07-20",
+        "fails": [
+          "SECTOR_RANK_TOO_LOW(rank=11>top6)"
+        ],
+        "conf": 73.15
+      }
+    ]
+  },
+  "THYROCARE.NS": {
+    "history": [
+      {
+        "date": "2026-07-20",
+        "fails": [
+          "SECTOR_RANK_TOO_LOW(rank=15>top6)"
+        ],
+        "conf": 70.85
+      }
+    ]
+  },
+  "ICICIBANK.NS": {
+    "history": [
+      {
+        "date": "2026-07-20",
+        "fails": [
+          "CONF_FAIL(got 69.2, need 70)",
+          "RR_FAIL(got 1.39, need 1.7)"
+        ],
+        "conf": 69.21000000000001
+      }
+    ]
+  },
+  "FEDERALBNK.NS": {
+    "history": [
+      {
+        "date": "2026-07-20",
+        "fails": [
+          "CONF_FAIL(got 68.1, need 70)",
+          "RR_FAIL(got 1.41, need 1.7)"
+        ],
+        "conf": 68.10000000000001
+      }
+    ]
+  },
+  "LLOYDSME.NS": {
+    "history": [
+      {
+        "date": "2026-07-20",
+        "fails": [
+          "CONF_FAIL(got 67.1, need 70)",
+          "RR_FAIL(got 1.43, need 1.7)"
+        ],
+        "conf": 67.07
+      }
+    ]
+  },
+  "PPLPHARMA.NS": {
+    "history": [
+      {
+        "date": "2026-07-20",
+        "fails": [
+          "CONF_FAIL(got 66.3, need 70)"
+        ],
+        "conf": 66.32
+      }
+    ]
+  },
+  "IRISDOREME.NS": {
+    "history": [
+      {
+        "date": "2026-07-20",
+        "fails": [
+          "SECTOR_RANK_TOO_LOW(rank=8>top6)"
+        ],
+        "conf": 74.4
+      }
+    ]
+  },
+  "ORCHPHARMA.NS": {
+    "history": [
+      {
+        "date": "2026-07-20",
+        "fails": [
+          "CONF_FAIL(got 65.3, need 70)",
+          "TQ_FAIL(got 61.2, need 68)"
+        ],
+        "conf": 65.26
+      }
+    ]
+  },
+  "KAMDHENU.NS": {
+    "history": [
+      {
+        "date": "2026-07-20",
+        "fails": [
+          "CONF_FAIL(got 49.5, need 70)",
+          "TQ_FAIL(got 66.3, need 68)"
+        ],
+        "conf": 49.5
+      }
+    ]
+  },
+  "INDIAGLYCO.NS": {
+    "history": [
+      {
+        "date": "2026-07-20",
+        "fails": [
+          "CONF_FAIL(got 48.8, need 70)",
+          "TQ_FAIL(got 66.9, need 68)"
+        ],
+        "conf": 48.82
+      }
+    ]
+  },
+  "CHENNPETRO.NS": {
+    "history": [
+      {
+        "date": "2026-07-20",
+        "fails": [
+          "CONF_FAIL(got 48.3, need 70)"
+        ],
+        "conf": 48.32
+      }
+    ]
+  },
+  "JGCHEM.NS": {
+    "history": [
+      {
+        "date": "2026-07-20",
+        "fails": [
+          "CONF_FAIL(got 36.1, need 70)",
+          "RR_FAIL(got 1.39, need 1.7)"
+        ],
+        "conf": 36.12
       }
     ]
   }
