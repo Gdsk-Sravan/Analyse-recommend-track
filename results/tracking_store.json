@@ -1,15 +1,15 @@
 {
-  "last_saved": "2026-07-20T23:31:55",
+  "last_saved": "2026-07-21T19:21:11",
   "records": {
     "20MICRONS.NS_20260717": {
       "created_at": "2026-07-17",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 206.27,
+        "current_price": 211.01,
         "opportunity_score": null,
         "rr": null,
-        "stage": "REJECTED",
+        "stage": "NEAR_MISS",
         "tq": null
       },
       "days_active": 0,
@@ -84,16 +84,17 @@
       },
       "first_seen_date": "2026-07-17",
       "journey_path": [
-        "REJECTED"
+        "REJECTED",
+        "NEAR_MISS"
       ],
-      "last_stage_change_date": "2026-07-17",
+      "last_stage_change_date": "2026-07-21",
       "mae_pct": 0.0,
       "max_price_seen": 204.64,
       "mfe_pct": 0.0,
       "migration_status": "NATIVE",
       "min_price_seen": 204.64,
-      "previous_stage": null,
-      "stage_change_count": 0,
+      "previous_stage": "REJECTED",
+      "stage_change_count": 1,
       "stop_hit": false,
       "stop_hit_date": null,
       "strategy_version": "V1_FREEZE_20260711",
@@ -104,7 +105,7 @@
       "t2_hit_date": null,
       "tracking_id": "20MICRONS.NS_20260717",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     },
     "63MOONS.NS_20260717": {
       "created_at": "2026-07-17",
@@ -212,9 +213,9 @@
     "AARTIDRUGS.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 418.0,
+        "current_price": 426.9,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -310,7 +311,7 @@
       "t2_hit_date": null,
       "tracking_id": "AARTIDRUGS.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     },
     "ABB.NS_20260716": {
       "created_at": "2026-07-16",
@@ -524,12 +525,12 @@
     "ACUTAAS.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 3656.2,
+        "current_price": 3677.0,
         "opportunity_score": null,
         "rr": null,
-        "stage": "DEVELOPING",
+        "stage": "REJECTED",
         "tq": null
       },
       "days_active": 0,
@@ -604,16 +605,17 @@
       "journey_path": [
         "NEAR_MISS",
         "REJECTED",
-        "DEVELOPING"
+        "DEVELOPING",
+        "REJECTED"
       ],
-      "last_stage_change_date": "2026-07-20",
+      "last_stage_change_date": "2026-07-21",
       "mae_pct": 0.0,
       "max_price_seen": 3583.8,
       "mfe_pct": 0.0,
       "migration_status": "NATIVE",
       "min_price_seen": 3583.8,
-      "previous_stage": "REJECTED",
-      "stage_change_count": 2,
+      "previous_stage": "DEVELOPING",
+      "stage_change_count": 3,
       "stop_hit": false,
       "stop_hit_date": null,
       "strategy_version": "V1_FREEZE_20260711",
@@ -624,17 +626,17 @@
       "t2_hit_date": null,
       "tracking_id": "ACUTAAS.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     },
     "AEGISLOG.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 1383.9,
+        "current_price": 1313.5,
         "opportunity_score": null,
         "rr": null,
-        "stage": "MONITOR",
+        "stage": "REJECTED",
         "tq": null
       },
       "days_active": 0,
@@ -708,16 +710,17 @@
       "first_seen_date": "2026-07-16",
       "journey_path": [
         "REJECTED",
-        "MONITOR"
+        "MONITOR",
+        "REJECTED"
       ],
-      "last_stage_change_date": "2026-07-16",
+      "last_stage_change_date": "2026-07-21",
       "mae_pct": 0.0,
       "max_price_seen": 1321.1,
       "mfe_pct": 0.0,
       "migration_status": "NATIVE",
       "min_price_seen": 1321.1,
-      "previous_stage": "REJECTED",
-      "stage_change_count": 1,
+      "previous_stage": "MONITOR",
+      "stage_change_count": 2,
       "stop_hit": false,
       "stop_hit_date": null,
       "strategy_version": "V1_FREEZE_20260711",
@@ -728,7 +731,112 @@
       "t2_hit_date": null,
       "tracking_id": "AEGISLOG.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
+    },
+    "AEGISVOPAK.NS_20260721": {
+      "created_at": "2026-07-21",
+      "current": {
+        "as_of_date": "2026-07-21",
+        "confidence": null,
+        "current_price": 288.45,
+        "opportunity_score": null,
+        "rr": null,
+        "stage": "REJECTED",
+        "tq": null
+      },
+      "days_active": 0,
+      "days_to_stop": null,
+      "days_to_t1": null,
+      "days_to_t2": null,
+      "entry": {
+        "base_confidence": null,
+        "chop_momentum_penalty": null,
+        "conf_gap": null,
+        "confidence": 67.96,
+        "decision": "REJECTED",
+        "delivery": {
+          "delivery_pct_20d_avg": null,
+          "delivery_pct_today": null,
+          "delivery_ratio": null,
+          "delivery_signal": null,
+          "delivery_source": null
+        },
+        "factors": {
+          "macro_alignment": null,
+          "momentum_quality": null,
+          "mtf_quality": null,
+          "news_risk": null,
+          "options_sentiment": null,
+          "ownership_quality": null,
+          "rs_vs_nifty": null,
+          "sector_composite_score": null,
+          "sector_strength": null,
+          "trend_quality": null,
+          "volume_delivery": null
+        },
+        "fail_reasons": [
+          "CONF_FAIL(got 68.0, need 70)",
+          "TQ_FAIL(got 66.6, need 68)",
+          "SECTOR_RANK_TOO_LOW(rank=15>top6)"
+        ],
+        "opportunity_score": 77.0,
+        "origin": "main_pipeline",
+        "phase_i_skip": null,
+        "reference_entry_price": 288.45,
+        "regime": "SIDEWAYS",
+        "research": {
+          "de_ratio": null,
+          "dii_change": null,
+          "distance_from_52w_high": null,
+          "eps": null,
+          "eps_growth": null,
+          "fii_change": null,
+          "fundamentals_source": null,
+          "market_cap_cr": null,
+          "profit_growth": null,
+          "promoter_pledge_pct": null,
+          "research_grade": null,
+          "revenue_growth": null,
+          "roce": null,
+          "roe": null,
+          "sector_relative_strength": null
+        },
+        "rr": 0.0,
+        "sector": "DIVERSIFIED",
+        "setup_conf_bonus": null,
+        "setup_type": "MOMENTUM",
+        "stage": "REJECTED",
+        "stop_price": 261.09,
+        "t1_price": 302.8725,
+        "t2_price": 317.295,
+        "tier": null,
+        "tq": 66.6,
+        "trajectory": null,
+        "warnings": []
+      },
+      "first_seen_date": "2026-07-21",
+      "journey_path": [
+        "REJECTED"
+      ],
+      "last_stage_change_date": "2026-07-21",
+      "mae_pct": 0.0,
+      "max_price_seen": 288.45,
+      "mfe_pct": 0.0,
+      "migration_status": "NATIVE",
+      "min_price_seen": 288.45,
+      "previous_stage": null,
+      "stage_change_count": 0,
+      "stop_hit": false,
+      "stop_hit_date": null,
+      "strategy_version": "V1_FREEZE_20260711",
+      "symbol": "AEGISVOPAK.NS",
+      "t1_hit": false,
+      "t1_hit_date": null,
+      "t2_hit": false,
+      "t2_hit_date": null,
+      "tracking_id": "AEGISVOPAK.NS_20260721",
+      "tracking_status": "ACTIVE",
+      "updated_at": "2026-07-21"
     },
     "AETHER.NS_20260716": {
       "created_at": "2026-07-16",
@@ -1045,9 +1153,9 @@
     "AJANTPHARM.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-07-16",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 3452.8,
+        "current_price": 3575.3,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -1143,7 +1251,7 @@
       "t2_hit_date": null,
       "tracking_id": "AJANTPHARM.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-16"
+      "updated_at": "2026-07-21"
     },
     "AKUMS.NS_20260716": {
       "created_at": "2026-07-16",
@@ -1251,9 +1359,9 @@
     "ALGOQUANT.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 64.34,
+        "current_price": 65.15,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -1352,7 +1460,7 @@
       "t2_hit_date": null,
       "tracking_id": "ALGOQUANT.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     },
     "AMAGI.NS_20260716": {
       "created_at": "2026-07-16",
@@ -1568,9 +1676,9 @@
     "ANANTRAJ.NS_20260720": {
       "created_at": "2026-07-20",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 600.8,
+        "current_price": 608.85,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -1666,7 +1774,7 @@
       "t2_hit_date": null,
       "tracking_id": "ANANTRAJ.NS_20260720",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     },
     "ANTELOPUS.NS_20260720": {
       "created_at": "2026-07-20",
@@ -1877,9 +1985,9 @@
     "APTUS.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 305.45,
+        "current_price": 301.05,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -1977,7 +2085,7 @@
       "t2_hit_date": null,
       "tracking_id": "APTUS.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     },
     "ARKADE.NS_20260716": {
       "created_at": "2026-07-16",
@@ -2085,9 +2193,9 @@
     "ATHERENERG.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 1296.7,
+        "current_price": 1288.4,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -2183,7 +2291,7 @@
       "t2_hit_date": null,
       "tracking_id": "ATHERENERG.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     },
     "AURUM.NS_20260716": {
       "created_at": "2026-07-16",
@@ -2287,6 +2395,109 @@
       "tracking_id": "AURUM.NS_20260716",
       "tracking_status": "ACTIVE",
       "updated_at": "2026-07-20"
+    },
+    "AYE.NS_20260721": {
+      "created_at": "2026-07-21",
+      "current": {
+        "as_of_date": "2026-07-21",
+        "confidence": null,
+        "current_price": 189.13,
+        "opportunity_score": null,
+        "rr": null,
+        "stage": "REJECTED",
+        "tq": null
+      },
+      "days_active": 0,
+      "days_to_stop": null,
+      "days_to_t1": null,
+      "days_to_t2": null,
+      "entry": {
+        "base_confidence": null,
+        "chop_momentum_penalty": null,
+        "conf_gap": null,
+        "confidence": 63.25,
+        "decision": "REJECTED",
+        "delivery": {
+          "delivery_pct_20d_avg": null,
+          "delivery_pct_today": null,
+          "delivery_ratio": null,
+          "delivery_signal": null,
+          "delivery_source": null
+        },
+        "factors": {
+          "macro_alignment": null,
+          "momentum_quality": null,
+          "mtf_quality": null,
+          "news_risk": null,
+          "options_sentiment": null,
+          "ownership_quality": null,
+          "rs_vs_nifty": null,
+          "sector_composite_score": null,
+          "sector_strength": null,
+          "trend_quality": null,
+          "volume_delivery": null
+        },
+        "fail_reasons": [
+          "ROE_TOO_LOW(9.2%<10%)"
+        ],
+        "opportunity_score": 65.0,
+        "origin": "main_pipeline",
+        "phase_i_skip": null,
+        "reference_entry_price": 189.13,
+        "regime": "SIDEWAYS",
+        "research": {
+          "de_ratio": null,
+          "dii_change": null,
+          "distance_from_52w_high": null,
+          "eps": null,
+          "eps_growth": null,
+          "fii_change": null,
+          "fundamentals_source": null,
+          "market_cap_cr": null,
+          "profit_growth": null,
+          "promoter_pledge_pct": null,
+          "research_grade": null,
+          "revenue_growth": null,
+          "roce": null,
+          "roe": null,
+          "sector_relative_strength": null
+        },
+        "rr": 0.0,
+        "sector": "FINANCE",
+        "setup_conf_bonus": null,
+        "setup_type": "MOMENTUM",
+        "stage": "REJECTED",
+        "stop_price": 160.76,
+        "t1_price": 198.5865,
+        "t2_price": 208.043,
+        "tier": null,
+        "tq": 70.8,
+        "trajectory": null,
+        "warnings": []
+      },
+      "first_seen_date": "2026-07-21",
+      "journey_path": [
+        "REJECTED"
+      ],
+      "last_stage_change_date": "2026-07-21",
+      "mae_pct": 0.0,
+      "max_price_seen": 189.13,
+      "mfe_pct": 0.0,
+      "migration_status": "NATIVE",
+      "min_price_seen": 189.13,
+      "previous_stage": null,
+      "stage_change_count": 0,
+      "stop_hit": false,
+      "stop_hit_date": null,
+      "strategy_version": "V1_FREEZE_20260711",
+      "symbol": "AYE.NS",
+      "t1_hit": false,
+      "t1_hit_date": null,
+      "t2_hit": false,
+      "t2_hit_date": null,
+      "tracking_id": "AYE.NS_20260721",
+      "tracking_status": "ACTIVE",
+      "updated_at": "2026-07-21"
     },
     "AZAD.NS_20260716": {
       "created_at": "2026-07-16",
@@ -2394,9 +2605,9 @@
     "BAJAJHCARE.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 386.55,
+        "current_price": 369.35,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -2492,14 +2703,14 @@
       "t2_hit_date": null,
       "tracking_id": "BAJAJHCARE.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     },
     "BAJFINANCE.NS_20260717": {
       "created_at": "2026-07-17",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 1064.0,
+        "current_price": 1069.2,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -2598,7 +2809,7 @@
       "t2_hit_date": null,
       "tracking_id": "BAJFINANCE.NS_20260717",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     },
     "BALAMINES.NS_20260716": {
       "created_at": "2026-07-16",
@@ -2706,9 +2917,9 @@
     "BALRAMCHIN.NS_20260717": {
       "created_at": "2026-07-17",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 600.05,
+        "current_price": 617.85,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -2804,17 +3015,17 @@
       "t2_hit_date": null,
       "tracking_id": "BALRAMCHIN.NS_20260717",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     },
     "BEPL.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 127.77,
+        "current_price": 123.44,
         "opportunity_score": null,
         "rr": null,
-        "stage": "MONITOR",
+        "stage": "REJECTED",
         "tq": null
       },
       "days_active": 0,
@@ -2890,16 +3101,17 @@
         "REJECTED",
         "NEAR_MISS",
         "REJECTED",
-        "MONITOR"
+        "MONITOR",
+        "REJECTED"
       ],
-      "last_stage_change_date": "2026-07-20",
+      "last_stage_change_date": "2026-07-21",
       "mae_pct": 0.0,
       "max_price_seen": 106.41,
       "mfe_pct": 0.0,
       "migration_status": "NATIVE",
       "min_price_seen": 106.41,
-      "previous_stage": "REJECTED",
-      "stage_change_count": 3,
+      "previous_stage": "MONITOR",
+      "stage_change_count": 4,
       "stop_hit": false,
       "stop_hit_date": null,
       "strategy_version": "V1_FREEZE_20260711",
@@ -2910,7 +3122,7 @@
       "t2_hit_date": null,
       "tracking_id": "BEPL.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     },
     "BFINVEST.NS_20260716": {
       "created_at": "2026-07-16",
@@ -3943,6 +4155,109 @@
       "tracking_status": "ACTIVE",
       "updated_at": "2026-07-16"
     },
+    "CANHLIFE.NS_20260721": {
+      "created_at": "2026-07-21",
+      "current": {
+        "as_of_date": "2026-07-21",
+        "confidence": null,
+        "current_price": 154.61,
+        "opportunity_score": null,
+        "rr": null,
+        "stage": "REJECTED",
+        "tq": null
+      },
+      "days_active": 0,
+      "days_to_stop": null,
+      "days_to_t1": null,
+      "days_to_t2": null,
+      "entry": {
+        "base_confidence": null,
+        "chop_momentum_penalty": null,
+        "conf_gap": null,
+        "confidence": 28.159999999999997,
+        "decision": "REJECTED",
+        "delivery": {
+          "delivery_pct_20d_avg": null,
+          "delivery_pct_today": null,
+          "delivery_ratio": null,
+          "delivery_signal": null,
+          "delivery_source": null
+        },
+        "factors": {
+          "macro_alignment": null,
+          "momentum_quality": null,
+          "mtf_quality": null,
+          "news_risk": null,
+          "options_sentiment": null,
+          "ownership_quality": null,
+          "rs_vs_nifty": null,
+          "sector_composite_score": null,
+          "sector_strength": null,
+          "trend_quality": null,
+          "volume_delivery": null
+        },
+        "fail_reasons": [
+          "ROE_TOO_LOW(8.1%<10%)"
+        ],
+        "opportunity_score": 50.1,
+        "origin": "main_pipeline",
+        "phase_i_skip": null,
+        "reference_entry_price": 154.61,
+        "regime": "SIDEWAYS",
+        "research": {
+          "de_ratio": null,
+          "dii_change": null,
+          "distance_from_52w_high": null,
+          "eps": null,
+          "eps_growth": null,
+          "fii_change": null,
+          "fundamentals_source": null,
+          "market_cap_cr": null,
+          "profit_growth": null,
+          "promoter_pledge_pct": null,
+          "research_grade": null,
+          "revenue_growth": null,
+          "roce": null,
+          "roe": null,
+          "sector_relative_strength": null
+        },
+        "rr": 0.0,
+        "sector": "FINANCE",
+        "setup_conf_bonus": null,
+        "setup_type": "MOMENTUM",
+        "stage": "REJECTED",
+        "stop_price": 139.24,
+        "t1_price": 162.3405,
+        "t2_price": 170.071,
+        "tier": null,
+        "tq": 75.8,
+        "trajectory": null,
+        "warnings": []
+      },
+      "first_seen_date": "2026-07-21",
+      "journey_path": [
+        "REJECTED"
+      ],
+      "last_stage_change_date": "2026-07-21",
+      "mae_pct": 0.0,
+      "max_price_seen": 154.61,
+      "mfe_pct": 0.0,
+      "migration_status": "NATIVE",
+      "min_price_seen": 154.61,
+      "previous_stage": null,
+      "stage_change_count": 0,
+      "stop_hit": false,
+      "stop_hit_date": null,
+      "strategy_version": "V1_FREEZE_20260711",
+      "symbol": "CANHLIFE.NS",
+      "t1_hit": false,
+      "t1_hit_date": null,
+      "t2_hit": false,
+      "t2_hit_date": null,
+      "tracking_id": "CANHLIFE.NS_20260721",
+      "tracking_status": "ACTIVE",
+      "updated_at": "2026-07-21"
+    },
     "CAPLIPOINT.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
@@ -4152,9 +4467,9 @@
     "CEMPRO.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 1627.0,
+        "current_price": 1639.6,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -4250,7 +4565,7 @@
       "t2_hit_date": null,
       "tracking_id": "CEMPRO.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     },
     "CENTENKA.NS_20260716": {
       "created_at": "2026-07-16",
@@ -4461,9 +4776,9 @@
     "CHENNPETRO.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 1214.0,
+        "current_price": 1258.1,
         "opportunity_score": null,
         "rr": null,
         "stage": "DEVELOPING",
@@ -4563,7 +4878,7 @@
       "t2_hit_date": null,
       "tracking_id": "CHENNPETRO.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     },
     "CHOICEIN.NS_20260716": {
       "created_at": "2026-07-16",
@@ -4671,9 +4986,9 @@
     "CNL.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-07-17",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 916.55,
+        "current_price": 948.75,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -4769,7 +5084,7 @@
       "t2_hit_date": null,
       "tracking_id": "CNL.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-17"
+      "updated_at": "2026-07-21"
     },
     "COMSYN.NS_20260720": {
       "created_at": "2026-07-20",
@@ -5082,6 +5397,215 @@
       "tracking_status": "ACTIVE",
       "updated_at": "2026-07-16"
     },
+    "CREDITACC.NS_20260721": {
+      "created_at": "2026-07-21",
+      "current": {
+        "as_of_date": "2026-07-21",
+        "confidence": null,
+        "current_price": 1534.7,
+        "opportunity_score": null,
+        "rr": null,
+        "stage": "REJECTED",
+        "tq": null
+      },
+      "days_active": 0,
+      "days_to_stop": null,
+      "days_to_t1": null,
+      "days_to_t2": null,
+      "entry": {
+        "base_confidence": null,
+        "chop_momentum_penalty": null,
+        "conf_gap": null,
+        "confidence": 65.95,
+        "decision": "REJECTED",
+        "delivery": {
+          "delivery_pct_20d_avg": null,
+          "delivery_pct_today": null,
+          "delivery_ratio": null,
+          "delivery_signal": null,
+          "delivery_source": null
+        },
+        "factors": {
+          "macro_alignment": null,
+          "momentum_quality": null,
+          "mtf_quality": null,
+          "news_risk": null,
+          "options_sentiment": null,
+          "ownership_quality": null,
+          "rs_vs_nifty": null,
+          "sector_composite_score": null,
+          "sector_strength": null,
+          "trend_quality": null,
+          "volume_delivery": null
+        },
+        "fail_reasons": [
+          "CONF_FAIL(got 66.0, need 70)",
+          "TQ_FAIL(got 63.5, need 68)",
+          "SECTOR_RANK_TOO_LOW(rank=10>top6)"
+        ],
+        "opportunity_score": 72.7,
+        "origin": "main_pipeline",
+        "phase_i_skip": null,
+        "reference_entry_price": 1534.7,
+        "regime": "SIDEWAYS",
+        "research": {
+          "de_ratio": null,
+          "dii_change": null,
+          "distance_from_52w_high": null,
+          "eps": null,
+          "eps_growth": null,
+          "fii_change": null,
+          "fundamentals_source": null,
+          "market_cap_cr": null,
+          "profit_growth": null,
+          "promoter_pledge_pct": null,
+          "research_grade": null,
+          "revenue_growth": null,
+          "roce": null,
+          "roe": null,
+          "sector_relative_strength": null
+        },
+        "rr": 0.0,
+        "sector": "FINANCE",
+        "setup_conf_bonus": null,
+        "setup_type": "MOMENTUM",
+        "stage": "REJECTED",
+        "stop_price": 1456.78,
+        "t1_price": 1611.435,
+        "t2_price": 1688.17,
+        "tier": null,
+        "tq": 63.5,
+        "trajectory": null,
+        "warnings": []
+      },
+      "first_seen_date": "2026-07-21",
+      "journey_path": [
+        "REJECTED"
+      ],
+      "last_stage_change_date": "2026-07-21",
+      "mae_pct": 0.0,
+      "max_price_seen": 1534.7,
+      "mfe_pct": 0.0,
+      "migration_status": "NATIVE",
+      "min_price_seen": 1534.7,
+      "previous_stage": null,
+      "stage_change_count": 0,
+      "stop_hit": false,
+      "stop_hit_date": null,
+      "strategy_version": "V1_FREEZE_20260711",
+      "symbol": "CREDITACC.NS",
+      "t1_hit": false,
+      "t1_hit_date": null,
+      "t2_hit": false,
+      "t2_hit_date": null,
+      "tracking_id": "CREDITACC.NS_20260721",
+      "tracking_status": "ACTIVE",
+      "updated_at": "2026-07-21"
+    },
+    "CUB.NS_20260721": {
+      "created_at": "2026-07-21",
+      "current": {
+        "as_of_date": "2026-07-21",
+        "confidence": null,
+        "current_price": 229.83,
+        "opportunity_score": null,
+        "rr": null,
+        "stage": "REJECTED",
+        "tq": null
+      },
+      "days_active": 0,
+      "days_to_stop": null,
+      "days_to_t1": null,
+      "days_to_t2": null,
+      "entry": {
+        "base_confidence": null,
+        "chop_momentum_penalty": null,
+        "conf_gap": null,
+        "confidence": 33.97,
+        "decision": "REJECTED",
+        "delivery": {
+          "delivery_pct_20d_avg": null,
+          "delivery_pct_today": null,
+          "delivery_ratio": null,
+          "delivery_signal": null,
+          "delivery_source": null
+        },
+        "factors": {
+          "macro_alignment": null,
+          "momentum_quality": null,
+          "mtf_quality": null,
+          "news_risk": null,
+          "options_sentiment": null,
+          "ownership_quality": null,
+          "rs_vs_nifty": null,
+          "sector_composite_score": null,
+          "sector_strength": null,
+          "trend_quality": null,
+          "volume_delivery": null
+        },
+        "fail_reasons": [
+          "CONF_FAIL(got 34.0, need 70)",
+          "SECTOR_RANK_TOO_LOW(rank=10>top6)"
+        ],
+        "opportunity_score": 59.9,
+        "origin": "main_pipeline",
+        "phase_i_skip": null,
+        "reference_entry_price": 229.83,
+        "regime": "SIDEWAYS",
+        "research": {
+          "de_ratio": null,
+          "dii_change": null,
+          "distance_from_52w_high": null,
+          "eps": null,
+          "eps_growth": null,
+          "fii_change": null,
+          "fundamentals_source": null,
+          "market_cap_cr": null,
+          "profit_growth": null,
+          "promoter_pledge_pct": null,
+          "research_grade": null,
+          "revenue_growth": null,
+          "roce": null,
+          "roe": null,
+          "sector_relative_strength": null
+        },
+        "rr": 0.0,
+        "sector": "FINANCE",
+        "setup_conf_bonus": null,
+        "setup_type": "MOMENTUM",
+        "stage": "REJECTED",
+        "stop_price": 216.44,
+        "t1_price": 241.3215,
+        "t2_price": 252.813,
+        "tier": null,
+        "tq": 79.5,
+        "trajectory": null,
+        "warnings": []
+      },
+      "first_seen_date": "2026-07-21",
+      "journey_path": [
+        "REJECTED"
+      ],
+      "last_stage_change_date": "2026-07-21",
+      "mae_pct": 0.0,
+      "max_price_seen": 229.83,
+      "mfe_pct": 0.0,
+      "migration_status": "NATIVE",
+      "min_price_seen": 229.83,
+      "previous_stage": null,
+      "stage_change_count": 0,
+      "stop_hit": false,
+      "stop_hit_date": null,
+      "strategy_version": "V1_FREEZE_20260711",
+      "symbol": "CUB.NS",
+      "t1_hit": false,
+      "t1_hit_date": null,
+      "t2_hit": false,
+      "t2_hit_date": null,
+      "tracking_id": "CUB.NS_20260721",
+      "tracking_status": "ACTIVE",
+      "updated_at": "2026-07-21"
+    },
     "CUPID.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
@@ -5188,9 +5712,9 @@
     "CYIENTDLM.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 596.05,
+        "current_price": 623.0,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -5286,7 +5810,7 @@
       "t2_hit_date": null,
       "tracking_id": "CYIENTDLM.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     },
     "DAMCAPITAL.NS_20260716": {
       "created_at": "2026-07-16",
@@ -5602,12 +6126,116 @@
       "tracking_status": "ACTIVE",
       "updated_at": "2026-07-16"
     },
+    "DENTA.NS_20260721": {
+      "created_at": "2026-07-21",
+      "current": {
+        "as_of_date": "2026-07-21",
+        "confidence": null,
+        "current_price": 347.75,
+        "opportunity_score": null,
+        "rr": null,
+        "stage": "REJECTED",
+        "tq": null
+      },
+      "days_active": 0,
+      "days_to_stop": null,
+      "days_to_t1": null,
+      "days_to_t2": null,
+      "entry": {
+        "base_confidence": null,
+        "chop_momentum_penalty": null,
+        "conf_gap": null,
+        "confidence": 64.505,
+        "decision": "REJECTED",
+        "delivery": {
+          "delivery_pct_20d_avg": null,
+          "delivery_pct_today": null,
+          "delivery_ratio": null,
+          "delivery_signal": null,
+          "delivery_source": null
+        },
+        "factors": {
+          "macro_alignment": null,
+          "momentum_quality": null,
+          "mtf_quality": null,
+          "news_risk": null,
+          "options_sentiment": null,
+          "ownership_quality": null,
+          "rs_vs_nifty": null,
+          "sector_composite_score": null,
+          "sector_strength": null,
+          "trend_quality": null,
+          "volume_delivery": null
+        },
+        "fail_reasons": [
+          "CONF_FAIL(got 64.5, need 70)",
+          "SECTOR_RANK_TOO_LOW(rank=12>top6)"
+        ],
+        "opportunity_score": 72.4,
+        "origin": "main_pipeline",
+        "phase_i_skip": null,
+        "reference_entry_price": 347.75,
+        "regime": "SIDEWAYS",
+        "research": {
+          "de_ratio": null,
+          "dii_change": null,
+          "distance_from_52w_high": null,
+          "eps": null,
+          "eps_growth": null,
+          "fii_change": null,
+          "fundamentals_source": null,
+          "market_cap_cr": null,
+          "profit_growth": null,
+          "promoter_pledge_pct": null,
+          "research_grade": null,
+          "revenue_growth": null,
+          "roce": null,
+          "roe": null,
+          "sector_relative_strength": null
+        },
+        "rr": 0.0,
+        "sector": "CAPITAL_GOODS",
+        "setup_conf_bonus": null,
+        "setup_type": "MOMENTUM",
+        "stage": "REJECTED",
+        "stop_price": 319.94,
+        "t1_price": 365.1375,
+        "t2_price": 382.525,
+        "tier": null,
+        "tq": 70.7,
+        "trajectory": null,
+        "warnings": []
+      },
+      "first_seen_date": "2026-07-21",
+      "journey_path": [
+        "REJECTED"
+      ],
+      "last_stage_change_date": "2026-07-21",
+      "mae_pct": 0.0,
+      "max_price_seen": 347.75,
+      "mfe_pct": 0.0,
+      "migration_status": "NATIVE",
+      "min_price_seen": 347.75,
+      "previous_stage": null,
+      "stage_change_count": 0,
+      "stop_hit": false,
+      "stop_hit_date": null,
+      "strategy_version": "V1_FREEZE_20260711",
+      "symbol": "DENTA.NS",
+      "t1_hit": false,
+      "t1_hit_date": null,
+      "t2_hit": false,
+      "t2_hit_date": null,
+      "tracking_id": "DENTA.NS_20260721",
+      "tracking_status": "ACTIVE",
+      "updated_at": "2026-07-21"
+    },
     "DIACABS.NS_20260720": {
       "created_at": "2026-07-20",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 244.61,
+        "current_price": 269.07,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -5705,7 +6333,7 @@
       "t2_hit_date": null,
       "tracking_id": "DIACABS.NS_20260720",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     },
     "DIVISLAB.NS_20260716": {
       "created_at": "2026-07-16",
@@ -5816,9 +6444,9 @@
     "DIXON.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 14589.0,
+        "current_price": 14118.0,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -5916,14 +6544,14 @@
       "t2_hit_date": null,
       "tracking_id": "DIXON.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     },
     "DPABHUSHAN.NS_20260720": {
       "created_at": "2026-07-20",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 1434.35,
+        "current_price": 1472.0,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -6022,7 +6650,114 @@
       "t2_hit_date": null,
       "tracking_id": "DPABHUSHAN.NS_20260720",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
+    },
+    "DYCL.NS_20260721": {
+      "created_at": "2026-07-21",
+      "current": {
+        "as_of_date": "2026-07-21",
+        "confidence": null,
+        "current_price": 434.6,
+        "opportunity_score": null,
+        "rr": null,
+        "stage": "REJECTED",
+        "tq": null
+      },
+      "days_active": 0,
+      "days_to_stop": null,
+      "days_to_t1": null,
+      "days_to_t2": null,
+      "entry": {
+        "base_confidence": null,
+        "chop_momentum_penalty": null,
+        "conf_gap": null,
+        "confidence": 32.45,
+        "decision": "REJECTED",
+        "delivery": {
+          "delivery_pct_20d_avg": null,
+          "delivery_pct_today": null,
+          "delivery_ratio": null,
+          "delivery_signal": null,
+          "delivery_source": null
+        },
+        "factors": {
+          "macro_alignment": null,
+          "momentum_quality": null,
+          "mtf_quality": null,
+          "news_risk": null,
+          "options_sentiment": null,
+          "ownership_quality": null,
+          "rs_vs_nifty": null,
+          "sector_composite_score": null,
+          "sector_strength": null,
+          "trend_quality": null,
+          "volume_delivery": null
+        },
+        "fail_reasons": [
+          "CONF_FAIL(got 32.5, need 70)",
+          "TQ_FAIL(got 64.5, need 68)",
+          "RR_FAIL(got 1.69, need 1.7)",
+          "SECTOR_RANK_TOO_LOW(rank=12>top6)",
+          "INSTITUTIONAL_EXIT"
+        ],
+        "opportunity_score": 49.3,
+        "origin": "main_pipeline",
+        "phase_i_skip": null,
+        "reference_entry_price": 434.6,
+        "regime": "SIDEWAYS",
+        "research": {
+          "de_ratio": null,
+          "dii_change": null,
+          "distance_from_52w_high": null,
+          "eps": null,
+          "eps_growth": null,
+          "fii_change": null,
+          "fundamentals_source": null,
+          "market_cap_cr": null,
+          "profit_growth": null,
+          "promoter_pledge_pct": null,
+          "research_grade": null,
+          "revenue_growth": null,
+          "roce": null,
+          "roe": null,
+          "sector_relative_strength": null
+        },
+        "rr": 0.0,
+        "sector": "CAPITAL_GOODS",
+        "setup_conf_bonus": null,
+        "setup_type": "MOMENTUM",
+        "stage": "REJECTED",
+        "stop_price": 369.41,
+        "t1_price": 456.33,
+        "t2_price": 478.06,
+        "tier": null,
+        "tq": 64.5,
+        "trajectory": null,
+        "warnings": []
+      },
+      "first_seen_date": "2026-07-21",
+      "journey_path": [
+        "REJECTED"
+      ],
+      "last_stage_change_date": "2026-07-21",
+      "mae_pct": 0.0,
+      "max_price_seen": 434.6,
+      "mfe_pct": 0.0,
+      "migration_status": "NATIVE",
+      "min_price_seen": 434.6,
+      "previous_stage": null,
+      "stage_change_count": 0,
+      "stop_hit": false,
+      "stop_hit_date": null,
+      "strategy_version": "V1_FREEZE_20260711",
+      "symbol": "DYCL.NS",
+      "t1_hit": false,
+      "t1_hit_date": null,
+      "t2_hit": false,
+      "t2_hit_date": null,
+      "tracking_id": "DYCL.NS_20260721",
+      "tracking_status": "ACTIVE",
+      "updated_at": "2026-07-21"
     },
     "ECLERX.NS_20260720": {
       "created_at": "2026-07-20",
@@ -6338,6 +7073,111 @@
       "tracking_status": "ACTIVE",
       "updated_at": "2026-07-17"
     },
+    "EMCURE.NS_20260721": {
+      "created_at": "2026-07-21",
+      "current": {
+        "as_of_date": "2026-07-21",
+        "confidence": null,
+        "current_price": 1924.5,
+        "opportunity_score": null,
+        "rr": null,
+        "stage": "REJECTED",
+        "tq": null
+      },
+      "days_active": 0,
+      "days_to_stop": null,
+      "days_to_t1": null,
+      "days_to_t2": null,
+      "entry": {
+        "base_confidence": null,
+        "chop_momentum_penalty": null,
+        "conf_gap": null,
+        "confidence": 66.07,
+        "decision": "REJECTED",
+        "delivery": {
+          "delivery_pct_20d_avg": null,
+          "delivery_pct_today": null,
+          "delivery_ratio": null,
+          "delivery_signal": null,
+          "delivery_source": null
+        },
+        "factors": {
+          "macro_alignment": null,
+          "momentum_quality": null,
+          "mtf_quality": null,
+          "news_risk": null,
+          "options_sentiment": null,
+          "ownership_quality": null,
+          "rs_vs_nifty": null,
+          "sector_composite_score": null,
+          "sector_strength": null,
+          "trend_quality": null,
+          "volume_delivery": null
+        },
+        "fail_reasons": [
+          "CONF_FAIL(got 66.1, need 70)",
+          "RR_FAIL(got 1.40, need 1.7)",
+          "SECTOR_RANK_TOO_LOW(rank=11>top6)"
+        ],
+        "opportunity_score": 66.9,
+        "origin": "main_pipeline",
+        "phase_i_skip": null,
+        "reference_entry_price": 1924.5,
+        "regime": "SIDEWAYS",
+        "research": {
+          "de_ratio": null,
+          "dii_change": null,
+          "distance_from_52w_high": null,
+          "eps": null,
+          "eps_growth": null,
+          "fii_change": null,
+          "fundamentals_source": null,
+          "market_cap_cr": null,
+          "profit_growth": null,
+          "promoter_pledge_pct": null,
+          "research_grade": null,
+          "revenue_growth": null,
+          "roce": null,
+          "roe": null,
+          "sector_relative_strength": null
+        },
+        "rr": 0.0,
+        "sector": "PHARMA",
+        "setup_conf_bonus": null,
+        "setup_type": "MOMENTUM",
+        "stage": "REJECTED",
+        "stop_price": 1745.22,
+        "t1_price": 2020.725,
+        "t2_price": 2116.95,
+        "tier": null,
+        "tq": 73.8,
+        "trajectory": null,
+        "warnings": []
+      },
+      "first_seen_date": "2026-07-21",
+      "journey_path": [
+        "REJECTED"
+      ],
+      "last_stage_change_date": "2026-07-21",
+      "mae_pct": 0.0,
+      "max_price_seen": 1924.5,
+      "mfe_pct": 0.0,
+      "migration_status": "NATIVE",
+      "min_price_seen": 1924.5,
+      "previous_stage": null,
+      "stage_change_count": 0,
+      "stop_hit": false,
+      "stop_hit_date": null,
+      "strategy_version": "V1_FREEZE_20260711",
+      "symbol": "EMCURE.NS",
+      "t1_hit": false,
+      "t1_hit_date": null,
+      "t2_hit": false,
+      "t2_hit_date": null,
+      "tracking_id": "EMCURE.NS_20260721",
+      "tracking_status": "ACTIVE",
+      "updated_at": "2026-07-21"
+    },
     "EMSLIMITED.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
@@ -6547,9 +7387,9 @@
     "EXIDEIND.NS_20260717": {
       "created_at": "2026-07-17",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 436.65,
+        "current_price": 443.45,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -6645,14 +7485,14 @@
       "t2_hit_date": null,
       "tracking_id": "EXIDEIND.NS_20260717",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     },
     "FEDDERSHOL.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 48.36,
+        "current_price": 51.86,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -6748,17 +7588,17 @@
       "t2_hit_date": null,
       "tracking_id": "FEDDERSHOL.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     },
     "FEDERALBNK.NS_20260717": {
       "created_at": "2026-07-17",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 350.75,
+        "current_price": 356.05,
         "opportunity_score": null,
         "rr": null,
-        "stage": "NEAR_MISS",
+        "stage": "MONITOR",
         "tq": null
       },
       "days_active": 0,
@@ -6835,16 +7675,17 @@
       "first_seen_date": "2026-07-17",
       "journey_path": [
         "REJECTED",
-        "NEAR_MISS"
+        "NEAR_MISS",
+        "MONITOR"
       ],
-      "last_stage_change_date": "2026-07-20",
+      "last_stage_change_date": "2026-07-21",
       "mae_pct": 0.0,
       "max_price_seen": 349.0,
       "mfe_pct": 0.0,
       "migration_status": "NATIVE",
       "min_price_seen": 349.0,
-      "previous_stage": "REJECTED",
-      "stage_change_count": 1,
+      "previous_stage": "NEAR_MISS",
+      "stage_change_count": 2,
       "stop_hit": false,
       "stop_hit_date": null,
       "strategy_version": "V1_FREEZE_20260711",
@@ -6855,14 +7696,14 @@
       "t2_hit_date": null,
       "tracking_id": "FEDERALBNK.NS_20260717",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     },
     "FILATEX.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 72.47,
+        "current_price": 71.3,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -6958,14 +7799,14 @@
       "t2_hit_date": null,
       "tracking_id": "FILATEX.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     },
     "FIVESTAR.NS_20260720": {
       "created_at": "2026-07-20",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 570.5,
+        "current_price": 564.4,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -7063,17 +7904,17 @@
       "t2_hit_date": null,
       "tracking_id": "FIVESTAR.NS_20260720",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     },
     "FLUOROCHEM.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 4316.2,
+        "current_price": 4607.1,
         "opportunity_score": null,
         "rr": null,
-        "stage": "REJECTED",
+        "stage": "MONITOR",
         "tq": null
       },
       "days_active": 0,
@@ -7146,16 +7987,17 @@
       },
       "first_seen_date": "2026-07-16",
       "journey_path": [
-        "REJECTED"
+        "REJECTED",
+        "MONITOR"
       ],
-      "last_stage_change_date": "2026-07-16",
+      "last_stage_change_date": "2026-07-21",
       "mae_pct": 0.0,
       "max_price_seen": 4131.6,
       "mfe_pct": 0.0,
       "migration_status": "NATIVE",
       "min_price_seen": 4131.6,
-      "previous_stage": null,
-      "stage_change_count": 0,
+      "previous_stage": "REJECTED",
+      "stage_change_count": 1,
       "stop_hit": false,
       "stop_hit_date": null,
       "strategy_version": "V1_FREEZE_20260711",
@@ -7166,7 +8008,7 @@
       "t2_hit_date": null,
       "tracking_id": "FLUOROCHEM.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     },
     "FSL.NS_20260716": {
       "created_at": "2026-07-16",
@@ -7377,9 +8219,9 @@
     "GABRIEL.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 1398.0,
+        "current_price": 1488.5,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -7475,14 +8317,14 @@
       "t2_hit_date": null,
       "tracking_id": "GABRIEL.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     },
     "GANDHAR.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 228.32,
+        "current_price": 227.17,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -7578,14 +8420,14 @@
       "t2_hit_date": null,
       "tracking_id": "GANDHAR.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     },
     "GANECOS.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 1192.1,
+        "current_price": 1237.95,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -7681,14 +8523,14 @@
       "t2_hit_date": null,
       "tracking_id": "GANECOS.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     },
     "GAUDIUMIVF.NS_20260717": {
       "created_at": "2026-07-17",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 148.02,
+        "current_price": 155.41,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -7787,7 +8629,7 @@
       "t2_hit_date": null,
       "tracking_id": "GAUDIUMIVF.NS_20260717",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     },
     "GCSL.NS_20260716": {
       "created_at": "2026-07-16",
@@ -7895,9 +8737,9 @@
     "GHCLTEXTIL.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 114.17,
+        "current_price": 117.25,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -7993,7 +8835,7 @@
       "t2_hit_date": null,
       "tracking_id": "GHCLTEXTIL.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     },
     "GLAXO.NS_20260716": {
       "created_at": "2026-07-16",
@@ -8307,9 +9149,9 @@
     "GODREJIND.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-07-16",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 1339.3,
+        "current_price": 1380.5,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -8405,14 +9247,14 @@
       "t2_hit_date": null,
       "tracking_id": "GODREJIND.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-16"
+      "updated_at": "2026-07-21"
     },
     "GODREJPROP.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-07-16",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 2104.4,
+        "current_price": 2164.3,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -8508,7 +9350,7 @@
       "t2_hit_date": null,
       "tracking_id": "GODREJPROP.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-16"
+      "updated_at": "2026-07-21"
     },
     "GOODLUCK.NS_20260716": {
       "created_at": "2026-07-16",
@@ -8921,6 +9763,107 @@
       "tracking_id": "GREAVESCOT.NS_20260716",
       "tracking_status": "ACTIVE",
       "updated_at": "2026-07-16"
+    },
+    "GREENPLY.NS_20260721": {
+      "created_at": "2026-07-21",
+      "current": {
+        "as_of_date": "2026-07-21",
+        "confidence": null,
+        "current_price": 323.2,
+        "opportunity_score": null,
+        "rr": null,
+        "stage": "BUY",
+        "tq": null
+      },
+      "days_active": 0,
+      "days_to_stop": null,
+      "days_to_t1": null,
+      "days_to_t2": null,
+      "entry": {
+        "base_confidence": null,
+        "chop_momentum_penalty": null,
+        "conf_gap": null,
+        "confidence": 73.19,
+        "decision": "BUY",
+        "delivery": {
+          "delivery_pct_20d_avg": null,
+          "delivery_pct_today": null,
+          "delivery_ratio": null,
+          "delivery_signal": null,
+          "delivery_source": null
+        },
+        "factors": {
+          "macro_alignment": null,
+          "momentum_quality": null,
+          "mtf_quality": null,
+          "news_risk": null,
+          "options_sentiment": null,
+          "ownership_quality": null,
+          "rs_vs_nifty": null,
+          "sector_composite_score": null,
+          "sector_strength": null,
+          "trend_quality": null,
+          "volume_delivery": null
+        },
+        "fail_reasons": [],
+        "opportunity_score": 78.9,
+        "origin": "main_pipeline",
+        "phase_i_skip": null,
+        "reference_entry_price": 323.2,
+        "regime": "SIDEWAYS",
+        "research": {
+          "de_ratio": null,
+          "dii_change": null,
+          "distance_from_52w_high": null,
+          "eps": null,
+          "eps_growth": null,
+          "fii_change": null,
+          "fundamentals_source": null,
+          "market_cap_cr": null,
+          "profit_growth": null,
+          "promoter_pledge_pct": null,
+          "research_grade": null,
+          "revenue_growth": null,
+          "roce": null,
+          "roe": null,
+          "sector_relative_strength": null
+        },
+        "rr": 0.0,
+        "sector": "METALS",
+        "setup_conf_bonus": null,
+        "setup_type": "MOMENTUM",
+        "stage": "BUY",
+        "stop_price": 307.7,
+        "t1_price": 339.36,
+        "t2_price": 355.52,
+        "tier": null,
+        "tq": 79.5,
+        "trajectory": null,
+        "warnings": []
+      },
+      "first_seen_date": "2026-07-21",
+      "journey_path": [
+        "BUY"
+      ],
+      "last_stage_change_date": "2026-07-21",
+      "mae_pct": 0.0,
+      "max_price_seen": 323.2,
+      "mfe_pct": 0.0,
+      "migration_status": "NATIVE",
+      "min_price_seen": 323.2,
+      "previous_stage": null,
+      "stage_change_count": 0,
+      "stop_hit": false,
+      "stop_hit_date": null,
+      "strategy_version": "V1_FREEZE_20260711",
+      "symbol": "GREENPLY.NS",
+      "t1_hit": false,
+      "t1_hit_date": null,
+      "t2_hit": false,
+      "t2_hit_date": null,
+      "tracking_id": "GREENPLY.NS_20260721",
+      "tracking_status": "ACTIVE",
+      "updated_at": "2026-07-21"
     },
     "GROWW.NS_20260716": {
       "created_at": "2026-07-16",
@@ -9337,9 +10280,9 @@
     "HIRECT.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 1252.1,
+        "current_price": 1308.6,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -9438,14 +10381,14 @@
       "t2_hit_date": null,
       "tracking_id": "HIRECT.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     },
     "HLEGLAS.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 419.0,
+        "current_price": 437.9,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -9541,17 +10484,123 @@
       "t2_hit_date": null,
       "tracking_id": "HLEGLAS.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
+    },
+    "HOMEFIRST.NS_20260721": {
+      "created_at": "2026-07-21",
+      "current": {
+        "as_of_date": "2026-07-21",
+        "confidence": null,
+        "current_price": 1280.1,
+        "opportunity_score": null,
+        "rr": null,
+        "stage": "REJECTED",
+        "tq": null
+      },
+      "days_active": 0,
+      "days_to_stop": null,
+      "days_to_t1": null,
+      "days_to_t2": null,
+      "entry": {
+        "base_confidence": null,
+        "chop_momentum_penalty": null,
+        "conf_gap": null,
+        "confidence": 58.33,
+        "decision": "REJECTED",
+        "delivery": {
+          "delivery_pct_20d_avg": null,
+          "delivery_pct_today": null,
+          "delivery_ratio": null,
+          "delivery_signal": null,
+          "delivery_source": null
+        },
+        "factors": {
+          "macro_alignment": null,
+          "momentum_quality": null,
+          "mtf_quality": null,
+          "news_risk": null,
+          "options_sentiment": null,
+          "ownership_quality": null,
+          "rs_vs_nifty": null,
+          "sector_composite_score": null,
+          "sector_strength": null,
+          "trend_quality": null,
+          "volume_delivery": null
+        },
+        "fail_reasons": [
+          "CONF_FAIL(got 58.3, need 70)",
+          "TQ_FAIL(got 67.7, need 68)",
+          "RR_FAIL(got 1.64, need 1.7)",
+          "SECTOR_RANK_TOO_LOW(rank=10>top6)"
+        ],
+        "opportunity_score": 63.4,
+        "origin": "main_pipeline",
+        "phase_i_skip": null,
+        "reference_entry_price": 1280.1,
+        "regime": "SIDEWAYS",
+        "research": {
+          "de_ratio": null,
+          "dii_change": null,
+          "distance_from_52w_high": null,
+          "eps": null,
+          "eps_growth": null,
+          "fii_change": null,
+          "fundamentals_source": null,
+          "market_cap_cr": null,
+          "profit_growth": null,
+          "promoter_pledge_pct": null,
+          "research_grade": null,
+          "revenue_growth": null,
+          "roce": null,
+          "roe": null,
+          "sector_relative_strength": null
+        },
+        "rr": 0.0,
+        "sector": "FINANCE",
+        "setup_conf_bonus": null,
+        "setup_type": "MOMENTUM",
+        "stage": "REJECTED",
+        "stop_price": 1182.06,
+        "t1_price": 1344.105,
+        "t2_price": 1408.11,
+        "tier": null,
+        "tq": 67.7,
+        "trajectory": null,
+        "warnings": []
+      },
+      "first_seen_date": "2026-07-21",
+      "journey_path": [
+        "REJECTED"
+      ],
+      "last_stage_change_date": "2026-07-21",
+      "mae_pct": 0.0,
+      "max_price_seen": 1280.1,
+      "mfe_pct": 0.0,
+      "migration_status": "NATIVE",
+      "min_price_seen": 1280.1,
+      "previous_stage": null,
+      "stage_change_count": 0,
+      "stop_hit": false,
+      "stop_hit_date": null,
+      "strategy_version": "V1_FREEZE_20260711",
+      "symbol": "HOMEFIRST.NS",
+      "t1_hit": false,
+      "t1_hit_date": null,
+      "t2_hit": false,
+      "t2_hit_date": null,
+      "tracking_id": "HOMEFIRST.NS_20260721",
+      "tracking_status": "ACTIVE",
+      "updated_at": "2026-07-21"
     },
     "HSCL.NS_20260717": {
       "created_at": "2026-07-17",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 769.9,
+        "current_price": 800.9,
         "opportunity_score": null,
         "rr": null,
-        "stage": "REJECTED",
+        "stage": "DEVELOPING",
         "tq": null
       },
       "days_active": 0,
@@ -9628,16 +10677,17 @@
       },
       "first_seen_date": "2026-07-17",
       "journey_path": [
-        "REJECTED"
+        "REJECTED",
+        "DEVELOPING"
       ],
-      "last_stage_change_date": "2026-07-17",
+      "last_stage_change_date": "2026-07-21",
       "mae_pct": 0.0,
       "max_price_seen": 741.55,
       "mfe_pct": 0.0,
       "migration_status": "NATIVE",
       "min_price_seen": 741.55,
-      "previous_stage": null,
-      "stage_change_count": 0,
+      "previous_stage": "REJECTED",
+      "stage_change_count": 1,
       "stop_hit": false,
       "stop_hit_date": null,
       "strategy_version": "V1_FREEZE_20260711",
@@ -9648,14 +10698,14 @@
       "t2_hit_date": null,
       "tracking_id": "HSCL.NS_20260717",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     },
     "HUHTAMAKI.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 249.79,
+        "current_price": 264.19,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -9754,7 +10804,7 @@
       "t2_hit_date": null,
       "tracking_id": "HUHTAMAKI.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     },
     "IBULLSLTD.NS_20260716": {
       "created_at": "2026-07-16",
@@ -9862,12 +10912,12 @@
     "ICICIBANK.NS_20260717": {
       "created_at": "2026-07-17",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 1460.2,
+        "current_price": 1463.1,
         "opportunity_score": null,
         "rr": null,
-        "stage": "NEAR_MISS",
+        "stage": "MONITOR",
         "tq": null
       },
       "days_active": 0,
@@ -9944,16 +10994,17 @@
       "first_seen_date": "2026-07-17",
       "journey_path": [
         "REJECTED",
-        "NEAR_MISS"
+        "NEAR_MISS",
+        "MONITOR"
       ],
-      "last_stage_change_date": "2026-07-20",
+      "last_stage_change_date": "2026-07-21",
       "mae_pct": 0.0,
       "max_price_seen": 1444.3,
       "mfe_pct": 0.0,
       "migration_status": "NATIVE",
       "min_price_seen": 1444.3,
-      "previous_stage": "REJECTED",
-      "stage_change_count": 1,
+      "previous_stage": "NEAR_MISS",
+      "stage_change_count": 2,
       "stop_hit": false,
       "stop_hit_date": null,
       "strategy_version": "V1_FREEZE_20260711",
@@ -9964,7 +11015,7 @@
       "t2_hit_date": null,
       "tracking_id": "ICICIBANK.NS_20260717",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     },
     "IFBIND.NS_20260716": {
       "created_at": "2026-07-16",
@@ -10072,9 +11123,9 @@
     "IIFL.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-07-16",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 567.1,
+        "current_price": 571.8,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -10172,7 +11223,7 @@
       "t2_hit_date": null,
       "tracking_id": "IIFL.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-16"
+      "updated_at": "2026-07-21"
     },
     "IKIO.NS_20260716": {
       "created_at": "2026-07-16",
@@ -10280,12 +11331,12 @@
     "INDIAGLYCO.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 1143.2,
+        "current_price": 1153.95,
         "opportunity_score": null,
         "rr": null,
-        "stage": "DEVELOPING",
+        "stage": "REJECTED",
         "tq": null
       },
       "days_active": 0,
@@ -10359,16 +11410,17 @@
       "first_seen_date": "2026-07-16",
       "journey_path": [
         "REJECTED",
-        "DEVELOPING"
+        "DEVELOPING",
+        "REJECTED"
       ],
-      "last_stage_change_date": "2026-07-20",
+      "last_stage_change_date": "2026-07-21",
       "mae_pct": 0.0,
       "max_price_seen": 1137.35,
       "mfe_pct": 0.0,
       "migration_status": "NATIVE",
       "min_price_seen": 1137.35,
-      "previous_stage": "REJECTED",
-      "stage_change_count": 1,
+      "previous_stage": "DEVELOPING",
+      "stage_change_count": 2,
       "stop_hit": false,
       "stop_hit_date": null,
       "strategy_version": "V1_FREEZE_20260711",
@@ -10379,7 +11431,7 @@
       "t2_hit_date": null,
       "tracking_id": "INDIAGLYCO.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     },
     "INDIANHUME.NS_20260716": {
       "created_at": "2026-07-16",
@@ -10793,12 +11845,115 @@
       "tracking_status": "ACTIVE",
       "updated_at": "2026-07-16"
     },
+    "INDSWFTLAB.NS_20260721": {
+      "created_at": "2026-07-21",
+      "current": {
+        "as_of_date": "2026-07-21",
+        "confidence": null,
+        "current_price": 237.6,
+        "opportunity_score": null,
+        "rr": null,
+        "stage": "REJECTED",
+        "tq": null
+      },
+      "days_active": 0,
+      "days_to_stop": null,
+      "days_to_t1": null,
+      "days_to_t2": null,
+      "entry": {
+        "base_confidence": null,
+        "chop_momentum_penalty": null,
+        "conf_gap": null,
+        "confidence": 67.89,
+        "decision": "REJECTED",
+        "delivery": {
+          "delivery_pct_20d_avg": null,
+          "delivery_pct_today": null,
+          "delivery_ratio": null,
+          "delivery_signal": null,
+          "delivery_source": null
+        },
+        "factors": {
+          "macro_alignment": null,
+          "momentum_quality": null,
+          "mtf_quality": null,
+          "news_risk": null,
+          "options_sentiment": null,
+          "ownership_quality": null,
+          "rs_vs_nifty": null,
+          "sector_composite_score": null,
+          "sector_strength": null,
+          "trend_quality": null,
+          "volume_delivery": null
+        },
+        "fail_reasons": [
+          "ROE_TOO_LOW(3.9%<10%)"
+        ],
+        "opportunity_score": 69.4,
+        "origin": "main_pipeline",
+        "phase_i_skip": null,
+        "reference_entry_price": 237.6,
+        "regime": "SIDEWAYS",
+        "research": {
+          "de_ratio": null,
+          "dii_change": null,
+          "distance_from_52w_high": null,
+          "eps": null,
+          "eps_growth": null,
+          "fii_change": null,
+          "fundamentals_source": null,
+          "market_cap_cr": null,
+          "profit_growth": null,
+          "promoter_pledge_pct": null,
+          "research_grade": null,
+          "revenue_growth": null,
+          "roce": null,
+          "roe": null,
+          "sector_relative_strength": null
+        },
+        "rr": 0.0,
+        "sector": "PHARMA",
+        "setup_conf_bonus": null,
+        "setup_type": "MOMENTUM",
+        "stage": "REJECTED",
+        "stop_price": 214.13,
+        "t1_price": 249.48,
+        "t2_price": 261.36,
+        "tier": null,
+        "tq": 56.7,
+        "trajectory": null,
+        "warnings": []
+      },
+      "first_seen_date": "2026-07-21",
+      "journey_path": [
+        "REJECTED"
+      ],
+      "last_stage_change_date": "2026-07-21",
+      "mae_pct": 0.0,
+      "max_price_seen": 237.6,
+      "mfe_pct": 0.0,
+      "migration_status": "NATIVE",
+      "min_price_seen": 237.6,
+      "previous_stage": null,
+      "stage_change_count": 0,
+      "stop_hit": false,
+      "stop_hit_date": null,
+      "strategy_version": "V1_FREEZE_20260711",
+      "symbol": "INDSWFTLAB.NS",
+      "t1_hit": false,
+      "t1_hit_date": null,
+      "t2_hit": false,
+      "t2_hit_date": null,
+      "tracking_id": "INDSWFTLAB.NS_20260721",
+      "tracking_status": "ACTIVE",
+      "updated_at": "2026-07-21"
+    },
     "INDUSINDBK.NS_20260720": {
       "created_at": "2026-07-20",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 1032.85,
+        "current_price": 1063.45,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -10894,7 +12049,7 @@
       "t2_hit_date": null,
       "tracking_id": "INDUSINDBK.NS_20260720",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     },
     "INOXINDIA.NS_20260720": {
       "created_at": "2026-07-20",
@@ -11211,12 +12366,12 @@
     "IRISDOREME.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 46.31,
+        "current_price": 46.03,
         "opportunity_score": null,
         "rr": null,
-        "stage": "MONITOR",
+        "stage": "REJECTED",
         "tq": null
       },
       "days_active": 0,
@@ -11290,16 +12445,17 @@
       "first_seen_date": "2026-07-16",
       "journey_path": [
         "REJECTED",
-        "MONITOR"
+        "MONITOR",
+        "REJECTED"
       ],
-      "last_stage_change_date": "2026-07-20",
+      "last_stage_change_date": "2026-07-21",
       "mae_pct": 0.0,
       "max_price_seen": 45.52,
       "mfe_pct": 0.0,
       "migration_status": "NATIVE",
       "min_price_seen": 45.52,
-      "previous_stage": "REJECTED",
-      "stage_change_count": 1,
+      "previous_stage": "MONITOR",
+      "stage_change_count": 2,
       "stop_hit": false,
       "stop_hit_date": null,
       "strategy_version": "V1_FREEZE_20260711",
@@ -11310,7 +12466,7 @@
       "t2_hit_date": null,
       "tracking_id": "IRISDOREME.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     },
     "ITCHOTELS.NS_20260716": {
       "created_at": "2026-07-16",
@@ -11418,9 +12574,9 @@
     "ITDC.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 773.9,
+        "current_price": 757.4,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -11518,7 +12674,7 @@
       "t2_hit_date": null,
       "tracking_id": "ITDC.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     },
     "IVALUE.NS_20260716": {
       "created_at": "2026-07-16",
@@ -11937,9 +13093,9 @@
     "JGCHEM.NS_20260720": {
       "created_at": "2026-07-20",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 489.2,
+        "current_price": 493.35,
         "opportunity_score": null,
         "rr": null,
         "stage": "MONITOR",
@@ -12036,7 +13192,7 @@
       "t2_hit_date": null,
       "tracking_id": "JGCHEM.NS_20260720",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     },
     "JINDWORLD.NS_20260716": {
       "created_at": "2026-07-16",
@@ -12247,9 +13403,9 @@
     "JSFB.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 531.6,
+        "current_price": 561.6,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -12345,14 +13501,118 @@
       "t2_hit_date": null,
       "tracking_id": "JSFB.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
+    },
+    "JSWCEMENT.NS_20260721": {
+      "created_at": "2026-07-21",
+      "current": {
+        "as_of_date": "2026-07-21",
+        "confidence": null,
+        "current_price": 140.97,
+        "opportunity_score": null,
+        "rr": null,
+        "stage": "NEAR_MISS",
+        "tq": null
+      },
+      "days_active": 0,
+      "days_to_stop": null,
+      "days_to_t1": null,
+      "days_to_t2": null,
+      "entry": {
+        "base_confidence": null,
+        "chop_momentum_penalty": null,
+        "conf_gap": null,
+        "confidence": 66.31,
+        "decision": "NEAR_MISS",
+        "delivery": {
+          "delivery_pct_20d_avg": null,
+          "delivery_pct_today": null,
+          "delivery_ratio": null,
+          "delivery_signal": null,
+          "delivery_source": null
+        },
+        "factors": {
+          "macro_alignment": null,
+          "momentum_quality": null,
+          "mtf_quality": null,
+          "news_risk": null,
+          "options_sentiment": null,
+          "ownership_quality": null,
+          "rs_vs_nifty": null,
+          "sector_composite_score": null,
+          "sector_strength": null,
+          "trend_quality": null,
+          "volume_delivery": null
+        },
+        "fail_reasons": [
+          "CONF_FAIL(got 66.3, need 70)",
+          "RR_FAIL(got 1.52, need 1.7)"
+        ],
+        "opportunity_score": 69.0,
+        "origin": "main_pipeline",
+        "phase_i_skip": null,
+        "reference_entry_price": 140.97,
+        "regime": "SIDEWAYS",
+        "research": {
+          "de_ratio": null,
+          "dii_change": null,
+          "distance_from_52w_high": null,
+          "eps": null,
+          "eps_growth": null,
+          "fii_change": null,
+          "fundamentals_source": null,
+          "market_cap_cr": null,
+          "profit_growth": null,
+          "promoter_pledge_pct": null,
+          "research_grade": null,
+          "revenue_growth": null,
+          "roce": null,
+          "roe": null,
+          "sector_relative_strength": null
+        },
+        "rr": 0.0,
+        "sector": "METALS",
+        "setup_conf_bonus": null,
+        "setup_type": "MOMENTUM",
+        "stage": "NEAR_MISS",
+        "stop_price": 132.64,
+        "t1_price": 148.0185,
+        "t2_price": 155.067,
+        "tier": null,
+        "tq": 75.7,
+        "trajectory": null,
+        "warnings": []
+      },
+      "first_seen_date": "2026-07-21",
+      "journey_path": [
+        "NEAR_MISS"
+      ],
+      "last_stage_change_date": "2026-07-21",
+      "mae_pct": 0.0,
+      "max_price_seen": 140.97,
+      "mfe_pct": 0.0,
+      "migration_status": "NATIVE",
+      "min_price_seen": 140.97,
+      "previous_stage": null,
+      "stage_change_count": 0,
+      "stop_hit": false,
+      "stop_hit_date": null,
+      "strategy_version": "V1_FREEZE_20260711",
+      "symbol": "JSWCEMENT.NS",
+      "t1_hit": false,
+      "t1_hit_date": null,
+      "t2_hit": false,
+      "t2_hit_date": null,
+      "tracking_id": "JSWCEMENT.NS_20260721",
+      "tracking_status": "ACTIVE",
+      "updated_at": "2026-07-21"
     },
     "JUBLINGREA.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 736.85,
+        "current_price": 763.8,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -12448,7 +13708,7 @@
       "t2_hit_date": null,
       "tracking_id": "JUBLINGREA.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     },
     "JUSTDIAL.NS_20260716": {
       "created_at": "2026-07-16",
@@ -12556,9 +13816,9 @@
     "KABRAEXTRU.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 351.65,
+        "current_price": 359.3,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -12654,7 +13914,7 @@
       "t2_hit_date": null,
       "tracking_id": "KABRAEXTRU.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     },
     "KAJARIACER.NS_20260716": {
       "created_at": "2026-07-16",
@@ -12763,9 +14023,9 @@
     "KALYANKJIL.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 570.0,
+        "current_price": 577.0,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -12861,14 +14121,14 @@
       "t2_hit_date": null,
       "tracking_id": "KALYANKJIL.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     },
     "KAMDHENU.NS_20260717": {
       "created_at": "2026-07-17",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 33.66,
+        "current_price": 33.53,
         "opportunity_score": null,
         "rr": null,
         "stage": "DEVELOPING",
@@ -12965,7 +14225,113 @@
       "t2_hit_date": null,
       "tracking_id": "KAMDHENU.NS_20260717",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
+    },
+    "KARURVYSYA.NS_20260721": {
+      "created_at": "2026-07-21",
+      "current": {
+        "as_of_date": "2026-07-21",
+        "confidence": null,
+        "current_price": 340.3,
+        "opportunity_score": null,
+        "rr": null,
+        "stage": "REJECTED",
+        "tq": null
+      },
+      "days_active": 0,
+      "days_to_stop": null,
+      "days_to_t1": null,
+      "days_to_t2": null,
+      "entry": {
+        "base_confidence": null,
+        "chop_momentum_penalty": null,
+        "conf_gap": null,
+        "confidence": 30.994999999999997,
+        "decision": "REJECTED",
+        "delivery": {
+          "delivery_pct_20d_avg": null,
+          "delivery_pct_today": null,
+          "delivery_ratio": null,
+          "delivery_signal": null,
+          "delivery_source": null
+        },
+        "factors": {
+          "macro_alignment": null,
+          "momentum_quality": null,
+          "mtf_quality": null,
+          "news_risk": null,
+          "options_sentiment": null,
+          "ownership_quality": null,
+          "rs_vs_nifty": null,
+          "sector_composite_score": null,
+          "sector_strength": null,
+          "trend_quality": null,
+          "volume_delivery": null
+        },
+        "fail_reasons": [
+          "CONF_FAIL(got 31.0, need 70)",
+          "RR_FAIL(got 1.45, need 1.7)",
+          "SECTOR_RANK_TOO_LOW(rank=10>top6)",
+          "SUSPECT_PUMP_LOW_DELIVERY"
+        ],
+        "opportunity_score": 50.4,
+        "origin": "main_pipeline",
+        "phase_i_skip": null,
+        "reference_entry_price": 340.3,
+        "regime": "SIDEWAYS",
+        "research": {
+          "de_ratio": null,
+          "dii_change": null,
+          "distance_from_52w_high": null,
+          "eps": null,
+          "eps_growth": null,
+          "fii_change": null,
+          "fundamentals_source": null,
+          "market_cap_cr": null,
+          "profit_growth": null,
+          "promoter_pledge_pct": null,
+          "research_grade": null,
+          "revenue_growth": null,
+          "roce": null,
+          "roe": null,
+          "sector_relative_strength": null
+        },
+        "rr": 0.0,
+        "sector": "FINANCE",
+        "setup_conf_bonus": null,
+        "setup_type": "MOMENTUM",
+        "stage": "REJECTED",
+        "stop_price": 294.55,
+        "t1_price": 357.315,
+        "t2_price": 374.33,
+        "tier": null,
+        "tq": 75.9,
+        "trajectory": null,
+        "warnings": []
+      },
+      "first_seen_date": "2026-07-21",
+      "journey_path": [
+        "REJECTED"
+      ],
+      "last_stage_change_date": "2026-07-21",
+      "mae_pct": 0.0,
+      "max_price_seen": 340.3,
+      "mfe_pct": 0.0,
+      "migration_status": "NATIVE",
+      "min_price_seen": 340.3,
+      "previous_stage": null,
+      "stage_change_count": 0,
+      "stop_hit": false,
+      "stop_hit_date": null,
+      "strategy_version": "V1_FREEZE_20260711",
+      "symbol": "KARURVYSYA.NS",
+      "t1_hit": false,
+      "t1_hit_date": null,
+      "t2_hit": false,
+      "t2_hit_date": null,
+      "tracking_id": "KARURVYSYA.NS_20260721",
+      "tracking_status": "ACTIVE",
+      "updated_at": "2026-07-21"
     },
     "KIRLOSENG.NS_20260716": {
       "created_at": "2026-07-16",
@@ -13384,9 +14750,9 @@
     "LANDMARK.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 535.35,
+        "current_price": 532.2,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -13482,7 +14848,110 @@
       "t2_hit_date": null,
       "tracking_id": "LANDMARK.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
+    },
+    "LENSKART.NS_20260721": {
+      "created_at": "2026-07-21",
+      "current": {
+        "as_of_date": "2026-07-21",
+        "confidence": null,
+        "current_price": 549.05,
+        "opportunity_score": null,
+        "rr": null,
+        "stage": "REJECTED",
+        "tq": null
+      },
+      "days_active": 0,
+      "days_to_stop": null,
+      "days_to_t1": null,
+      "days_to_t2": null,
+      "entry": {
+        "base_confidence": null,
+        "chop_momentum_penalty": null,
+        "conf_gap": null,
+        "confidence": 61.400000000000006,
+        "decision": "REJECTED",
+        "delivery": {
+          "delivery_pct_20d_avg": null,
+          "delivery_pct_today": null,
+          "delivery_ratio": null,
+          "delivery_signal": null,
+          "delivery_source": null
+        },
+        "factors": {
+          "macro_alignment": null,
+          "momentum_quality": null,
+          "mtf_quality": null,
+          "news_risk": null,
+          "options_sentiment": null,
+          "ownership_quality": null,
+          "rs_vs_nifty": null,
+          "sector_composite_score": null,
+          "sector_strength": null,
+          "trend_quality": null,
+          "volume_delivery": null
+        },
+        "fail_reasons": [
+          "ROE_TOO_LOW(6.9%<10%)"
+        ],
+        "opportunity_score": 78.4,
+        "origin": "main_pipeline",
+        "phase_i_skip": null,
+        "reference_entry_price": 549.05,
+        "regime": "SIDEWAYS",
+        "research": {
+          "de_ratio": null,
+          "dii_change": null,
+          "distance_from_52w_high": null,
+          "eps": null,
+          "eps_growth": null,
+          "fii_change": null,
+          "fundamentals_source": null,
+          "market_cap_cr": null,
+          "profit_growth": null,
+          "promoter_pledge_pct": null,
+          "research_grade": null,
+          "revenue_growth": null,
+          "roce": null,
+          "roe": null,
+          "sector_relative_strength": null
+        },
+        "rr": 0.0,
+        "sector": "HEALTHCARE",
+        "setup_conf_bonus": null,
+        "setup_type": "MOMENTUM",
+        "stage": "REJECTED",
+        "stop_price": 526.65,
+        "t1_price": 576.5025,
+        "t2_price": 603.955,
+        "tier": null,
+        "tq": 80.0,
+        "trajectory": null,
+        "warnings": []
+      },
+      "first_seen_date": "2026-07-21",
+      "journey_path": [
+        "REJECTED"
+      ],
+      "last_stage_change_date": "2026-07-21",
+      "mae_pct": 0.0,
+      "max_price_seen": 549.05,
+      "mfe_pct": 0.0,
+      "migration_status": "NATIVE",
+      "min_price_seen": 549.05,
+      "previous_stage": null,
+      "stage_change_count": 0,
+      "stop_hit": false,
+      "stop_hit_date": null,
+      "strategy_version": "V1_FREEZE_20260711",
+      "symbol": "LENSKART.NS",
+      "t1_hit": false,
+      "t1_hit_date": null,
+      "t2_hit": false,
+      "t2_hit_date": null,
+      "tracking_id": "LENSKART.NS_20260721",
+      "tracking_status": "ACTIVE",
+      "updated_at": "2026-07-21"
     },
     "LLOYDSENGG.NS_20260716": {
       "created_at": "2026-07-16",
@@ -13693,12 +15162,12 @@
     "LLOYDSME.NS_20260717": {
       "created_at": "2026-07-17",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 1907.9,
+        "current_price": 1936.4,
         "opportunity_score": null,
         "rr": null,
-        "stage": "NEAR_MISS",
+        "stage": "MONITOR",
         "tq": null
       },
       "days_active": 0,
@@ -13775,16 +15244,17 @@
       "first_seen_date": "2026-07-17",
       "journey_path": [
         "REJECTED",
-        "NEAR_MISS"
+        "NEAR_MISS",
+        "MONITOR"
       ],
-      "last_stage_change_date": "2026-07-20",
+      "last_stage_change_date": "2026-07-21",
       "mae_pct": 0.0,
       "max_price_seen": 1865.4,
       "mfe_pct": 0.0,
       "migration_status": "NATIVE",
       "min_price_seen": 1865.4,
-      "previous_stage": "REJECTED",
-      "stage_change_count": 1,
+      "previous_stage": "NEAR_MISS",
+      "stage_change_count": 2,
       "stop_hit": false,
       "stop_hit_date": null,
       "strategy_version": "V1_FREEZE_20260711",
@@ -13795,14 +15265,14 @@
       "t2_hit_date": null,
       "tracking_id": "LLOYDSME.NS_20260717",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     },
     "LODHA.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-07-16",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 1162.4,
+        "current_price": 1198.95,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -13898,17 +15368,17 @@
       "t2_hit_date": null,
       "tracking_id": "LODHA.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-16"
+      "updated_at": "2026-07-21"
     },
     "LXCHEM.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 176.55,
+        "current_price": 181.53,
         "opportunity_score": null,
         "rr": null,
-        "stage": "REJECTED",
+        "stage": "DEVELOPING",
         "tq": null
       },
       "days_active": 0,
@@ -13981,16 +15451,17 @@
       },
       "first_seen_date": "2026-07-16",
       "journey_path": [
-        "REJECTED"
+        "REJECTED",
+        "DEVELOPING"
       ],
-      "last_stage_change_date": "2026-07-16",
+      "last_stage_change_date": "2026-07-21",
       "mae_pct": 0.0,
       "max_price_seen": 168.82,
       "mfe_pct": 0.0,
       "migration_status": "NATIVE",
       "min_price_seen": 168.82,
-      "previous_stage": null,
-      "stage_change_count": 0,
+      "previous_stage": "REJECTED",
+      "stage_change_count": 1,
       "stop_hit": false,
       "stop_hit_date": null,
       "strategy_version": "V1_FREEZE_20260711",
@@ -14001,7 +15472,7 @@
       "t2_hit_date": null,
       "tracking_id": "LXCHEM.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     },
     "MAHLOG.NS_20260720": {
       "created_at": "2026-07-20",
@@ -14209,6 +15680,212 @@
       "tracking_id": "MANAKCOAT.NS_20260716",
       "tracking_status": "ACTIVE",
       "updated_at": "2026-07-20"
+    },
+    "MANAPPURAM.NS_20260721": {
+      "created_at": "2026-07-21",
+      "current": {
+        "as_of_date": "2026-07-21",
+        "confidence": null,
+        "current_price": 351.75,
+        "opportunity_score": null,
+        "rr": null,
+        "stage": "REJECTED",
+        "tq": null
+      },
+      "days_active": 0,
+      "days_to_stop": null,
+      "days_to_t1": null,
+      "days_to_t2": null,
+      "entry": {
+        "base_confidence": null,
+        "chop_momentum_penalty": null,
+        "conf_gap": null,
+        "confidence": 62.120000000000005,
+        "decision": "REJECTED",
+        "delivery": {
+          "delivery_pct_20d_avg": null,
+          "delivery_pct_today": null,
+          "delivery_ratio": null,
+          "delivery_signal": null,
+          "delivery_source": null
+        },
+        "factors": {
+          "macro_alignment": null,
+          "momentum_quality": null,
+          "mtf_quality": null,
+          "news_risk": null,
+          "options_sentiment": null,
+          "ownership_quality": null,
+          "rs_vs_nifty": null,
+          "sector_composite_score": null,
+          "sector_strength": null,
+          "trend_quality": null,
+          "volume_delivery": null
+        },
+        "fail_reasons": [
+          "ROE_TOO_LOW(7.0%<10%)"
+        ],
+        "opportunity_score": 66.0,
+        "origin": "main_pipeline",
+        "phase_i_skip": null,
+        "reference_entry_price": 351.75,
+        "regime": "SIDEWAYS",
+        "research": {
+          "de_ratio": null,
+          "dii_change": null,
+          "distance_from_52w_high": null,
+          "eps": null,
+          "eps_growth": null,
+          "fii_change": null,
+          "fundamentals_source": null,
+          "market_cap_cr": null,
+          "profit_growth": null,
+          "promoter_pledge_pct": null,
+          "research_grade": null,
+          "revenue_growth": null,
+          "roce": null,
+          "roe": null,
+          "sector_relative_strength": null
+        },
+        "rr": 0.0,
+        "sector": "FINANCE",
+        "setup_conf_bonus": null,
+        "setup_type": "MOMENTUM",
+        "stage": "REJECTED",
+        "stop_price": 317.16,
+        "t1_price": 369.3375,
+        "t2_price": 386.925,
+        "tier": null,
+        "tq": 76.9,
+        "trajectory": null,
+        "warnings": []
+      },
+      "first_seen_date": "2026-07-21",
+      "journey_path": [
+        "REJECTED"
+      ],
+      "last_stage_change_date": "2026-07-21",
+      "mae_pct": 0.0,
+      "max_price_seen": 351.75,
+      "mfe_pct": 0.0,
+      "migration_status": "NATIVE",
+      "min_price_seen": 351.75,
+      "previous_stage": null,
+      "stage_change_count": 0,
+      "stop_hit": false,
+      "stop_hit_date": null,
+      "strategy_version": "V1_FREEZE_20260711",
+      "symbol": "MANAPPURAM.NS",
+      "t1_hit": false,
+      "t1_hit_date": null,
+      "t2_hit": false,
+      "t2_hit_date": null,
+      "tracking_id": "MANAPPURAM.NS_20260721",
+      "tracking_status": "ACTIVE",
+      "updated_at": "2026-07-21"
+    },
+    "MANBA.NS_20260721": {
+      "created_at": "2026-07-21",
+      "current": {
+        "as_of_date": "2026-07-21",
+        "confidence": null,
+        "current_price": 139.83,
+        "opportunity_score": null,
+        "rr": null,
+        "stage": "NEAR_MISS",
+        "tq": null
+      },
+      "days_active": 0,
+      "days_to_stop": null,
+      "days_to_t1": null,
+      "days_to_t2": null,
+      "entry": {
+        "base_confidence": null,
+        "chop_momentum_penalty": null,
+        "conf_gap": null,
+        "confidence": 72.22,
+        "decision": "NEAR_MISS",
+        "delivery": {
+          "delivery_pct_20d_avg": null,
+          "delivery_pct_today": null,
+          "delivery_ratio": null,
+          "delivery_signal": null,
+          "delivery_source": null
+        },
+        "factors": {
+          "macro_alignment": null,
+          "momentum_quality": null,
+          "mtf_quality": null,
+          "news_risk": null,
+          "options_sentiment": null,
+          "ownership_quality": null,
+          "rs_vs_nifty": null,
+          "sector_composite_score": null,
+          "sector_strength": null,
+          "trend_quality": null,
+          "volume_delivery": null
+        },
+        "fail_reasons": [
+          "SECTOR_RANK_TOO_LOW(rank=10>top6)"
+        ],
+        "opportunity_score": 77.6,
+        "origin": "main_pipeline",
+        "phase_i_skip": null,
+        "reference_entry_price": 139.83,
+        "regime": "SIDEWAYS",
+        "research": {
+          "de_ratio": null,
+          "dii_change": null,
+          "distance_from_52w_high": null,
+          "eps": null,
+          "eps_growth": null,
+          "fii_change": null,
+          "fundamentals_source": null,
+          "market_cap_cr": null,
+          "profit_growth": null,
+          "promoter_pledge_pct": null,
+          "research_grade": null,
+          "revenue_growth": null,
+          "roce": null,
+          "roe": null,
+          "sector_relative_strength": null
+        },
+        "rr": 0.0,
+        "sector": "FINANCE",
+        "setup_conf_bonus": null,
+        "setup_type": "MOMENTUM",
+        "stage": "NEAR_MISS",
+        "stop_price": 133.27,
+        "t1_price": 146.8215,
+        "t2_price": 153.813,
+        "tier": null,
+        "tq": 81.0,
+        "trajectory": null,
+        "warnings": []
+      },
+      "first_seen_date": "2026-07-21",
+      "journey_path": [
+        "NEAR_MISS"
+      ],
+      "last_stage_change_date": "2026-07-21",
+      "mae_pct": 0.0,
+      "max_price_seen": 139.83,
+      "mfe_pct": 0.0,
+      "migration_status": "NATIVE",
+      "min_price_seen": 139.83,
+      "previous_stage": null,
+      "stage_change_count": 0,
+      "stop_hit": false,
+      "stop_hit_date": null,
+      "strategy_version": "V1_FREEZE_20260711",
+      "symbol": "MANBA.NS",
+      "t1_hit": false,
+      "t1_hit_date": null,
+      "t2_hit": false,
+      "t2_hit_date": null,
+      "tracking_id": "MANBA.NS_20260721",
+      "tracking_status": "ACTIVE",
+      "updated_at": "2026-07-21"
     },
     "MANKIND.NS_20260720": {
       "created_at": "2026-07-20",
@@ -14420,9 +16097,9 @@
     "MBAPL.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 145.55,
+        "current_price": 143.75,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -14518,7 +16195,7 @@
       "t2_hit_date": null,
       "tracking_id": "MBAPL.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     },
     "METROPOLIS.NS_20260716": {
       "created_at": "2026-07-16",
@@ -14729,9 +16406,9 @@
     "MMFL.NS_20260720": {
       "created_at": "2026-07-20",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 533.7,
+        "current_price": 555.75,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -14829,7 +16506,7 @@
       "t2_hit_date": null,
       "tracking_id": "MMFL.NS_20260720",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     },
     "MOBIKWIK.NS_20260716": {
       "created_at": "2026-07-16",
@@ -15040,9 +16717,9 @@
     "MOSCHIP.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-07-16",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 247.61,
+        "current_price": 245.28,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -15138,7 +16815,7 @@
       "t2_hit_date": null,
       "tracking_id": "MOSCHIP.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-16"
+      "updated_at": "2026-07-21"
     },
     "MUKANDLTD.NS_20260716": {
       "created_at": "2026-07-16",
@@ -15248,9 +16925,9 @@
     "MUTHOOTMF.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 253.29,
+        "current_price": 254.3,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -15346,7 +17023,7 @@
       "t2_hit_date": null,
       "tracking_id": "MUTHOOTMF.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     },
     "NARMADA.NS_20260717": {
       "created_at": "2026-07-17",
@@ -15450,6 +17127,109 @@
       "tracking_id": "NARMADA.NS_20260717",
       "tracking_status": "ACTIVE",
       "updated_at": "2026-07-20"
+    },
+    "NAUKRI.NS_20260721": {
+      "created_at": "2026-07-21",
+      "current": {
+        "as_of_date": "2026-07-21",
+        "confidence": null,
+        "current_price": 1207.7,
+        "opportunity_score": null,
+        "rr": null,
+        "stage": "REJECTED",
+        "tq": null
+      },
+      "days_active": 0,
+      "days_to_stop": null,
+      "days_to_t1": null,
+      "days_to_t2": null,
+      "entry": {
+        "base_confidence": null,
+        "chop_momentum_penalty": null,
+        "conf_gap": null,
+        "confidence": 45.3,
+        "decision": "REJECTED",
+        "delivery": {
+          "delivery_pct_20d_avg": null,
+          "delivery_pct_today": null,
+          "delivery_ratio": null,
+          "delivery_signal": null,
+          "delivery_source": null
+        },
+        "factors": {
+          "macro_alignment": null,
+          "momentum_quality": null,
+          "mtf_quality": null,
+          "news_risk": null,
+          "options_sentiment": null,
+          "ownership_quality": null,
+          "rs_vs_nifty": null,
+          "sector_composite_score": null,
+          "sector_strength": null,
+          "trend_quality": null,
+          "volume_delivery": null
+        },
+        "fail_reasons": [
+          "SETUP_EDGE_SKIP(REGIME_CHOP_NO_BREAKOUT(SIDEWAYS/OTHER))"
+        ],
+        "opportunity_score": 69.3,
+        "origin": "main_pipeline",
+        "phase_i_skip": null,
+        "reference_entry_price": 1207.7,
+        "regime": "SIDEWAYS",
+        "research": {
+          "de_ratio": null,
+          "dii_change": null,
+          "distance_from_52w_high": null,
+          "eps": null,
+          "eps_growth": null,
+          "fii_change": null,
+          "fundamentals_source": null,
+          "market_cap_cr": null,
+          "profit_growth": null,
+          "promoter_pledge_pct": null,
+          "research_grade": null,
+          "revenue_growth": null,
+          "roce": null,
+          "roe": null,
+          "sector_relative_strength": null
+        },
+        "rr": 0.0,
+        "sector": "IT",
+        "setup_conf_bonus": null,
+        "setup_type": "OTHER",
+        "stage": "REJECTED",
+        "stop_price": 1159.39,
+        "t1_price": 1268.085,
+        "t2_price": 1328.47,
+        "tier": null,
+        "tq": 79.0,
+        "trajectory": null,
+        "warnings": []
+      },
+      "first_seen_date": "2026-07-21",
+      "journey_path": [
+        "REJECTED"
+      ],
+      "last_stage_change_date": "2026-07-21",
+      "mae_pct": 0.0,
+      "max_price_seen": 1207.7,
+      "mfe_pct": 0.0,
+      "migration_status": "NATIVE",
+      "min_price_seen": 1207.7,
+      "previous_stage": null,
+      "stage_change_count": 0,
+      "stop_hit": false,
+      "stop_hit_date": null,
+      "strategy_version": "V1_FREEZE_20260711",
+      "symbol": "NAUKRI.NS",
+      "t1_hit": false,
+      "t1_hit_date": null,
+      "t2_hit": false,
+      "t2_hit_date": null,
+      "tracking_id": "NAUKRI.NS_20260721",
+      "tracking_status": "ACTIVE",
+      "updated_at": "2026-07-21"
     },
     "NAVKARCORP.NS_20260716": {
       "created_at": "2026-07-16",
@@ -15870,9 +17650,9 @@
     "NILKAMAL.NS_20260717": {
       "created_at": "2026-07-17",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 1476.4,
+        "current_price": 1557.0,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -15972,7 +17752,7 @@
       "t2_hit_date": null,
       "tracking_id": "NILKAMAL.NS_20260717",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     },
     "NUVAMA.NS_20260716": {
       "created_at": "2026-07-16",
@@ -16080,9 +17860,9 @@
     "NUVOCO.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 345.9,
+        "current_price": 361.6,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -16178,7 +17958,7 @@
       "t2_hit_date": null,
       "tracking_id": "NUVOCO.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     },
     "NYKAA.NS_20260716": {
       "created_at": "2026-07-16",
@@ -16493,9 +18273,9 @@
     "ONWARDTEC.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-07-16",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 288.2,
+        "current_price": 292.15,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -16593,14 +18373,14 @@
       "t2_hit_date": null,
       "tracking_id": "ONWARDTEC.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-16"
+      "updated_at": "2026-07-21"
     },
     "OPTIEMUS.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 607.0,
+        "current_price": 605.35,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -16696,7 +18476,7 @@
       "t2_hit_date": null,
       "tracking_id": "OPTIEMUS.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     },
     "ORCHPHARMA.NS_20260720": {
       "created_at": "2026-07-20",
@@ -16805,9 +18585,9 @@
     "ORIENTHOT.NS_20260720": {
       "created_at": "2026-07-20",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 143.68,
+        "current_price": 146.54,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -16903,7 +18683,7 @@
       "t2_hit_date": null,
       "tracking_id": "ORIENTHOT.NS_20260720",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     },
     "PAISALO.NS_20260716": {
       "created_at": "2026-07-16",
@@ -17316,6 +19096,109 @@
       "tracking_id": "PAYTM.NS_20260716",
       "tracking_status": "ACTIVE",
       "updated_at": "2026-07-16"
+    },
+    "PCBL.NS_20260721": {
+      "created_at": "2026-07-21",
+      "current": {
+        "as_of_date": "2026-07-21",
+        "confidence": null,
+        "current_price": 332.3,
+        "opportunity_score": null,
+        "rr": null,
+        "stage": "REJECTED",
+        "tq": null
+      },
+      "days_active": 0,
+      "days_to_stop": null,
+      "days_to_t1": null,
+      "days_to_t2": null,
+      "entry": {
+        "base_confidence": null,
+        "chop_momentum_penalty": null,
+        "conf_gap": null,
+        "confidence": 63.61,
+        "decision": "REJECTED",
+        "delivery": {
+          "delivery_pct_20d_avg": null,
+          "delivery_pct_today": null,
+          "delivery_ratio": null,
+          "delivery_signal": null,
+          "delivery_source": null
+        },
+        "factors": {
+          "macro_alignment": null,
+          "momentum_quality": null,
+          "mtf_quality": null,
+          "news_risk": null,
+          "options_sentiment": null,
+          "ownership_quality": null,
+          "rs_vs_nifty": null,
+          "sector_composite_score": null,
+          "sector_strength": null,
+          "trend_quality": null,
+          "volume_delivery": null
+        },
+        "fail_reasons": [
+          "ROE_TOO_LOW(5.6%<10%)"
+        ],
+        "opportunity_score": 66.9,
+        "origin": "main_pipeline",
+        "phase_i_skip": null,
+        "reference_entry_price": 332.3,
+        "regime": "SIDEWAYS",
+        "research": {
+          "de_ratio": null,
+          "dii_change": null,
+          "distance_from_52w_high": null,
+          "eps": null,
+          "eps_growth": null,
+          "fii_change": null,
+          "fundamentals_source": null,
+          "market_cap_cr": null,
+          "profit_growth": null,
+          "promoter_pledge_pct": null,
+          "research_grade": null,
+          "revenue_growth": null,
+          "roce": null,
+          "roe": null,
+          "sector_relative_strength": null
+        },
+        "rr": 0.0,
+        "sector": "DIVERSIFIED",
+        "setup_conf_bonus": null,
+        "setup_type": "MOMENTUM",
+        "stage": "REJECTED",
+        "stop_price": 293.52,
+        "t1_price": 348.915,
+        "t2_price": 365.53,
+        "tier": null,
+        "tq": 75.4,
+        "trajectory": null,
+        "warnings": []
+      },
+      "first_seen_date": "2026-07-21",
+      "journey_path": [
+        "REJECTED"
+      ],
+      "last_stage_change_date": "2026-07-21",
+      "mae_pct": 0.0,
+      "max_price_seen": 332.3,
+      "mfe_pct": 0.0,
+      "migration_status": "NATIVE",
+      "min_price_seen": 332.3,
+      "previous_stage": null,
+      "stage_change_count": 0,
+      "stop_hit": false,
+      "stop_hit_date": null,
+      "strategy_version": "V1_FREEZE_20260711",
+      "symbol": "PCBL.NS",
+      "t1_hit": false,
+      "t1_hit_date": null,
+      "t2_hit": false,
+      "t2_hit_date": null,
+      "tracking_id": "PCBL.NS_20260721",
+      "tracking_status": "ACTIVE",
+      "updated_at": "2026-07-21"
     },
     "PDSL.NS_20260716": {
       "created_at": "2026-07-16",
@@ -17732,9 +19615,9 @@
     "PICCADIL.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 751.6,
+        "current_price": 753.95,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -17830,7 +19713,7 @@
       "t2_hit_date": null,
       "tracking_id": "PICCADIL.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     },
     "PLASTIBLEN.NS_20260716": {
       "created_at": "2026-07-16",
@@ -18458,12 +20341,12 @@
     "PPLPHARMA.NS_20260720": {
       "created_at": "2026-07-20",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 178.87,
+        "current_price": 184.81,
         "opportunity_score": null,
         "rr": null,
-        "stage": "NEAR_MISS",
+        "stage": "REJECTED",
         "tq": null
       },
       "days_active": 0,
@@ -18536,16 +20419,17 @@
       },
       "first_seen_date": "2026-07-20",
       "journey_path": [
-        "NEAR_MISS"
+        "NEAR_MISS",
+        "REJECTED"
       ],
-      "last_stage_change_date": "2026-07-20",
+      "last_stage_change_date": "2026-07-21",
       "mae_pct": 0.0,
       "max_price_seen": 178.87,
       "mfe_pct": 0.0,
       "migration_status": "NATIVE",
       "min_price_seen": 178.87,
-      "previous_stage": null,
-      "stage_change_count": 0,
+      "previous_stage": "NEAR_MISS",
+      "stage_change_count": 1,
       "stop_hit": false,
       "stop_hit_date": null,
       "strategy_version": "V1_FREEZE_20260711",
@@ -18556,14 +20440,14 @@
       "t2_hit_date": null,
       "tracking_id": "PPLPHARMA.NS_20260720",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     },
     "PREMIERPOL.NS_20260717": {
       "created_at": "2026-07-17",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 73.99,
+        "current_price": 72.07,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -18663,7 +20547,7 @@
       "t2_hit_date": null,
       "tracking_id": "PREMIERPOL.NS_20260717",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     },
     "PSPPROJECT.NS_20260716": {
       "created_at": "2026-07-16",
@@ -18767,6 +20651,110 @@
       "tracking_id": "PSPPROJECT.NS_20260716",
       "tracking_status": "ACTIVE",
       "updated_at": "2026-07-16"
+    },
+    "QUESS.NS_20260721": {
+      "created_at": "2026-07-21",
+      "current": {
+        "as_of_date": "2026-07-21",
+        "confidence": null,
+        "current_price": 299.65,
+        "opportunity_score": null,
+        "rr": null,
+        "stage": "REJECTED",
+        "tq": null
+      },
+      "days_active": 0,
+      "days_to_stop": null,
+      "days_to_t1": null,
+      "days_to_t2": null,
+      "entry": {
+        "base_confidence": null,
+        "chop_momentum_penalty": null,
+        "conf_gap": null,
+        "confidence": 76.8,
+        "decision": "REJECTED",
+        "delivery": {
+          "delivery_pct_20d_avg": null,
+          "delivery_pct_today": null,
+          "delivery_ratio": null,
+          "delivery_signal": null,
+          "delivery_source": null
+        },
+        "factors": {
+          "macro_alignment": null,
+          "momentum_quality": null,
+          "mtf_quality": null,
+          "news_risk": null,
+          "options_sentiment": null,
+          "ownership_quality": null,
+          "rs_vs_nifty": null,
+          "sector_composite_score": null,
+          "sector_strength": null,
+          "trend_quality": null,
+          "volume_delivery": null
+        },
+        "fail_reasons": [
+          "TQ_FAIL(got 61.1, need 68)",
+          "SECTOR_RANK_TOO_LOW(rank=15>top6)"
+        ],
+        "opportunity_score": 79.2,
+        "origin": "main_pipeline",
+        "phase_i_skip": null,
+        "reference_entry_price": 299.65,
+        "regime": "SIDEWAYS",
+        "research": {
+          "de_ratio": null,
+          "dii_change": null,
+          "distance_from_52w_high": null,
+          "eps": null,
+          "eps_growth": null,
+          "fii_change": null,
+          "fundamentals_source": null,
+          "market_cap_cr": null,
+          "profit_growth": null,
+          "promoter_pledge_pct": null,
+          "research_grade": null,
+          "revenue_growth": null,
+          "roce": null,
+          "roe": null,
+          "sector_relative_strength": null
+        },
+        "rr": 0.0,
+        "sector": "DIVERSIFIED",
+        "setup_conf_bonus": null,
+        "setup_type": "MOMENTUM",
+        "stage": "REJECTED",
+        "stop_price": 282.93,
+        "t1_price": 314.6325,
+        "t2_price": 329.615,
+        "tier": null,
+        "tq": 61.1,
+        "trajectory": null,
+        "warnings": []
+      },
+      "first_seen_date": "2026-07-21",
+      "journey_path": [
+        "REJECTED"
+      ],
+      "last_stage_change_date": "2026-07-21",
+      "mae_pct": 0.0,
+      "max_price_seen": 299.65,
+      "mfe_pct": 0.0,
+      "migration_status": "NATIVE",
+      "min_price_seen": 299.65,
+      "previous_stage": null,
+      "stage_change_count": 0,
+      "stop_hit": false,
+      "stop_hit_date": null,
+      "strategy_version": "V1_FREEZE_20260711",
+      "symbol": "QUESS.NS",
+      "t1_hit": false,
+      "t1_hit_date": null,
+      "t2_hit": false,
+      "t2_hit_date": null,
+      "tracking_id": "QUESS.NS_20260721",
+      "tracking_status": "ACTIVE",
+      "updated_at": "2026-07-21"
     },
     "RADICO.NS_20260720": {
       "created_at": "2026-07-20",
@@ -18874,9 +20862,9 @@
     "RAIN.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-07-16",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 213.64,
+        "current_price": 223.4,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -18972,14 +20960,119 @@
       "t2_hit_date": null,
       "tracking_id": "RAIN.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-16"
+      "updated_at": "2026-07-21"
+    },
+    "RAJRATAN.NS_20260721": {
+      "created_at": "2026-07-21",
+      "current": {
+        "as_of_date": "2026-07-21",
+        "confidence": null,
+        "current_price": 509.9,
+        "opportunity_score": null,
+        "rr": null,
+        "stage": "REJECTED",
+        "tq": null
+      },
+      "days_active": 0,
+      "days_to_stop": null,
+      "days_to_t1": null,
+      "days_to_t2": null,
+      "entry": {
+        "base_confidence": null,
+        "chop_momentum_penalty": null,
+        "conf_gap": null,
+        "confidence": 43.93,
+        "decision": "REJECTED",
+        "delivery": {
+          "delivery_pct_20d_avg": null,
+          "delivery_pct_today": null,
+          "delivery_ratio": null,
+          "delivery_signal": null,
+          "delivery_source": null
+        },
+        "factors": {
+          "macro_alignment": null,
+          "momentum_quality": null,
+          "mtf_quality": null,
+          "news_risk": null,
+          "options_sentiment": null,
+          "ownership_quality": null,
+          "rs_vs_nifty": null,
+          "sector_composite_score": null,
+          "sector_strength": null,
+          "trend_quality": null,
+          "volume_delivery": null
+        },
+        "fail_reasons": [
+          "CONF_FAIL(got 43.9, need 70)",
+          "SECTOR_RANK_TOO_LOW(rank=15>top6)",
+          "SUSPECT_PUMP_LOW_DELIVERY"
+        ],
+        "opportunity_score": 61.6,
+        "origin": "main_pipeline",
+        "phase_i_skip": null,
+        "reference_entry_price": 509.9,
+        "regime": "SIDEWAYS",
+        "research": {
+          "de_ratio": null,
+          "dii_change": null,
+          "distance_from_52w_high": null,
+          "eps": null,
+          "eps_growth": null,
+          "fii_change": null,
+          "fundamentals_source": null,
+          "market_cap_cr": null,
+          "profit_growth": null,
+          "promoter_pledge_pct": null,
+          "research_grade": null,
+          "revenue_growth": null,
+          "roce": null,
+          "roe": null,
+          "sector_relative_strength": null
+        },
+        "rr": 0.0,
+        "sector": "DIVERSIFIED",
+        "setup_conf_bonus": null,
+        "setup_type": "MOMENTUM",
+        "stage": "REJECTED",
+        "stop_price": 454.66,
+        "t1_price": 535.395,
+        "t2_price": 560.89,
+        "tier": null,
+        "tq": 77.9,
+        "trajectory": null,
+        "warnings": []
+      },
+      "first_seen_date": "2026-07-21",
+      "journey_path": [
+        "REJECTED"
+      ],
+      "last_stage_change_date": "2026-07-21",
+      "mae_pct": 0.0,
+      "max_price_seen": 509.9,
+      "mfe_pct": 0.0,
+      "migration_status": "NATIVE",
+      "min_price_seen": 509.9,
+      "previous_stage": null,
+      "stage_change_count": 0,
+      "stop_hit": false,
+      "stop_hit_date": null,
+      "strategy_version": "V1_FREEZE_20260711",
+      "symbol": "RAJRATAN.NS",
+      "t1_hit": false,
+      "t1_hit_date": null,
+      "t2_hit": false,
+      "t2_hit_date": null,
+      "tracking_id": "RAJRATAN.NS_20260721",
+      "tracking_status": "ACTIVE",
+      "updated_at": "2026-07-21"
     },
     "RELAXO.NS_20260720": {
       "created_at": "2026-07-20",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 437.05,
+        "current_price": 410.95,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -19075,7 +21168,7 @@
       "t2_hit_date": null,
       "tracking_id": "RELAXO.NS_20260720",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     },
     "RELTD.NS_20260717": {
       "created_at": "2026-07-17",
@@ -19913,9 +22006,9 @@
     "SANSERA.NS_20260720": {
       "created_at": "2026-07-20",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 3335.2,
+        "current_price": 3294.7,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -20011,14 +22104,14 @@
       "t2_hit_date": null,
       "tracking_id": "SANSERA.NS_20260720",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     },
     "SAREGAMA.NS_20260720": {
       "created_at": "2026-07-20",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 514.15,
+        "current_price": 516.2,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -20116,7 +22209,7 @@
       "t2_hit_date": null,
       "tracking_id": "SAREGAMA.NS_20260720",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     },
     "SATIN.NS_20260716": {
       "created_at": "2026-07-16",
@@ -20330,9 +22423,9 @@
     "SETL.NS_20260720": {
       "created_at": "2026-07-20",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 288.05,
+        "current_price": 289.65,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -20430,14 +22523,14 @@
       "t2_hit_date": null,
       "tracking_id": "SETL.NS_20260720",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     },
     "SGFIN.NS_20260720": {
       "created_at": "2026-07-20",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 671.9,
+        "current_price": 677.5,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -20535,7 +22628,7 @@
       "t2_hit_date": null,
       "tracking_id": "SGFIN.NS_20260720",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     },
     "SGMART.NS_20260720": {
       "created_at": "2026-07-20",
@@ -20743,6 +22836,111 @@
       "tracking_status": "ACTIVE",
       "updated_at": "2026-07-20"
     },
+    "SHAREINDIA.NS_20260721": {
+      "created_at": "2026-07-21",
+      "current": {
+        "as_of_date": "2026-07-21",
+        "confidence": null,
+        "current_price": 185.88,
+        "opportunity_score": null,
+        "rr": null,
+        "stage": "REJECTED",
+        "tq": null
+      },
+      "days_active": 0,
+      "days_to_stop": null,
+      "days_to_t1": null,
+      "days_to_t2": null,
+      "entry": {
+        "base_confidence": null,
+        "chop_momentum_penalty": null,
+        "conf_gap": null,
+        "confidence": 61.010000000000005,
+        "decision": "REJECTED",
+        "delivery": {
+          "delivery_pct_20d_avg": null,
+          "delivery_pct_today": null,
+          "delivery_ratio": null,
+          "delivery_signal": null,
+          "delivery_source": null
+        },
+        "factors": {
+          "macro_alignment": null,
+          "momentum_quality": null,
+          "mtf_quality": null,
+          "news_risk": null,
+          "options_sentiment": null,
+          "ownership_quality": null,
+          "rs_vs_nifty": null,
+          "sector_composite_score": null,
+          "sector_strength": null,
+          "trend_quality": null,
+          "volume_delivery": null
+        },
+        "fail_reasons": [
+          "CONF_FAIL(got 61.0, need 70)",
+          "TQ_FAIL(got 63.5, need 68)",
+          "SECTOR_RANK_TOO_LOW(rank=15>top6)"
+        ],
+        "opportunity_score": 68.7,
+        "origin": "main_pipeline",
+        "phase_i_skip": null,
+        "reference_entry_price": 185.88,
+        "regime": "SIDEWAYS",
+        "research": {
+          "de_ratio": null,
+          "dii_change": null,
+          "distance_from_52w_high": null,
+          "eps": null,
+          "eps_growth": null,
+          "fii_change": null,
+          "fundamentals_source": null,
+          "market_cap_cr": null,
+          "profit_growth": null,
+          "promoter_pledge_pct": null,
+          "research_grade": null,
+          "revenue_growth": null,
+          "roce": null,
+          "roe": null,
+          "sector_relative_strength": null
+        },
+        "rr": 0.0,
+        "sector": "DIVERSIFIED",
+        "setup_conf_bonus": null,
+        "setup_type": "MOMENTUM",
+        "stage": "REJECTED",
+        "stop_price": 166.49,
+        "t1_price": 195.174,
+        "t2_price": 204.468,
+        "tier": null,
+        "tq": 63.5,
+        "trajectory": null,
+        "warnings": []
+      },
+      "first_seen_date": "2026-07-21",
+      "journey_path": [
+        "REJECTED"
+      ],
+      "last_stage_change_date": "2026-07-21",
+      "mae_pct": 0.0,
+      "max_price_seen": 185.88,
+      "mfe_pct": 0.0,
+      "migration_status": "NATIVE",
+      "min_price_seen": 185.88,
+      "previous_stage": null,
+      "stage_change_count": 0,
+      "stop_hit": false,
+      "stop_hit_date": null,
+      "strategy_version": "V1_FREEZE_20260711",
+      "symbol": "SHAREINDIA.NS",
+      "t1_hit": false,
+      "t1_hit_date": null,
+      "t2_hit": false,
+      "t2_hit_date": null,
+      "tracking_id": "SHAREINDIA.NS_20260721",
+      "tracking_status": "ACTIVE",
+      "updated_at": "2026-07-21"
+    },
     "SHOPERSTOP.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
@@ -20849,9 +23047,9 @@
     "SHREEJISPG.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 615.85,
+        "current_price": 612.15,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -20949,14 +23147,119 @@
       "t2_hit_date": null,
       "tracking_id": "SHREEJISPG.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
+    },
+    "SHRIRAMFIN.NS_20260721": {
+      "created_at": "2026-07-21",
+      "current": {
+        "as_of_date": "2026-07-21",
+        "confidence": null,
+        "current_price": 1061.5,
+        "opportunity_score": null,
+        "rr": null,
+        "stage": "REJECTED",
+        "tq": null
+      },
+      "days_active": 0,
+      "days_to_stop": null,
+      "days_to_t1": null,
+      "days_to_t2": null,
+      "entry": {
+        "base_confidence": null,
+        "chop_momentum_penalty": null,
+        "conf_gap": null,
+        "confidence": 65.35,
+        "decision": "REJECTED",
+        "delivery": {
+          "delivery_pct_20d_avg": null,
+          "delivery_pct_today": null,
+          "delivery_ratio": null,
+          "delivery_signal": null,
+          "delivery_source": null
+        },
+        "factors": {
+          "macro_alignment": null,
+          "momentum_quality": null,
+          "mtf_quality": null,
+          "news_risk": null,
+          "options_sentiment": null,
+          "ownership_quality": null,
+          "rs_vs_nifty": null,
+          "sector_composite_score": null,
+          "sector_strength": null,
+          "trend_quality": null,
+          "volume_delivery": null
+        },
+        "fail_reasons": [
+          "CONF_FAIL(got 65.3, need 70)",
+          "SECTOR_RANK_TOO_LOW(rank=10>top6)",
+          "EVENT_BLOCK_RESULTS_IN_3D"
+        ],
+        "opportunity_score": 71.5,
+        "origin": "main_pipeline",
+        "phase_i_skip": null,
+        "reference_entry_price": 1061.5,
+        "regime": "SIDEWAYS",
+        "research": {
+          "de_ratio": null,
+          "dii_change": null,
+          "distance_from_52w_high": null,
+          "eps": null,
+          "eps_growth": null,
+          "fii_change": null,
+          "fundamentals_source": null,
+          "market_cap_cr": null,
+          "profit_growth": null,
+          "promoter_pledge_pct": null,
+          "research_grade": null,
+          "revenue_growth": null,
+          "roce": null,
+          "roe": null,
+          "sector_relative_strength": null
+        },
+        "rr": 0.0,
+        "sector": "FINANCE",
+        "setup_conf_bonus": null,
+        "setup_type": "MOMENTUM",
+        "stage": "REJECTED",
+        "stop_price": 999.98,
+        "t1_price": 1114.575,
+        "t2_price": 1167.65,
+        "tier": null,
+        "tq": 75.8,
+        "trajectory": null,
+        "warnings": []
+      },
+      "first_seen_date": "2026-07-21",
+      "journey_path": [
+        "REJECTED"
+      ],
+      "last_stage_change_date": "2026-07-21",
+      "mae_pct": 0.0,
+      "max_price_seen": 1061.5,
+      "mfe_pct": 0.0,
+      "migration_status": "NATIVE",
+      "min_price_seen": 1061.5,
+      "previous_stage": null,
+      "stage_change_count": 0,
+      "stop_hit": false,
+      "stop_hit_date": null,
+      "strategy_version": "V1_FREEZE_20260711",
+      "symbol": "SHRIRAMFIN.NS",
+      "t1_hit": false,
+      "t1_hit_date": null,
+      "t2_hit": false,
+      "t2_hit_date": null,
+      "tracking_id": "SHRIRAMFIN.NS_20260721",
+      "tracking_status": "ACTIVE",
+      "updated_at": "2026-07-21"
     },
     "SHYAMMETL.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 1055.0,
+        "current_price": 1062.65,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -21052,7 +23355,7 @@
       "t2_hit_date": null,
       "tracking_id": "SHYAMMETL.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     },
     "SIGNPOST.NS_20260717": {
       "created_at": "2026-07-17",
@@ -21371,9 +23674,9 @@
     "SONACOMS.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 714.55,
+        "current_price": 732.75,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -21469,7 +23772,7 @@
       "t2_hit_date": null,
       "tracking_id": "SONACOMS.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     },
     "SPMLINFRA.NS_20260717": {
       "created_at": "2026-07-17",
@@ -21679,12 +23982,118 @@
       "tracking_status": "ACTIVE",
       "updated_at": "2026-07-17"
     },
+    "SRF.NS_20260721": {
+      "created_at": "2026-07-21",
+      "current": {
+        "as_of_date": "2026-07-21",
+        "confidence": null,
+        "current_price": 2939.0,
+        "opportunity_score": null,
+        "rr": null,
+        "stage": "REJECTED",
+        "tq": null
+      },
+      "days_active": 0,
+      "days_to_stop": null,
+      "days_to_t1": null,
+      "days_to_t2": null,
+      "entry": {
+        "base_confidence": null,
+        "chop_momentum_penalty": null,
+        "conf_gap": null,
+        "confidence": 61.94,
+        "decision": "REJECTED",
+        "delivery": {
+          "delivery_pct_20d_avg": null,
+          "delivery_pct_today": null,
+          "delivery_ratio": null,
+          "delivery_signal": null,
+          "delivery_source": null
+        },
+        "factors": {
+          "macro_alignment": null,
+          "momentum_quality": null,
+          "mtf_quality": null,
+          "news_risk": null,
+          "options_sentiment": null,
+          "ownership_quality": null,
+          "rs_vs_nifty": null,
+          "sector_composite_score": null,
+          "sector_strength": null,
+          "trend_quality": null,
+          "volume_delivery": null
+        },
+        "fail_reasons": [
+          "CONF_FAIL(got 61.9, need 70)",
+          "RR_FAIL(got 1.42, need 1.7)",
+          "SECTOR_RANK_TOO_LOW(rank=15>top6)",
+          "EVENT_BLOCK_RESULTS_IN_1D"
+        ],
+        "opportunity_score": 64.6,
+        "origin": "main_pipeline",
+        "phase_i_skip": null,
+        "reference_entry_price": 2939.0,
+        "regime": "SIDEWAYS",
+        "research": {
+          "de_ratio": null,
+          "dii_change": null,
+          "distance_from_52w_high": null,
+          "eps": null,
+          "eps_growth": null,
+          "fii_change": null,
+          "fundamentals_source": null,
+          "market_cap_cr": null,
+          "profit_growth": null,
+          "promoter_pledge_pct": null,
+          "research_grade": null,
+          "revenue_growth": null,
+          "roce": null,
+          "roe": null,
+          "sector_relative_strength": null
+        },
+        "rr": 0.0,
+        "sector": "DIVERSIFIED",
+        "setup_conf_bonus": null,
+        "setup_type": "MOMENTUM",
+        "stage": "REJECTED",
+        "stop_price": 2686.05,
+        "t1_price": 3085.95,
+        "t2_price": 3232.9,
+        "tier": null,
+        "tq": 70.7,
+        "trajectory": null,
+        "warnings": []
+      },
+      "first_seen_date": "2026-07-21",
+      "journey_path": [
+        "REJECTED"
+      ],
+      "last_stage_change_date": "2026-07-21",
+      "mae_pct": 0.0,
+      "max_price_seen": 2939.0,
+      "mfe_pct": 0.0,
+      "migration_status": "NATIVE",
+      "min_price_seen": 2939.0,
+      "previous_stage": null,
+      "stage_change_count": 0,
+      "stop_hit": false,
+      "stop_hit_date": null,
+      "strategy_version": "V1_FREEZE_20260711",
+      "symbol": "SRF.NS",
+      "t1_hit": false,
+      "t1_hit_date": null,
+      "t2_hit": false,
+      "t2_hit_date": null,
+      "tracking_id": "SRF.NS_20260721",
+      "tracking_status": "ACTIVE",
+      "updated_at": "2026-07-21"
+    },
     "SSWL.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 276.33,
+        "current_price": 279.3,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -21783,14 +24192,14 @@
       "t2_hit_date": null,
       "tracking_id": "SSWL.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     },
     "STALLION.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 217.1,
+        "current_price": 245.32,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -21886,7 +24295,7 @@
       "t2_hit_date": null,
       "tracking_id": "STALLION.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     },
     "STYL.NS_20260716": {
       "created_at": "2026-07-16",
@@ -22417,12 +24826,12 @@
     "TALBROAUTO.NS_20260720": {
       "created_at": "2026-07-20",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 416.55,
+        "current_price": 412.35,
         "opportunity_score": null,
         "rr": null,
-        "stage": "NEAR_MISS",
+        "stage": "REJECTED",
         "tq": null
       },
       "days_active": 0,
@@ -22495,16 +24904,17 @@
       },
       "first_seen_date": "2026-07-20",
       "journey_path": [
-        "NEAR_MISS"
+        "NEAR_MISS",
+        "REJECTED"
       ],
-      "last_stage_change_date": "2026-07-20",
+      "last_stage_change_date": "2026-07-21",
       "mae_pct": 0.0,
       "max_price_seen": 416.55,
       "mfe_pct": 0.0,
       "migration_status": "NATIVE",
       "min_price_seen": 416.55,
-      "previous_stage": null,
-      "stage_change_count": 0,
+      "previous_stage": "NEAR_MISS",
+      "stage_change_count": 1,
       "stop_hit": false,
       "stop_hit_date": null,
       "strategy_version": "V1_FREEZE_20260711",
@@ -22515,7 +24925,7 @@
       "t2_hit_date": null,
       "tracking_id": "TALBROAUTO.NS_20260720",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     },
     "TANLA.NS_20260716": {
       "created_at": "2026-07-16",
@@ -22621,6 +25031,212 @@
       "tracking_id": "TANLA.NS_20260716",
       "tracking_status": "ACTIVE",
       "updated_at": "2026-07-17"
+    },
+    "TARSONS.NS_20260721": {
+      "created_at": "2026-07-21",
+      "current": {
+        "as_of_date": "2026-07-21",
+        "confidence": null,
+        "current_price": 312.05,
+        "opportunity_score": null,
+        "rr": null,
+        "stage": "REJECTED",
+        "tq": null
+      },
+      "days_active": 0,
+      "days_to_stop": null,
+      "days_to_t1": null,
+      "days_to_t2": null,
+      "entry": {
+        "base_confidence": null,
+        "chop_momentum_penalty": null,
+        "conf_gap": null,
+        "confidence": 58.5,
+        "decision": "REJECTED",
+        "delivery": {
+          "delivery_pct_20d_avg": null,
+          "delivery_pct_today": null,
+          "delivery_ratio": null,
+          "delivery_signal": null,
+          "delivery_source": null
+        },
+        "factors": {
+          "macro_alignment": null,
+          "momentum_quality": null,
+          "mtf_quality": null,
+          "news_risk": null,
+          "options_sentiment": null,
+          "ownership_quality": null,
+          "rs_vs_nifty": null,
+          "sector_composite_score": null,
+          "sector_strength": null,
+          "trend_quality": null,
+          "volume_delivery": null
+        },
+        "fail_reasons": [
+          "SETUP_EDGE_SKIP(REGIME_CHOP_NO_BREAKOUT(SIDEWAYS/OTHER))"
+        ],
+        "opportunity_score": 71.7,
+        "origin": "main_pipeline",
+        "phase_i_skip": null,
+        "reference_entry_price": 312.05,
+        "regime": "SIDEWAYS",
+        "research": {
+          "de_ratio": null,
+          "dii_change": null,
+          "distance_from_52w_high": null,
+          "eps": null,
+          "eps_growth": null,
+          "fii_change": null,
+          "fundamentals_source": null,
+          "market_cap_cr": null,
+          "profit_growth": null,
+          "promoter_pledge_pct": null,
+          "research_grade": null,
+          "revenue_growth": null,
+          "roce": null,
+          "roe": null,
+          "sector_relative_strength": null
+        },
+        "rr": 0.0,
+        "sector": "DIVERSIFIED",
+        "setup_conf_bonus": null,
+        "setup_type": "OTHER",
+        "stage": "REJECTED",
+        "stop_price": 276.61,
+        "t1_price": 327.6525,
+        "t2_price": 343.255,
+        "tier": null,
+        "tq": 74.4,
+        "trajectory": null,
+        "warnings": []
+      },
+      "first_seen_date": "2026-07-21",
+      "journey_path": [
+        "REJECTED"
+      ],
+      "last_stage_change_date": "2026-07-21",
+      "mae_pct": 0.0,
+      "max_price_seen": 312.05,
+      "mfe_pct": 0.0,
+      "migration_status": "NATIVE",
+      "min_price_seen": 312.05,
+      "previous_stage": null,
+      "stage_change_count": 0,
+      "stop_hit": false,
+      "stop_hit_date": null,
+      "strategy_version": "V1_FREEZE_20260711",
+      "symbol": "TARSONS.NS",
+      "t1_hit": false,
+      "t1_hit_date": null,
+      "t2_hit": false,
+      "t2_hit_date": null,
+      "tracking_id": "TARSONS.NS_20260721",
+      "tracking_status": "ACTIVE",
+      "updated_at": "2026-07-21"
+    },
+    "TATVA.NS_20260721": {
+      "created_at": "2026-07-21",
+      "current": {
+        "as_of_date": "2026-07-21",
+        "confidence": null,
+        "current_price": 1685.0,
+        "opportunity_score": null,
+        "rr": null,
+        "stage": "REJECTED",
+        "tq": null
+      },
+      "days_active": 0,
+      "days_to_stop": null,
+      "days_to_t1": null,
+      "days_to_t2": null,
+      "entry": {
+        "base_confidence": null,
+        "chop_momentum_penalty": null,
+        "conf_gap": null,
+        "confidence": 30.950000000000003,
+        "decision": "REJECTED",
+        "delivery": {
+          "delivery_pct_20d_avg": null,
+          "delivery_pct_today": null,
+          "delivery_ratio": null,
+          "delivery_signal": null,
+          "delivery_source": null
+        },
+        "factors": {
+          "macro_alignment": null,
+          "momentum_quality": null,
+          "mtf_quality": null,
+          "news_risk": null,
+          "options_sentiment": null,
+          "ownership_quality": null,
+          "rs_vs_nifty": null,
+          "sector_composite_score": null,
+          "sector_strength": null,
+          "trend_quality": null,
+          "volume_delivery": null
+        },
+        "fail_reasons": [
+          "ROE_TOO_LOW(5.5%<10%)"
+        ],
+        "opportunity_score": 43.0,
+        "origin": "main_pipeline",
+        "phase_i_skip": null,
+        "reference_entry_price": 1685.0,
+        "regime": "SIDEWAYS",
+        "research": {
+          "de_ratio": null,
+          "dii_change": null,
+          "distance_from_52w_high": null,
+          "eps": null,
+          "eps_growth": null,
+          "fii_change": null,
+          "fundamentals_source": null,
+          "market_cap_cr": null,
+          "profit_growth": null,
+          "promoter_pledge_pct": null,
+          "research_grade": null,
+          "revenue_growth": null,
+          "roce": null,
+          "roe": null,
+          "sector_relative_strength": null
+        },
+        "rr": 0.0,
+        "sector": "DIVERSIFIED",
+        "setup_conf_bonus": null,
+        "setup_type": "MOMENTUM",
+        "stage": "REJECTED",
+        "stop_price": 1432.25,
+        "t1_price": 1769.25,
+        "t2_price": 1853.5,
+        "tier": null,
+        "tq": 52.6,
+        "trajectory": null,
+        "warnings": []
+      },
+      "first_seen_date": "2026-07-21",
+      "journey_path": [
+        "REJECTED"
+      ],
+      "last_stage_change_date": "2026-07-21",
+      "mae_pct": 0.0,
+      "max_price_seen": 1685.0,
+      "mfe_pct": 0.0,
+      "migration_status": "NATIVE",
+      "min_price_seen": 1685.0,
+      "previous_stage": null,
+      "stage_change_count": 0,
+      "stop_hit": false,
+      "stop_hit_date": null,
+      "strategy_version": "V1_FREEZE_20260711",
+      "symbol": "TATVA.NS",
+      "t1_hit": false,
+      "t1_hit_date": null,
+      "t2_hit": false,
+      "t2_hit_date": null,
+      "tracking_id": "TATVA.NS_20260721",
+      "tracking_status": "ACTIVE",
+      "updated_at": "2026-07-21"
     },
     "TBZ.NS_20260716": {
       "created_at": "2026-07-16",
@@ -22730,9 +25346,9 @@
     "TCIEXP.NS_20260717": {
       "created_at": "2026-07-17",
       "current": {
-        "as_of_date": "2026-07-17",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 580.4,
+        "current_price": 586.05,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -22831,14 +25447,14 @@
       "t2_hit_date": null,
       "tracking_id": "TCIEXP.NS_20260717",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-17"
+      "updated_at": "2026-07-21"
     },
     "TECHM.NS_20260717": {
       "created_at": "2026-07-17",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 1576.4,
+        "current_price": 1576.3,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -22938,14 +25554,14 @@
       "t2_hit_date": null,
       "tracking_id": "TECHM.NS_20260717",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     },
     "TFCILTD.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 82.74,
+        "current_price": 83.21,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -23041,7 +25657,7 @@
       "t2_hit_date": null,
       "tracking_id": "TFCILTD.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     },
     "THANGAMAYL.NS_20260720": {
       "created_at": "2026-07-20",
@@ -23253,9 +25869,9 @@
     "TIMETECHNO.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 213.11,
+        "current_price": 207.86,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -23353,7 +25969,320 @@
       "t2_hit_date": null,
       "tracking_id": "TIMETECHNO.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
+    },
+    "TINNARUBR.NS_20260721": {
+      "created_at": "2026-07-21",
+      "current": {
+        "as_of_date": "2026-07-21",
+        "confidence": null,
+        "current_price": 1148.9,
+        "opportunity_score": null,
+        "rr": null,
+        "stage": "REJECTED",
+        "tq": null
+      },
+      "days_active": 0,
+      "days_to_stop": null,
+      "days_to_t1": null,
+      "days_to_t2": null,
+      "entry": {
+        "base_confidence": null,
+        "chop_momentum_penalty": null,
+        "conf_gap": null,
+        "confidence": 28.049999999999997,
+        "decision": "REJECTED",
+        "delivery": {
+          "delivery_pct_20d_avg": null,
+          "delivery_pct_today": null,
+          "delivery_ratio": null,
+          "delivery_signal": null,
+          "delivery_source": null
+        },
+        "factors": {
+          "macro_alignment": null,
+          "momentum_quality": null,
+          "mtf_quality": null,
+          "news_risk": null,
+          "options_sentiment": null,
+          "ownership_quality": null,
+          "rs_vs_nifty": null,
+          "sector_composite_score": null,
+          "sector_strength": null,
+          "trend_quality": null,
+          "volume_delivery": null
+        },
+        "fail_reasons": [
+          "CONF_FAIL(got 28.0, need 70)",
+          "TQ_FAIL(got 51.6, need 68)",
+          "SECTOR_RANK_TOO_LOW(rank=15>top6)",
+          "INSTITUTIONAL_EXIT"
+        ],
+        "opportunity_score": 43.7,
+        "origin": "main_pipeline",
+        "phase_i_skip": null,
+        "reference_entry_price": 1148.9,
+        "regime": "SIDEWAYS",
+        "research": {
+          "de_ratio": null,
+          "dii_change": null,
+          "distance_from_52w_high": null,
+          "eps": null,
+          "eps_growth": null,
+          "fii_change": null,
+          "fundamentals_source": null,
+          "market_cap_cr": null,
+          "profit_growth": null,
+          "promoter_pledge_pct": null,
+          "research_grade": null,
+          "revenue_growth": null,
+          "roce": null,
+          "roe": null,
+          "sector_relative_strength": null
+        },
+        "rr": 0.0,
+        "sector": "DIVERSIFIED",
+        "setup_conf_bonus": null,
+        "setup_type": "MOMENTUM",
+        "stage": "REJECTED",
+        "stop_price": 976.56,
+        "t1_price": 1206.345,
+        "t2_price": 1263.79,
+        "tier": null,
+        "tq": 51.6,
+        "trajectory": null,
+        "warnings": []
+      },
+      "first_seen_date": "2026-07-21",
+      "journey_path": [
+        "REJECTED"
+      ],
+      "last_stage_change_date": "2026-07-21",
+      "mae_pct": 0.0,
+      "max_price_seen": 1148.9,
+      "mfe_pct": 0.0,
+      "migration_status": "NATIVE",
+      "min_price_seen": 1148.9,
+      "previous_stage": null,
+      "stage_change_count": 0,
+      "stop_hit": false,
+      "stop_hit_date": null,
+      "strategy_version": "V1_FREEZE_20260711",
+      "symbol": "TINNARUBR.NS",
+      "t1_hit": false,
+      "t1_hit_date": null,
+      "t2_hit": false,
+      "t2_hit_date": null,
+      "tracking_id": "TINNARUBR.NS_20260721",
+      "tracking_status": "ACTIVE",
+      "updated_at": "2026-07-21"
+    },
+    "TIRUPATIFL.NS_20260721": {
+      "created_at": "2026-07-21",
+      "current": {
+        "as_of_date": "2026-07-21",
+        "confidence": null,
+        "current_price": 76.95,
+        "opportunity_score": null,
+        "rr": null,
+        "stage": "REJECTED",
+        "tq": null
+      },
+      "days_active": 0,
+      "days_to_stop": null,
+      "days_to_t1": null,
+      "days_to_t2": null,
+      "entry": {
+        "base_confidence": null,
+        "chop_momentum_penalty": null,
+        "conf_gap": null,
+        "confidence": 82.22,
+        "decision": "REJECTED",
+        "delivery": {
+          "delivery_pct_20d_avg": null,
+          "delivery_pct_today": null,
+          "delivery_ratio": null,
+          "delivery_signal": null,
+          "delivery_source": null
+        },
+        "factors": {
+          "macro_alignment": null,
+          "momentum_quality": null,
+          "mtf_quality": null,
+          "news_risk": null,
+          "options_sentiment": null,
+          "ownership_quality": null,
+          "rs_vs_nifty": null,
+          "sector_composite_score": null,
+          "sector_strength": null,
+          "trend_quality": null,
+          "volume_delivery": null
+        },
+        "fail_reasons": [
+          "ROE_TOO_LOW(5.2%<10%)"
+        ],
+        "opportunity_score": 74.8,
+        "origin": "main_pipeline",
+        "phase_i_skip": null,
+        "reference_entry_price": 76.95,
+        "regime": "SIDEWAYS",
+        "research": {
+          "de_ratio": null,
+          "dii_change": null,
+          "distance_from_52w_high": null,
+          "eps": null,
+          "eps_growth": null,
+          "fii_change": null,
+          "fundamentals_source": null,
+          "market_cap_cr": null,
+          "profit_growth": null,
+          "promoter_pledge_pct": null,
+          "research_grade": null,
+          "revenue_growth": null,
+          "roce": null,
+          "roe": null,
+          "sector_relative_strength": null
+        },
+        "rr": 0.0,
+        "sector": "DIVERSIFIED",
+        "setup_conf_bonus": null,
+        "setup_type": "BREAKOUT",
+        "stage": "REJECTED",
+        "stop_price": 65.41,
+        "t1_price": 80.7975,
+        "t2_price": 84.645,
+        "tier": null,
+        "tq": 60.3,
+        "trajectory": null,
+        "warnings": []
+      },
+      "first_seen_date": "2026-07-21",
+      "journey_path": [
+        "REJECTED"
+      ],
+      "last_stage_change_date": "2026-07-21",
+      "mae_pct": 0.0,
+      "max_price_seen": 76.95,
+      "mfe_pct": 0.0,
+      "migration_status": "NATIVE",
+      "min_price_seen": 76.95,
+      "previous_stage": null,
+      "stage_change_count": 0,
+      "stop_hit": false,
+      "stop_hit_date": null,
+      "strategy_version": "V1_FREEZE_20260711",
+      "symbol": "TIRUPATIFL.NS",
+      "t1_hit": false,
+      "t1_hit_date": null,
+      "t2_hit": false,
+      "t2_hit_date": null,
+      "tracking_id": "TIRUPATIFL.NS_20260721",
+      "tracking_status": "ACTIVE",
+      "updated_at": "2026-07-21"
+    },
+    "TMB.NS_20260721": {
+      "created_at": "2026-07-21",
+      "current": {
+        "as_of_date": "2026-07-21",
+        "confidence": null,
+        "current_price": 818.45,
+        "opportunity_score": null,
+        "rr": null,
+        "stage": "REJECTED",
+        "tq": null
+      },
+      "days_active": 0,
+      "days_to_stop": null,
+      "days_to_t1": null,
+      "days_to_t2": null,
+      "entry": {
+        "base_confidence": null,
+        "chop_momentum_penalty": null,
+        "conf_gap": null,
+        "confidence": 64.56,
+        "decision": "REJECTED",
+        "delivery": {
+          "delivery_pct_20d_avg": null,
+          "delivery_pct_today": null,
+          "delivery_ratio": null,
+          "delivery_signal": null,
+          "delivery_source": null
+        },
+        "factors": {
+          "macro_alignment": null,
+          "momentum_quality": null,
+          "mtf_quality": null,
+          "news_risk": null,
+          "options_sentiment": null,
+          "ownership_quality": null,
+          "rs_vs_nifty": null,
+          "sector_composite_score": null,
+          "sector_strength": null,
+          "trend_quality": null,
+          "volume_delivery": null
+        },
+        "fail_reasons": [
+          "CONF_FAIL(got 64.6, need 70)",
+          "SECTOR_RANK_TOO_LOW(rank=15>top6)"
+        ],
+        "opportunity_score": 69.0,
+        "origin": "main_pipeline",
+        "phase_i_skip": null,
+        "reference_entry_price": 818.45,
+        "regime": "SIDEWAYS",
+        "research": {
+          "de_ratio": null,
+          "dii_change": null,
+          "distance_from_52w_high": null,
+          "eps": null,
+          "eps_growth": null,
+          "fii_change": null,
+          "fundamentals_source": null,
+          "market_cap_cr": null,
+          "profit_growth": null,
+          "promoter_pledge_pct": null,
+          "research_grade": null,
+          "revenue_growth": null,
+          "roce": null,
+          "roe": null,
+          "sector_relative_strength": null
+        },
+        "rr": 0.0,
+        "sector": "DIVERSIFIED",
+        "setup_conf_bonus": null,
+        "setup_type": "MOMENTUM",
+        "stage": "REJECTED",
+        "stop_price": 744.86,
+        "t1_price": 859.3725,
+        "t2_price": 900.295,
+        "tier": null,
+        "tq": 75.2,
+        "trajectory": null,
+        "warnings": []
+      },
+      "first_seen_date": "2026-07-21",
+      "journey_path": [
+        "REJECTED"
+      ],
+      "last_stage_change_date": "2026-07-21",
+      "mae_pct": 0.0,
+      "max_price_seen": 818.45,
+      "mfe_pct": 0.0,
+      "migration_status": "NATIVE",
+      "min_price_seen": 818.45,
+      "previous_stage": null,
+      "stage_change_count": 0,
+      "stop_hit": false,
+      "stop_hit_date": null,
+      "strategy_version": "V1_FREEZE_20260711",
+      "symbol": "TMB.NS",
+      "t1_hit": false,
+      "t1_hit_date": null,
+      "t2_hit": false,
+      "t2_hit_date": null,
+      "tracking_id": "TMB.NS_20260721",
+      "tracking_status": "ACTIVE",
+      "updated_at": "2026-07-21"
     },
     "TPLPLASTEH.NS_20260720": {
       "created_at": "2026-07-20",
@@ -23664,6 +26593,109 @@
       "tracking_status": "ACTIVE",
       "updated_at": "2026-07-17"
     },
+    "UDS.NS_20260721": {
+      "created_at": "2026-07-21",
+      "current": {
+        "as_of_date": "2026-07-21",
+        "confidence": null,
+        "current_price": 200.2,
+        "opportunity_score": null,
+        "rr": null,
+        "stage": "REJECTED",
+        "tq": null
+      },
+      "days_active": 0,
+      "days_to_stop": null,
+      "days_to_t1": null,
+      "days_to_t2": null,
+      "entry": {
+        "base_confidence": null,
+        "chop_momentum_penalty": null,
+        "conf_gap": null,
+        "confidence": 69.34,
+        "decision": "REJECTED",
+        "delivery": {
+          "delivery_pct_20d_avg": null,
+          "delivery_pct_today": null,
+          "delivery_ratio": null,
+          "delivery_signal": null,
+          "delivery_source": null
+        },
+        "factors": {
+          "macro_alignment": null,
+          "momentum_quality": null,
+          "mtf_quality": null,
+          "news_risk": null,
+          "options_sentiment": null,
+          "ownership_quality": null,
+          "rs_vs_nifty": null,
+          "sector_composite_score": null,
+          "sector_strength": null,
+          "trend_quality": null,
+          "volume_delivery": null
+        },
+        "fail_reasons": [
+          "ROE_TOO_LOW(8.9%<10%)"
+        ],
+        "opportunity_score": 71.5,
+        "origin": "main_pipeline",
+        "phase_i_skip": null,
+        "reference_entry_price": 200.2,
+        "regime": "SIDEWAYS",
+        "research": {
+          "de_ratio": null,
+          "dii_change": null,
+          "distance_from_52w_high": null,
+          "eps": null,
+          "eps_growth": null,
+          "fii_change": null,
+          "fundamentals_source": null,
+          "market_cap_cr": null,
+          "profit_growth": null,
+          "promoter_pledge_pct": null,
+          "research_grade": null,
+          "revenue_growth": null,
+          "roce": null,
+          "roe": null,
+          "sector_relative_strength": null
+        },
+        "rr": 0.0,
+        "sector": "DIVERSIFIED",
+        "setup_conf_bonus": null,
+        "setup_type": "MOMENTUM",
+        "stage": "REJECTED",
+        "stop_price": 181.46,
+        "t1_price": 210.21,
+        "t2_price": 220.22,
+        "tier": null,
+        "tq": 75.6,
+        "trajectory": null,
+        "warnings": []
+      },
+      "first_seen_date": "2026-07-21",
+      "journey_path": [
+        "REJECTED"
+      ],
+      "last_stage_change_date": "2026-07-21",
+      "mae_pct": 0.0,
+      "max_price_seen": 200.2,
+      "mfe_pct": 0.0,
+      "migration_status": "NATIVE",
+      "min_price_seen": 200.2,
+      "previous_stage": null,
+      "stage_change_count": 0,
+      "stop_hit": false,
+      "stop_hit_date": null,
+      "strategy_version": "V1_FREEZE_20260711",
+      "symbol": "UDS.NS",
+      "t1_hit": false,
+      "t1_hit_date": null,
+      "t2_hit": false,
+      "t2_hit_date": null,
+      "tracking_id": "UDS.NS_20260721",
+      "tracking_status": "ACTIVE",
+      "updated_at": "2026-07-21"
+    },
     "UJJIVANSFB.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
@@ -23773,9 +26805,9 @@
     "UNIMECH.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 1274.5,
+        "current_price": 1276.2,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -23871,7 +26903,217 @@
       "t2_hit_date": null,
       "tracking_id": "UNIMECH.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
+    },
+    "VIMTALABS.NS_20260721": {
+      "created_at": "2026-07-21",
+      "current": {
+        "as_of_date": "2026-07-21",
+        "confidence": null,
+        "current_price": 599.6,
+        "opportunity_score": null,
+        "rr": null,
+        "stage": "REJECTED",
+        "tq": null
+      },
+      "days_active": 0,
+      "days_to_stop": null,
+      "days_to_t1": null,
+      "days_to_t2": null,
+      "entry": {
+        "base_confidence": null,
+        "chop_momentum_penalty": null,
+        "conf_gap": null,
+        "confidence": 66.685,
+        "decision": "REJECTED",
+        "delivery": {
+          "delivery_pct_20d_avg": null,
+          "delivery_pct_today": null,
+          "delivery_ratio": null,
+          "delivery_signal": null,
+          "delivery_source": null
+        },
+        "factors": {
+          "macro_alignment": null,
+          "momentum_quality": null,
+          "mtf_quality": null,
+          "news_risk": null,
+          "options_sentiment": null,
+          "ownership_quality": null,
+          "rs_vs_nifty": null,
+          "sector_composite_score": null,
+          "sector_strength": null,
+          "trend_quality": null,
+          "volume_delivery": null
+        },
+        "fail_reasons": [
+          "CONF_FAIL(got 66.7, need 70)",
+          "RR_FAIL(got 1.63, need 1.7)",
+          "SECTOR_RANK_TOO_LOW(rank=11>top6)",
+          "SUSPECT_PUMP_LOW_DELIVERY"
+        ],
+        "opportunity_score": 69.1,
+        "origin": "main_pipeline",
+        "phase_i_skip": null,
+        "reference_entry_price": 599.6,
+        "regime": "SIDEWAYS",
+        "research": {
+          "de_ratio": null,
+          "dii_change": null,
+          "distance_from_52w_high": null,
+          "eps": null,
+          "eps_growth": null,
+          "fii_change": null,
+          "fundamentals_source": null,
+          "market_cap_cr": null,
+          "profit_growth": null,
+          "promoter_pledge_pct": null,
+          "research_grade": null,
+          "revenue_growth": null,
+          "roce": null,
+          "roe": null,
+          "sector_relative_strength": null
+        },
+        "rr": 0.0,
+        "sector": "PHARMA",
+        "setup_conf_bonus": null,
+        "setup_type": "MOMENTUM",
+        "stage": "REJECTED",
+        "stop_price": 524.12,
+        "t1_price": 629.58,
+        "t2_price": 659.56,
+        "tier": null,
+        "tq": 74.9,
+        "trajectory": null,
+        "warnings": []
+      },
+      "first_seen_date": "2026-07-21",
+      "journey_path": [
+        "REJECTED"
+      ],
+      "last_stage_change_date": "2026-07-21",
+      "mae_pct": 0.0,
+      "max_price_seen": 599.6,
+      "mfe_pct": 0.0,
+      "migration_status": "NATIVE",
+      "min_price_seen": 599.6,
+      "previous_stage": null,
+      "stage_change_count": 0,
+      "stop_hit": false,
+      "stop_hit_date": null,
+      "strategy_version": "V1_FREEZE_20260711",
+      "symbol": "VIMTALABS.NS",
+      "t1_hit": false,
+      "t1_hit_date": null,
+      "t2_hit": false,
+      "t2_hit_date": null,
+      "tracking_id": "VIMTALABS.NS_20260721",
+      "tracking_status": "ACTIVE",
+      "updated_at": "2026-07-21"
+    },
+    "VSSL.NS_20260721": {
+      "created_at": "2026-07-21",
+      "current": {
+        "as_of_date": "2026-07-21",
+        "confidence": null,
+        "current_price": 303.35,
+        "opportunity_score": null,
+        "rr": null,
+        "stage": "REJECTED",
+        "tq": null
+      },
+      "days_active": 0,
+      "days_to_stop": null,
+      "days_to_t1": null,
+      "days_to_t2": null,
+      "entry": {
+        "base_confidence": null,
+        "chop_momentum_penalty": null,
+        "conf_gap": null,
+        "confidence": 71.16,
+        "decision": "REJECTED",
+        "delivery": {
+          "delivery_pct_20d_avg": null,
+          "delivery_pct_today": null,
+          "delivery_ratio": null,
+          "delivery_signal": null,
+          "delivery_source": null
+        },
+        "factors": {
+          "macro_alignment": null,
+          "momentum_quality": null,
+          "mtf_quality": null,
+          "news_risk": null,
+          "options_sentiment": null,
+          "ownership_quality": null,
+          "rs_vs_nifty": null,
+          "sector_composite_score": null,
+          "sector_strength": null,
+          "trend_quality": null,
+          "volume_delivery": null
+        },
+        "fail_reasons": [
+          "RR_FAIL(got 1.34, need 1.7)",
+          "SECTOR_RANK_TOO_LOW(rank=15>top6)"
+        ],
+        "opportunity_score": 67.6,
+        "origin": "main_pipeline",
+        "phase_i_skip": null,
+        "reference_entry_price": 303.35,
+        "regime": "SIDEWAYS",
+        "research": {
+          "de_ratio": null,
+          "dii_change": null,
+          "distance_from_52w_high": null,
+          "eps": null,
+          "eps_growth": null,
+          "fii_change": null,
+          "fundamentals_source": null,
+          "market_cap_cr": null,
+          "profit_growth": null,
+          "promoter_pledge_pct": null,
+          "research_grade": null,
+          "revenue_growth": null,
+          "roce": null,
+          "roe": null,
+          "sector_relative_strength": null
+        },
+        "rr": 0.0,
+        "sector": "DIVERSIFIED",
+        "setup_conf_bonus": null,
+        "setup_type": "MOMENTUM",
+        "stage": "REJECTED",
+        "stop_price": 264.67,
+        "t1_price": 318.5175,
+        "t2_price": 333.685,
+        "tier": null,
+        "tq": 68.7,
+        "trajectory": null,
+        "warnings": []
+      },
+      "first_seen_date": "2026-07-21",
+      "journey_path": [
+        "REJECTED"
+      ],
+      "last_stage_change_date": "2026-07-21",
+      "mae_pct": 0.0,
+      "max_price_seen": 303.35,
+      "mfe_pct": 0.0,
+      "migration_status": "NATIVE",
+      "min_price_seen": 303.35,
+      "previous_stage": null,
+      "stage_change_count": 0,
+      "stop_hit": false,
+      "stop_hit_date": null,
+      "strategy_version": "V1_FREEZE_20260711",
+      "symbol": "VSSL.NS",
+      "t1_hit": false,
+      "t1_hit_date": null,
+      "t2_hit": false,
+      "t2_hit_date": null,
+      "tracking_id": "VSSL.NS_20260721",
+      "tracking_status": "ACTIVE",
+      "updated_at": "2026-07-21"
     },
     "WANBURY.NS_20260716": {
       "created_at": "2026-07-16",
@@ -24190,9 +27432,9 @@
     "ZYDUSWELL.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-07-21",
         "confidence": null,
-        "current_price": 602.5,
+        "current_price": 592.25,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -24288,7 +27530,7 @@
       "t2_hit_date": null,
       "tracking_id": "ZYDUSWELL.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-07-21"
     }
   },
   "schema_version": 1,

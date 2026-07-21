@@ -251,6 +251,14 @@
           "RR_FAIL(got 1.39, need 1.7)"
         ],
         "conf": 69.21000000000001
+      },
+      {
+        "date": "2026-07-21",
+        "fails": [
+          "CONF_FAIL(got 69.2, need 70)",
+          "RR_FAIL(got 1.39, need 1.7)"
+        ],
+        "conf": 69.22
       }
     ]
   },
@@ -263,6 +271,13 @@
           "RR_FAIL(got 1.41, need 1.7)"
         ],
         "conf": 68.10000000000001
+      },
+      {
+        "date": "2026-07-21",
+        "fails": [
+          "RR_FAIL(got 1.41, need 1.7)"
+        ],
+        "conf": 83.64
       }
     ]
   },
@@ -275,6 +290,14 @@
           "RR_FAIL(got 1.43, need 1.7)"
         ],
         "conf": 67.07
+      },
+      {
+        "date": "2026-07-21",
+        "fails": [
+          "CONF_FAIL(got 67.8, need 70)",
+          "RR_FAIL(got 1.43, need 1.7)"
+        ],
+        "conf": 67.85
       }
     ]
   },
@@ -321,6 +344,14 @@
           "TQ_FAIL(got 66.3, need 68)"
         ],
         "conf": 49.5
+      },
+      {
+        "date": "2026-07-21",
+        "fails": [
+          "CONF_FAIL(got 48.7, need 70)",
+          "TQ_FAIL(got 64.8, need 68)"
+        ],
+        "conf": 48.66
       }
     ]
   },
@@ -344,6 +375,14 @@
           "CONF_FAIL(got 48.3, need 70)"
         ],
         "conf": 48.32
+      },
+      {
+        "date": "2026-07-21",
+        "fails": [
+          "CONF_FAIL(got 49.7, need 70)",
+          "RR_FAIL(got 1.45, need 1.7)"
+        ],
+        "conf": 49.73
       }
     ]
   },
@@ -356,6 +395,84 @@
           "RR_FAIL(got 1.39, need 1.7)"
         ],
         "conf": 36.12
+      },
+      {
+        "date": "2026-07-21",
+        "fails": [
+          "CONF_FAIL(got 36.9, need 70)",
+          "RR_FAIL(got 1.43, need 1.7)"
+        ],
+        "conf": 36.85
+      }
+    ]
+  },
+  "20MICRONS.NS": {
+    "history": [
+      {
+        "date": "2026-07-21",
+        "fails": [
+          "RR_FAIL(got 1.44, need 1.7)"
+        ],
+        "conf": 75.30000000000001
+      }
+    ]
+  },
+  "MANBA.NS": {
+    "history": [
+      {
+        "date": "2026-07-21",
+        "fails": [
+          "SECTOR_RANK_TOO_LOW(rank=10>top6)"
+        ],
+        "conf": 72.22
+      }
+    ]
+  },
+  "JSWCEMENT.NS": {
+    "history": [
+      {
+        "date": "2026-07-21",
+        "fails": [
+          "CONF_FAIL(got 66.3, need 70)",
+          "RR_FAIL(got 1.52, need 1.7)"
+        ],
+        "conf": 66.31
+      }
+    ]
+  },
+  "HSCL.NS": {
+    "history": [
+      {
+        "date": "2026-07-21",
+        "fails": [
+          "CONF_FAIL(got 52.6, need 70)",
+          "RR_FAIL(got 1.44, need 1.7)"
+        ],
+        "conf": 52.63
+      }
+    ]
+  },
+  "LXCHEM.NS": {
+    "history": [
+      {
+        "date": "2026-07-21",
+        "fails": [
+          "CONF_FAIL(got 51.2, need 70)",
+          "RR_FAIL(got 1.43, need 1.7)"
+        ],
+        "conf": 51.18
+      }
+    ]
+  },
+  "FLUOROCHEM.NS": {
+    "history": [
+      {
+        "date": "2026-07-21",
+        "fails": [
+          "CONF_FAIL(got 39.2, need 70)",
+          "RR_FAIL(got 1.43, need 1.7)"
+        ],
+        "conf": 39.18
       }
     ]
   }

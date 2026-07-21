@@ -1,5 +1,38 @@
 {
-  "buys": [],
+  "buys": [
+    {
+      "symbol": "GREENPLY.NS",
+      "rec_date": "2026-07-21",
+      "entry": 323.2,
+      "stop": 307.7,
+      "target1": 344.96,
+      "target2": 366.71,
+      "confidence": 73.2,
+      "tq": 79.5,
+      "regime": "SIDEWAYS",
+      "sector": "METALS",
+      "position_pct": 11.2,
+      "status": "ACTIVE",
+      "t1_hit_date": null,
+      "t2_hit_date": null,
+      "stop_hit_date": null,
+      "expired_date": null,
+      "days_tracked": 1,
+      "pnl_history": [],
+      "partial_closed": false,
+      "partial_exit_pct": 0.0,
+      "partial_exit_price": 0.0,
+      "partial_exit_date": null,
+      "partial_exit_pnl_pct": 0.0,
+      "runner_active": false,
+      "runner_partial_pct": 0.0,
+      "runner_partial_price": 0.0,
+      "runner_partial_pnl": 0.0,
+      "runner_high_water": 0.0,
+      "runner_close_date": null,
+      "trail_note": ""
+    }
+  ],
   "watchlist": [],
   "completed": [],
   "performance": {
@@ -9,6 +42,6 @@
     "avg_win": 0,
     "avg_loss": 0,
     "loss_reasons": {},
-    "last_updated": "2026-07-20"
+    "last_updated": "2026-07-21"
   }
 }

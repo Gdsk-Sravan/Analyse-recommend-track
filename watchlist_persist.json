@@ -1,16 +1,19 @@
 {
-  "DIVISLAB.NS": {
+  "FEDERALBNK.NS": {
     "first_seen": "2026-07-20",
     "tier": "NEAR_MISS_RISING",
-    "tier_since": "2026-07-20",
-    "entry_ref": 7318.0,
-    "last_seen": "2026-07-20",
-    "conf": 74.345,
+    "tier_since": "2026-07-21",
+    "entry_ref": 356.05,
+    "last_seen": "2026-07-21",
+    "conf": 83.64,
     "conf_gap": 0.0,
-    "tq": 72.6,
+    "tq": 71.1,
     "rr_ratio": 1.41,
     "regime": "SIDEWAYS",
     "warnings": [
+      "FUND_DATA_MISSING: ROE/D/E/pledge unavailable (src=SCREENER+YF_RL) \u2014 ownership_quality weight redistributed to present factors",
+      "WIDE_STOP_WARN(got 8.1%, soft cap 8.0% \u2014 R/R gate handles this)",
+      "SECTOR_WEAKENING",
       "NEAR_52W_HIGH_RESISTANCE"
     ],
     "fail_reasons": [
@@ -20,107 +23,15 @@
     "monitor_reason": null,
     "trajectory": "RISING"
   },
-  "COMSYN.NS": {
-    "first_seen": "2026-07-20",
-    "tier": "NEAR_MISS",
-    "tier_since": "2026-07-20",
-    "entry_ref": 209.35,
-    "last_seen": "2026-07-20",
-    "conf": 76.13,
-    "conf_gap": 0.0,
-    "tq": 74.3,
-    "rr_ratio": 2.52,
-    "regime": "SIDEWAYS",
-    "warnings": [
-      "WIDE_STOP_WARN(got 14.9%, soft cap 8.0% \u2014 R/R gate handles this)",
-      "SECTOR_RANK_WEAK: sector ranked #8 \u2014 needs top-6 unless conf\u226588",
-      "HIGH_GAP_RISK: p90 gap 14.0% \u00b7 effective stop 28.8%"
-    ],
-    "fail_reasons": [
-      "SECTOR_RANK_TOO_LOW(rank=8>top6)"
-    ],
-    "blocker_reason": null,
-    "monitor_reason": null,
-    "trajectory": ""
-  },
-  "RADICO.NS": {
-    "first_seen": "2026-07-20",
-    "tier": "NEAR_MISS",
-    "tier_since": "2026-07-20",
-    "entry_ref": 4132.4,
-    "last_seen": "2026-07-20",
-    "conf": 72.81,
-    "conf_gap": 0.0,
-    "tq": 73.2,
-    "rr_ratio": 2.64,
-    "regime": "SIDEWAYS",
-    "warnings": [
-      "SECTOR_RANK_WEAK: sector ranked #7 \u2014 needs top-6 unless conf\u226588",
-      "NEAR_52W_HIGH_RESISTANCE",
-      "HIGH_GAP_RISK: p90 gap 2.3% \u00b7 effective stop 5.8%"
-    ],
-    "fail_reasons": [
-      "SECTOR_RANK_TOO_LOW(rank=7>top6)"
-    ],
-    "blocker_reason": null,
-    "monitor_reason": null,
-    "trajectory": ""
-  },
-  "TALBROAUTO.NS": {
-    "first_seen": "2026-07-20",
-    "tier": "NEAR_MISS",
-    "tier_since": "2026-07-20",
-    "entry_ref": 416.55,
-    "last_seen": "2026-07-20",
-    "conf": 73.15,
-    "conf_gap": 0.0,
-    "tq": 70.0,
-    "rr_ratio": 2.15,
-    "regime": "SIDEWAYS",
-    "warnings": [
-      "WIDE_STOP_WARN(got 8.1%, soft cap 8.0% \u2014 R/R gate handles this)",
-      "SECTOR_RANK_WEAK: sector ranked #11 \u2014 needs top-6 unless conf\u226588",
-      "HIGH_GAP_RISK: p90 gap 6.0% \u00b7 effective stop 14.1%"
-    ],
-    "fail_reasons": [
-      "SECTOR_RANK_TOO_LOW(rank=11>top6)"
-    ],
-    "blocker_reason": null,
-    "monitor_reason": null,
-    "trajectory": ""
-  },
-  "THYROCARE.NS": {
-    "first_seen": "2026-07-20",
-    "tier": "NEAR_MISS",
-    "tier_since": "2026-07-20",
-    "entry_ref": 555.5,
-    "last_seen": "2026-07-20",
-    "conf": 70.85,
-    "conf_gap": 0.0,
-    "tq": 74.2,
-    "rr_ratio": 1.88,
-    "regime": "SIDEWAYS",
-    "warnings": [
-      "WIDE_STOP_WARN(got 9.5%, soft cap 8.0% \u2014 R/R gate handles this)",
-      "SECTOR_RANK_WEAK: sector ranked #15 \u2014 needs top-6 unless conf\u226588",
-      "HIGH_GAP_RISK: p90 gap 7.0% \u00b7 effective stop 16.4%"
-    ],
-    "fail_reasons": [
-      "SECTOR_RANK_TOO_LOW(rank=15>top6)"
-    ],
-    "blocker_reason": null,
-    "monitor_reason": null,
-    "trajectory": ""
-  },
   "ICICIBANK.NS": {
     "first_seen": "2026-07-20",
-    "tier": "NEAR_MISS",
-    "tier_since": "2026-07-20",
-    "entry_ref": 1460.2,
-    "last_seen": "2026-07-20",
-    "conf": 69.21000000000001,
+    "tier": "NEAR_MISS_RISING",
+    "tier_since": "2026-07-21",
+    "entry_ref": 1463.1,
+    "last_seen": "2026-07-21",
+    "conf": 69.22,
     "conf_gap": 0.8,
-    "tq": 77.0,
+    "tq": 76.0,
     "rr_ratio": 1.39,
     "regime": "SIDEWAYS",
     "warnings": [
@@ -133,212 +44,145 @@
     ],
     "blocker_reason": null,
     "monitor_reason": null,
-    "trajectory": ""
-  },
-  "FEDERALBNK.NS": {
-    "first_seen": "2026-07-20",
-    "tier": "NEAR_MISS",
-    "tier_since": "2026-07-20",
-    "entry_ref": 350.75,
-    "last_seen": "2026-07-20",
-    "conf": 68.10000000000001,
-    "conf_gap": 1.9,
-    "tq": 73.6,
-    "rr_ratio": 1.41,
-    "regime": "SIDEWAYS",
-    "warnings": [
-      "FUND_DATA_MISSING: ROE/D/E/pledge unavailable (src=SCREENER+YF_RL) \u2014 ownership_quality weight redistributed to present factors",
-      "WIDE_STOP_WARN(got 8.2%, soft cap 8.0% \u2014 R/R gate handles this)",
-      "SECTOR_WEAKENING",
-      "NEAR_52W_HIGH_RESISTANCE"
-    ],
-    "fail_reasons": [
-      "CONF_FAIL(got 68.1, need 70)",
-      "RR_FAIL(got 1.41, need 1.7)"
-    ],
-    "blocker_reason": null,
-    "monitor_reason": null,
-    "trajectory": ""
+    "trajectory": "RISING"
   },
   "LLOYDSME.NS": {
     "first_seen": "2026-07-20",
-    "tier": "NEAR_MISS",
-    "tier_since": "2026-07-20",
-    "entry_ref": 1907.9,
-    "last_seen": "2026-07-20",
-    "conf": 67.07,
-    "conf_gap": 2.9,
-    "tq": 73.9,
+    "tier": "NEAR_MISS_RISING",
+    "tier_since": "2026-07-21",
+    "entry_ref": 1936.4,
+    "last_seen": "2026-07-21",
+    "conf": 67.85,
+    "conf_gap": 2.2,
+    "tq": 74.8,
     "rr_ratio": 1.43,
     "regime": "SIDEWAYS",
     "warnings": [
-      "WIDE_STOP_WARN(got 10.9%, soft cap 8.0% \u2014 R/R gate handles this)",
+      "WIDE_STOP_WARN(got 10.7%, soft cap 8.0% \u2014 R/R gate handles this)",
       "SECTOR_WEAKENING",
       "NEAR_52W_HIGH_RESISTANCE"
     ],
     "fail_reasons": [
-      "CONF_FAIL(got 67.1, need 70)",
+      "CONF_FAIL(got 67.8, need 70)",
       "RR_FAIL(got 1.43, need 1.7)"
     ],
     "blocker_reason": null,
     "monitor_reason": null,
-    "trajectory": ""
+    "trajectory": "RISING"
   },
-  "POLYMED.NS": {
-    "first_seen": "2026-07-20",
+  "20MICRONS.NS": {
+    "first_seen": "2026-07-21",
     "tier": "NEAR_MISS",
-    "tier_since": "2026-07-20",
-    "entry_ref": 1720.9,
-    "last_seen": "2026-07-20",
-    "conf": 66.59,
-    "conf_gap": 3.4,
-    "tq": 67.7,
-    "rr_ratio": 2.09,
-    "regime": "SIDEWAYS",
-    "warnings": [],
-    "fail_reasons": [
-      "CONF_FAIL(got 66.6, need 70)",
-      "TQ_FAIL(got 67.7, need 68)"
-    ],
-    "blocker_reason": null,
-    "monitor_reason": null,
-    "trajectory": ""
-  },
-  "PPLPHARMA.NS": {
-    "first_seen": "2026-07-20",
-    "tier": "NEAR_MISS",
-    "tier_since": "2026-07-20",
-    "entry_ref": 178.87,
-    "last_seen": "2026-07-20",
-    "conf": 66.32,
-    "conf_gap": 3.7,
-    "tq": 68.0,
-    "rr_ratio": 2.2,
-    "regime": "SIDEWAYS",
-    "warnings": [
-      "HIGH_GAP_RISK: p90 gap 5.3% \u00b7 effective stop 12.9%"
-    ],
-    "fail_reasons": [
-      "CONF_FAIL(got 66.3, need 70)"
-    ],
-    "blocker_reason": null,
-    "monitor_reason": null,
-    "trajectory": ""
-  },
-  "IRISDOREME.NS": {
-    "first_seen": "2026-07-20",
-    "tier": "NEAR_MISS_FADING",
-    "tier_since": "2026-07-20",
-    "entry_ref": 46.31,
-    "last_seen": "2026-07-20",
-    "conf": 74.4,
+    "tier_since": "2026-07-21",
+    "entry_ref": 211.01,
+    "last_seen": "2026-07-21",
+    "conf": 75.30000000000001,
     "conf_gap": 0.0,
-    "tq": 69.8,
-    "rr_ratio": 1.83,
+    "tq": 77.0,
+    "rr_ratio": 1.44,
     "regime": "SIDEWAYS",
     "warnings": [
-      "MCAP_MISSING (proxy ~\u20b9871Cr)",
-      "WIDE_STOP_WARN(got 11.3%, soft cap 8.0% \u2014 R/R gate handles this)",
-      "SECTOR_RANK_WEAK: sector ranked #8 \u2014 needs top-6 unless conf\u226588",
-      "HIGH_GAP_RISK: p90 gap 6.9% \u00b7 effective stop 18.2%"
+      "WIDE_STOP_WARN(got 11.0%, soft cap 8.0% \u2014 R/R gate handles this)"
     ],
     "fail_reasons": [
-      "SECTOR_RANK_TOO_LOW(rank=8>top6)"
-    ],
-    "blocker_reason": null,
-    "monitor_reason": null,
-    "trajectory": "FADING"
-  },
-  "ACUTAAS.NS": {
-    "first_seen": "2026-07-20",
-    "tier": "DEVELOPING",
-    "tier_since": "2026-07-20",
-    "entry_ref": 3656.2,
-    "last_seen": "2026-07-20",
-    "conf": 66.825,
-    "conf_gap": 3.2,
-    "tq": 60.3,
-    "rr_ratio": 1.75,
-    "regime": "SIDEWAYS",
-    "warnings": [
-      "WIDE_STOP_WARN(got 8.9%, soft cap 8.0% \u2014 R/R gate handles this)",
-      "SECTOR_WEAKENING",
-      "NEAR_52W_HIGH_RESISTANCE",
-      "HIGH_GAP_RISK: p90 gap 5.5% \u00b7 effective stop 14.4%"
-    ],
-    "fail_reasons": [
-      "CONF_FAIL(got 66.8, need 70)",
-      "TQ_FAIL(got 60.3, need 68)"
+      "RR_FAIL(got 1.44, need 1.7)"
     ],
     "blocker_reason": null,
     "monitor_reason": null,
     "trajectory": "FLAT"
   },
-  "ORCHPHARMA.NS": {
-    "first_seen": "2026-07-20",
-    "tier": "DEVELOPING",
-    "tier_since": "2026-07-20",
-    "entry_ref": 1046.6,
-    "last_seen": "2026-07-20",
-    "conf": 65.26,
-    "conf_gap": 4.7,
-    "tq": 61.2,
-    "rr_ratio": 1.9,
+  "MANBA.NS": {
+    "first_seen": "2026-07-21",
+    "tier": "NEAR_MISS",
+    "tier_since": "2026-07-21",
+    "entry_ref": 139.83,
+    "last_seen": "2026-07-21",
+    "conf": 72.22,
+    "conf_gap": 0.0,
+    "tq": 81.0,
+    "rr_ratio": 2.13,
     "regime": "SIDEWAYS",
     "warnings": [
-      "FUND_DATA_MISSING: ROE/D/E/pledge unavailable (src=SCREENER+YF_RL) \u2014 ownership_quality weight redistributed to present factors",
-      "WIDE_STOP_WARN(got 12.8%, soft cap 8.0% \u2014 R/R gate handles this)"
+      "MCAP_MISSING (proxy ~\u20b9531Cr)",
+      "SECTOR_RANK_WEAK: sector ranked #10 \u2014 needs top-6 unless conf\u226588",
+      "NEAR_52W_HIGH_RESISTANCE",
+      "HIGH_GAP_RISK: p90 gap 3.2% \u00b7 effective stop 7.9%",
+      "STRONG_ACCUMULATION: delivery 84% (20d avg 43%)"
     ],
     "fail_reasons": [
-      "CONF_FAIL(got 65.3, need 70)",
-      "TQ_FAIL(got 61.2, need 68)"
+      "SECTOR_RANK_TOO_LOW(rank=10>top6)"
     ],
     "blocker_reason": null,
     "monitor_reason": null,
     "trajectory": ""
   },
-  "KAMDHENU.NS": {
-    "first_seen": "2026-07-20",
-    "tier": "DEVELOPING",
-    "tier_since": "2026-07-20",
-    "entry_ref": 33.66,
-    "last_seen": "2026-07-20",
-    "conf": 49.5,
-    "conf_gap": 20.5,
-    "tq": 66.3,
-    "rr_ratio": 2.55,
+  "JSWCEMENT.NS": {
+    "first_seen": "2026-07-21",
+    "tier": "NEAR_MISS",
+    "tier_since": "2026-07-21",
+    "entry_ref": 140.97,
+    "last_seen": "2026-07-21",
+    "conf": 66.31,
+    "conf_gap": 3.7,
+    "tq": 75.7,
+    "rr_ratio": 1.52,
     "regime": "SIDEWAYS",
     "warnings": [
-      "WIDE_STOP_WARN(got 8.4%, soft cap 8.0% \u2014 R/R gate handles this)",
       "SECTOR_WEAKENING",
       "NEAR_52W_HIGH_RESISTANCE"
     ],
     "fail_reasons": [
-      "CONF_FAIL(got 49.5, need 70)",
-      "TQ_FAIL(got 66.3, need 68)"
+      "CONF_FAIL(got 66.3, need 70)",
+      "RR_FAIL(got 1.52, need 1.7)"
     ],
     "blocker_reason": null,
     "monitor_reason": null,
     "trajectory": ""
   },
-  "INDIAGLYCO.NS": {
-    "first_seen": "2026-07-20",
+  "HSCL.NS": {
+    "first_seen": "2026-07-21",
     "tier": "DEVELOPING",
-    "tier_since": "2026-07-20",
-    "entry_ref": 1143.2,
-    "last_seen": "2026-07-20",
-    "conf": 48.82,
-    "conf_gap": 21.2,
-    "tq": 66.9,
-    "rr_ratio": 1.8,
+    "tier_since": "2026-07-21",
+    "entry_ref": 800.9,
+    "last_seen": "2026-07-21",
+    "conf": 52.63,
+    "conf_gap": 17.4,
+    "tq": 68.2,
+    "rr_ratio": 1.44,
     "regime": "SIDEWAYS",
     "warnings": [
-      "WIDE_STOP_WARN(got 10.3%, soft cap 8.0% \u2014 R/R gate handles this)",
-      "SECTOR_WEAKENING"
+      "WIDE_STOP_WARN(got 12.7%, soft cap 8.0% \u2014 R/R gate handles this)",
+      "SECTOR_WEAKENING",
+      "NEAR_52W_HIGH_RESISTANCE"
     ],
     "fail_reasons": [
-      "CONF_FAIL(got 48.8, need 70)",
-      "TQ_FAIL(got 66.9, need 68)"
+      "CONF_FAIL(got 52.6, need 70)",
+      "RR_FAIL(got 1.44, need 1.7)"
+    ],
+    "blocker_reason": null,
+    "monitor_reason": null,
+    "trajectory": "FADING"
+  },
+  "LXCHEM.NS": {
+    "first_seen": "2026-07-21",
+    "tier": "DEVELOPING",
+    "tier_since": "2026-07-21",
+    "entry_ref": 181.53,
+    "last_seen": "2026-07-21",
+    "conf": 51.18,
+    "conf_gap": 18.8,
+    "tq": 72.7,
+    "rr_ratio": 1.43,
+    "regime": "SIDEWAYS",
+    "warnings": [
+      "FUND_DATA_MISSING: ROE/D/E/pledge unavailable (src=SCREENER+YF_RL) \u2014 ownership_quality weight redistributed to present factors",
+      "WIDE_STOP_WARN(got 14.0%, soft cap 8.0% \u2014 R/R gate handles this)",
+      "SECTOR_WEAKENING",
+      "NEAR_52W_HIGH_RESISTANCE"
+    ],
+    "fail_reasons": [
+      "CONF_FAIL(got 51.2, need 70)",
+      "RR_FAIL(got 1.43, need 1.7)"
     ],
     "blocker_reason": null,
     "monitor_reason": null,
@@ -348,88 +192,93 @@
     "first_seen": "2026-07-20",
     "tier": "DEVELOPING",
     "tier_since": "2026-07-20",
-    "entry_ref": 1214.0,
-    "last_seen": "2026-07-20",
-    "conf": 48.32,
-    "conf_gap": 21.7,
-    "tq": 73.5,
-    "rr_ratio": 1.73,
-    "regime": "SIDEWAYS",
-    "warnings": [
-      "WIDE_STOP_WARN(got 11.5%, soft cap 8.0% \u2014 R/R gate handles this)",
-      "SECTOR_WEAKENING"
-    ],
-    "fail_reasons": [
-      "CONF_FAIL(got 48.3, need 70)"
-    ],
-    "blocker_reason": null,
-    "monitor_reason": null,
-    "trajectory": "FLAT"
-  },
-  "BEPL.NS": {
-    "first_seen": "2026-07-20",
-    "tier": "MONITOR",
-    "tier_since": "2026-07-20",
-    "entry_ref": 127.77,
-    "last_seen": "2026-07-20",
-    "conf": 73.815,
-    "conf_gap": 0.0,
-    "tq": 59.9,
+    "entry_ref": 1258.1,
+    "last_seen": "2026-07-21",
+    "conf": 49.73,
+    "conf_gap": 20.3,
+    "tq": 74.6,
     "rr_ratio": 1.45,
     "regime": "SIDEWAYS",
     "warnings": [
-      "WIDE_STOP_WARN(got 15.0%, soft cap 8.0% \u2014 R/R gate handles this)",
-      "SECTOR_WEAKENING"
+      "WIDE_STOP_WARN(got 14.1%, soft cap 8.0% \u2014 R/R gate handles this)",
+      "SECTOR_WEAKENING",
+      "NEAR_52W_HIGH_RESISTANCE"
     ],
     "fail_reasons": [
-      "TQ_FAIL(got 59.9, need 68)",
+      "CONF_FAIL(got 49.7, need 70)",
       "RR_FAIL(got 1.45, need 1.7)"
     ],
     "blocker_reason": null,
-    "monitor_reason": "TQ_LOW",
-    "trajectory": "RISING"
+    "monitor_reason": null,
+    "trajectory": "FADING"
   },
-  "AEGISLOG.NS": {
-    "first_seen": "2026-07-16",
-    "tier": "MONITOR",
-    "tier_since": "2026-07-16",
-    "entry_ref": 1383.9,
-    "last_seen": "2026-07-20",
-    "conf": 69.35,
-    "conf_gap": 0.7,
-    "tq": 59.3,
-    "rr_ratio": 2.15,
+  "KAMDHENU.NS": {
+    "first_seen": "2026-07-20",
+    "tier": "DEVELOPING",
+    "tier_since": "2026-07-20",
+    "entry_ref": 33.53,
+    "last_seen": "2026-07-21",
+    "conf": 48.66,
+    "conf_gap": 21.3,
+    "tq": 64.8,
+    "rr_ratio": 2.63,
     "regime": "SIDEWAYS",
     "warnings": [
-      "WIDE_STOP_WARN(got 15.0%, soft cap 8.0% \u2014 R/R gate handles this)",
-      "HIGH_GAP_RISK: p90 gap 9.3% \u00b7 effective stop 24.4%"
+      "WIDE_STOP_WARN(got 8.0%, soft cap 8.0% \u2014 R/R gate handles this)",
+      "SECTOR_WEAKENING",
+      "HIGH_GAP_RISK: p90 gap 5.0% \u00b7 effective stop 13.0%"
     ],
     "fail_reasons": [
-      "CONF_FAIL(got 69.3, need 70)",
-      "TQ_FAIL(got 59.3, need 68)"
+      "CONF_FAIL(got 48.7, need 70)",
+      "TQ_FAIL(got 64.8, need 68)"
     ],
     "blocker_reason": null,
-    "monitor_reason": "TQ_LOW",
-    "trajectory": "RISING"
+    "monitor_reason": null,
+    "trajectory": "FADING"
+  },
+  "FLUOROCHEM.NS": {
+    "first_seen": "2026-07-21",
+    "tier": "MONITOR",
+    "tier_since": "2026-07-21",
+    "entry_ref": 4607.1,
+    "last_seen": "2026-07-21",
+    "conf": 39.18,
+    "conf_gap": 30.8,
+    "tq": 72.7,
+    "rr_ratio": 1.43,
+    "regime": "SIDEWAYS",
+    "warnings": [
+      "FUND_DATA_MISSING: ROE/D/E/pledge unavailable (src=SCREENER+YF_RL) \u2014 ownership_quality weight redistributed to present factors",
+      "WIDE_STOP_WARN(got 10.5%, soft cap 8.0% \u2014 R/R gate handles this)",
+      "SECTOR_WEAKENING",
+      "NEAR_52W_HIGH_RESISTANCE"
+    ],
+    "fail_reasons": [
+      "CONF_FAIL(got 39.2, need 70)",
+      "RR_FAIL(got 1.43, need 1.7)"
+    ],
+    "blocker_reason": null,
+    "monitor_reason": "CONF_FAR",
+    "trajectory": "FADING"
   },
   "JGCHEM.NS": {
     "first_seen": "2026-07-20",
     "tier": "MONITOR",
     "tier_since": "2026-07-20",
-    "entry_ref": 489.2,
-    "last_seen": "2026-07-20",
-    "conf": 36.12,
-    "conf_gap": 33.9,
-    "tq": 76.1,
-    "rr_ratio": 1.39,
+    "entry_ref": 493.35,
+    "last_seen": "2026-07-21",
+    "conf": 36.85,
+    "conf_gap": 33.1,
+    "tq": 71.9,
+    "rr_ratio": 1.43,
     "regime": "SIDEWAYS",
     "warnings": [
-      "WIDE_STOP_WARN(got 12.6%, soft cap 8.0% \u2014 R/R gate handles this)",
+      "WIDE_STOP_WARN(got 13.9%, soft cap 8.0% \u2014 R/R gate handles this)",
       "SECTOR_WEAKENING"
     ],
     "fail_reasons": [
-      "CONF_FAIL(got 36.1, need 70)",
-      "RR_FAIL(got 1.39, need 1.7)"
+      "CONF_FAIL(got 36.9, need 70)",
+      "RR_FAIL(got 1.43, need 1.7)"
     ],
     "blocker_reason": null,
     "monitor_reason": "CONF_FAR",
