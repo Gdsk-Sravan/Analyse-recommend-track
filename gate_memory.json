@@ -475,5 +475,17 @@
         "conf": 39.18
       }
     ]
+  },
+  "BAJAJ-AUTO.NS": {
+    "history": [
+      {
+        "date": "2026-07-22",
+        "fails": [
+          "CONF_FAIL(got 31.6, need 83)",
+          "RR_FAIL(got 1.41, need 2.0)"
+        ],
+        "conf": 31.620000000000005
+      }
+    ]
   }
 }

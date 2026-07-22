@@ -17,8 +17,14 @@
       "t2_hit_date": null,
       "stop_hit_date": null,
       "expired_date": null,
-      "days_tracked": 1,
-      "pnl_history": [],
+      "days_tracked": 2,
+      "pnl_history": [
+        {
+          "date": "2026-07-22",
+          "price": 323.2,
+          "pnl": 0.0
+        }
+      ],
       "partial_closed": false,
       "partial_exit_pct": 0.0,
       "partial_exit_price": 0.0,
@@ -37,11 +43,11 @@
   "completed": [],
   "performance": {
     "completed": 0,
-    "active": 0,
+    "active": 1,
     "win_rate": 0,
     "avg_win": 0,
     "avg_loss": 0,
     "loss_reasons": {},
-    "last_updated": "2026-07-21"
+    "last_updated": "2026-07-22"
   }
 }
