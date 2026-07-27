@@ -1,1 +1,48 @@
-{}
+{
+  "LLOYDSME.NS": {
+    "first_seen": "2026-07-27",
+    "tier": "MONITOR",
+    "tier_since": "2026-07-27",
+    "entry_ref": 2014.9,
+    "last_seen": "2026-07-27",
+    "conf": 46.74,
+    "conf_gap": 36.3,
+    "tq": 77.8,
+    "rr_ratio": 1.44,
+    "regime": "TRANSITION",
+    "warnings": [
+      "WIDE_STOP_WARN(got 11.2%, soft cap 7.0% \u2014 R/R gate handles this)",
+      "NEAR_52W_HIGH_RESISTANCE"
+    ],
+    "fail_reasons": [
+      "CONF_FAIL(got 46.7, need 83)",
+      "RR_FAIL(got 1.44, need 2.0)"
+    ],
+    "blocker_reason": null,
+    "monitor_reason": "CONF_FAR",
+    "trajectory": ""
+  },
+  "APCOTEXIND.NS": {
+    "first_seen": "2026-07-27",
+    "tier": "MONITOR",
+    "tier_since": "2026-07-27",
+    "entry_ref": 588.5,
+    "last_seen": "2026-07-27",
+    "conf": 33.809999999999995,
+    "conf_gap": 49.2,
+    "tq": 79.0,
+    "rr_ratio": 1.39,
+    "regime": "TRANSITION",
+    "warnings": [
+      "WIDE_STOP_WARN(got 13.3%, soft cap 7.0% \u2014 R/R gate handles this)",
+      "NEAR_52W_HIGH_RESISTANCE"
+    ],
+    "fail_reasons": [
+      "CONF_FAIL(got 33.8, need 83)",
+      "RR_FAIL(got 1.39, need 2.0)"
+    ],
+    "blocker_reason": null,
+    "monitor_reason": "CONF_FAR",
+    "trajectory": ""
+  }
+}

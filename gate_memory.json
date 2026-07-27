@@ -298,6 +298,14 @@
           "RR_FAIL(got 1.43, need 1.7)"
         ],
         "conf": 67.85
+      },
+      {
+        "date": "2026-07-27",
+        "fails": [
+          "CONF_FAIL(got 46.7, need 83)",
+          "RR_FAIL(got 1.44, need 2.0)"
+        ],
+        "conf": 46.74
       }
     ]
   },
@@ -485,6 +493,18 @@
           "RR_FAIL(got 1.41, need 2.0)"
         ],
         "conf": 31.620000000000005
+      }
+    ]
+  },
+  "APCOTEXIND.NS": {
+    "history": [
+      {
+        "date": "2026-07-27",
+        "fails": [
+          "CONF_FAIL(got 33.8, need 83)",
+          "RR_FAIL(got 1.39, need 2.0)"
+        ],
+        "conf": 33.809999999999995
       }
     ]
   }
