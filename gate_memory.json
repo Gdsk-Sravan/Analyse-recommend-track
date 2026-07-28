@@ -507,5 +507,29 @@
         "conf": 33.809999999999995
       }
     ]
+  },
+  "MAPMYINDIA.NS": {
+    "history": [
+      {
+        "date": "2026-07-28",
+        "fails": [
+          "CONF_FAIL(got 62.7, need 83)",
+          "TQ_FAIL(got 63.3, need 73)"
+        ],
+        "conf": 62.71000000000001
+      }
+    ]
+  },
+  "TECHM.NS": {
+    "history": [
+      {
+        "date": "2026-07-28",
+        "fails": [
+          "CONF_FAIL(got 47.8, need 83)",
+          "RR_FAIL(got 1.43, need 2.0)"
+        ],
+        "conf": 47.815
+      }
+    ]
   }
 }
