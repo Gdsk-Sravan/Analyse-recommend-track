@@ -124,6 +124,14 @@
           "RR_FAIL(got 1.44, need 1.7)"
         ],
         "conf": 45.97
+      },
+      {
+        "date": "2026-07-29",
+        "fails": [
+          "CONF_FAIL(got 44.7, need 83)",
+          "RR_FAIL(got 1.64, need 2.0)"
+        ],
+        "conf": 44.74
       }
     ]
   },
@@ -517,6 +525,14 @@
           "TQ_FAIL(got 63.3, need 73)"
         ],
         "conf": 62.71000000000001
+      },
+      {
+        "date": "2026-07-29",
+        "fails": [
+          "CONF_FAIL(got 61.4, need 83)",
+          "TQ_FAIL(got 61.0, need 73)"
+        ],
+        "conf": 61.400000000000006
       }
     ]
   },
@@ -529,6 +545,30 @@
           "RR_FAIL(got 1.43, need 2.0)"
         ],
         "conf": 47.815
+      }
+    ]
+  },
+  "MPHASIS.NS": {
+    "history": [
+      {
+        "date": "2026-07-29",
+        "fails": [
+          "CONF_FAIL(got 69.8, need 83)",
+          "TQ_FAIL(got 61.9, need 73)"
+        ],
+        "conf": 69.78
+      }
+    ]
+  },
+  "E2E.NS": {
+    "history": [
+      {
+        "date": "2026-07-29",
+        "fails": [
+          "CONF_FAIL(got 66.3, need 83)",
+          "TQ_FAIL(got 59.0, need 73)"
+        ],
+        "conf": 66.34
       }
     ]
   }
