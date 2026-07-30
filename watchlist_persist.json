@@ -1,96 +1,146 @@
 {
-  "MPHASIS.NS": {
-    "first_seen": "2026-07-29",
-    "tier": "DEVELOPING",
-    "tier_since": "2026-07-29",
-    "entry_ref": 2361.3,
-    "last_seen": "2026-07-29",
-    "conf": 69.78,
-    "conf_gap": 13.2,
-    "tq": 61.9,
-    "rr_ratio": 2.08,
-    "regime": "TRANSITION",
+  "VAIBHAVGBL.NS": {
+    "first_seen": "2026-07-30",
+    "tier": "NEAR_MISS_RISING",
+    "tier_since": "2026-07-30",
+    "entry_ref": 263.6,
+    "last_seen": "2026-07-30",
+    "conf": 73.42,
+    "conf_gap": 0.0,
+    "tq": 70.5,
+    "rr_ratio": 2.3,
+    "regime": "SIDEWAYS",
     "warnings": [
-      "WIDE_STOP_WARN(got 7.6%, soft cap 7.0% \u2014 R/R gate handles this)",
-      "HIGH_GAP_RISK: p90 gap 4.8% \u00b7 effective stop 12.5%"
+      "WIDE_STOP_WARN(got 8.2%, soft cap 8.0% \u2014 R/R gate handles this)",
+      "SECTOR_RANK_WEAK: sector ranked #13 \u2014 needs top-6 unless conf\u226588",
+      "HIGH_GAP_RISK: p90 gap 6.5% \u00b7 effective stop 14.8%"
     ],
     "fail_reasons": [
-      "CONF_FAIL(got 69.8, need 83)",
-      "TQ_FAIL(got 61.9, need 73)"
+      "SECTOR_RANK_TOO_LOW(rank=13>top6)"
+    ],
+    "blocker_reason": null,
+    "monitor_reason": null,
+    "trajectory": "RISING"
+  },
+  "ANANTRAJ.NS": {
+    "first_seen": "2026-07-30",
+    "tier": "NEAR_MISS",
+    "tier_since": "2026-07-30",
+    "entry_ref": 609.6,
+    "last_seen": "2026-07-30",
+    "conf": 76.76,
+    "conf_gap": 0.0,
+    "tq": 69.5,
+    "rr_ratio": 1.74,
+    "regime": "SIDEWAYS",
+    "warnings": [
+      "WIDE_STOP_WARN(got 8.4%, soft cap 8.0% \u2014 R/R gate handles this)",
+      "SECTOR_RANK_WEAK: sector ranked #13 \u2014 needs top-6 unless conf\u226588",
+      "NEAR_52W_HIGH_RESISTANCE",
+      "HIGH_GAP_RISK: p90 gap 5.1% \u00b7 effective stop 13.5%",
+      "STRONG_ACCUMULATION: delivery 62% (20d avg 39%)"
+    ],
+    "fail_reasons": [
+      "SECTOR_RANK_TOO_LOW(rank=13>top6)"
     ],
     "blocker_reason": null,
     "monitor_reason": null,
     "trajectory": ""
   },
-  "MAPMYINDIA.NS": {
-    "first_seen": "2026-07-28",
-    "tier": "DEVELOPING",
-    "tier_since": "2026-07-28",
-    "entry_ref": 1163.1,
-    "last_seen": "2026-07-29",
-    "conf": 61.400000000000006,
-    "conf_gap": 21.6,
-    "tq": 61.0,
-    "rr_ratio": 2.02,
-    "regime": "TRANSITION",
+  "RADICO.NS": {
+    "first_seen": "2026-07-30",
+    "tier": "NEAR_MISS",
+    "tier_since": "2026-07-30",
+    "entry_ref": 4366.6,
+    "last_seen": "2026-07-30",
+    "conf": 72.28,
+    "conf_gap": 0.0,
+    "tq": 65.1,
+    "rr_ratio": 1.41,
+    "regime": "SIDEWAYS",
     "warnings": [
-      "WIDE_STOP_WARN(got 12.2%, soft cap 7.0% \u2014 R/R gate handles this)",
-      "HIGH_GAP_RISK: p90 gap 9.9% \u00b7 effective stop 22.1%"
+      "NEAR_52W_HIGH_RESISTANCE",
+      "WEAK_DELIVERY: 40% (20d avg 49%)"
     ],
     "fail_reasons": [
-      "CONF_FAIL(got 61.4, need 83)",
-      "TQ_FAIL(got 61.0, need 73)"
+      "TQ_FAIL(got 65.1, need 68)",
+      "RR_FAIL(got 1.41, need 1.7)"
     ],
     "blocker_reason": null,
     "monitor_reason": null,
     "trajectory": "FLAT"
   },
-  "E2E.NS": {
-    "first_seen": "2026-07-29",
+  "TVSMOTOR.NS": {
+    "first_seen": "2026-07-30",
     "tier": "MONITOR",
-    "tier_since": "2026-07-29",
-    "entry_ref": 491.45,
-    "last_seen": "2026-07-29",
-    "conf": 66.34,
-    "conf_gap": 16.7,
-    "tq": 59.0,
-    "rr_ratio": 1.61,
-    "regime": "TRANSITION",
+    "tier_since": "2026-07-30",
+    "entry_ref": 4208.4,
+    "last_seen": "2026-07-30",
+    "conf": 37.135,
+    "conf_gap": 32.9,
+    "tq": 70.0,
+    "rr_ratio": 1.42,
+    "regime": "SIDEWAYS",
     "warnings": [
-      "RR_INSTITUTIONAL_OVERRIDE(1.61 \u2265 1.50 \u2014 BQ=STRONG, sector=98, SA=80, vol=2.50x)",
-      "WIDE_STOP_WARN(got 15.0%, soft cap 7.0% \u2014 R/R gate handles this)",
-      "WEAK_DELIVERY: 41% (20d avg 53%)"
+      "FUND_DATA_MISSING: ROE/D/E/pledge unavailable (src=SCREENER+YF_RL) \u2014 ownership_quality weight redistributed to present factors",
+      "WIDE_STOP_WARN(got 9.0%, soft cap 8.0% \u2014 R/R gate handles this)",
+      "NEAR_52W_HIGH_RESISTANCE"
     ],
     "fail_reasons": [
-      "CONF_FAIL(got 66.3, need 83)",
-      "TQ_FAIL(got 59.0, need 73)"
+      "CONF_FAIL(got 37.1, need 70)",
+      "RR_FAIL(got 1.42, need 1.7)"
     ],
     "blocker_reason": null,
-    "monitor_reason": "TQ_LOW",
-    "trajectory": "RISING"
+    "monitor_reason": "CONF_FAR",
+    "trajectory": "FADING"
   },
-  "TIMETECHNO.NS": {
-    "first_seen": "2026-07-29",
+  "ARTEMISMED.NS": {
+    "first_seen": "2026-07-30",
     "tier": "MONITOR",
-    "tier_since": "2026-07-29",
-    "entry_ref": 216.36,
-    "last_seen": "2026-07-29",
-    "conf": 44.74,
-    "conf_gap": 38.3,
-    "tq": 73.3,
-    "rr_ratio": 1.64,
-    "regime": "TRANSITION",
+    "tier_since": "2026-07-30",
+    "entry_ref": 302.15,
+    "last_seen": "2026-07-30",
+    "conf": 30.950000000000003,
+    "conf_gap": 39.0,
+    "tq": 72.1,
+    "rr_ratio": 1.38,
+    "regime": "SIDEWAYS",
     "warnings": [
-      "WIDE_STOP_WARN(got 10.7%, soft cap 7.0% \u2014 R/R gate handles this)",
+      "WIDE_STOP_WARN(got 11.5%, soft cap 8.0% \u2014 R/R gate handles this)",
       "NEAR_52W_HIGH_RESISTANCE",
-      "WEAK_DELIVERY: 22% (20d avg 27%)"
+      "WEAK_DELIVERY: 44% (20d avg 58%)"
     ],
     "fail_reasons": [
-      "CONF_FAIL(got 44.7, need 83)",
-      "RR_FAIL(got 1.64, need 2.0)"
+      "CONF_FAIL(got 31.0, need 70)",
+      "RR_FAIL(got 1.38, need 1.7)"
     ],
     "blocker_reason": null,
     "monitor_reason": "CONF_FAR",
     "trajectory": ""
+  },
+  "PPLPHARMA.NS": {
+    "first_seen": "2026-07-30",
+    "tier": "MONITOR",
+    "tier_since": "2026-07-30",
+    "entry_ref": 196.72,
+    "last_seen": "2026-07-30",
+    "conf": 30.700000000000003,
+    "conf_gap": 39.3,
+    "tq": 73.9,
+    "rr_ratio": 1.44,
+    "regime": "SIDEWAYS",
+    "warnings": [
+      "FUND_DATA_MISSING: ROE/D/E/pledge unavailable (src=SCREENER+YF_RL) \u2014 ownership_quality weight redistributed to present factors",
+      "WIDE_STOP_WARN(got 13.0%, soft cap 8.0% \u2014 R/R gate handles this)",
+      "NEAR_52W_HIGH_RESISTANCE",
+      "WEAK_DELIVERY: 27% (20d avg 39%)"
+    ],
+    "fail_reasons": [
+      "CONF_FAIL(got 30.7, need 70)",
+      "RR_FAIL(got 1.44, need 1.7)"
+    ],
+    "blocker_reason": null,
+    "monitor_reason": "CONF_FAR",
+    "trajectory": "FLAT"
   }
 }

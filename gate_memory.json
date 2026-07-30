@@ -225,6 +225,14 @@
           "SECTOR_RANK_TOO_LOW(rank=7>top6)"
         ],
         "conf": 72.81
+      },
+      {
+        "date": "2026-07-30",
+        "fails": [
+          "TQ_FAIL(got 65.1, need 68)",
+          "RR_FAIL(got 1.41, need 1.7)"
+        ],
+        "conf": 72.28
       }
     ]
   },
@@ -325,6 +333,14 @@
           "CONF_FAIL(got 66.3, need 70)"
         ],
         "conf": 66.32
+      },
+      {
+        "date": "2026-07-30",
+        "fails": [
+          "CONF_FAIL(got 30.7, need 70)",
+          "RR_FAIL(got 1.44, need 1.7)"
+        ],
+        "conf": 30.700000000000003
       }
     ]
   },
@@ -569,6 +585,52 @@
           "TQ_FAIL(got 59.0, need 73)"
         ],
         "conf": 66.34
+      }
+    ]
+  },
+  "VAIBHAVGBL.NS": {
+    "history": [
+      {
+        "date": "2026-07-30",
+        "fails": [
+          "SECTOR_RANK_TOO_LOW(rank=13>top6)"
+        ],
+        "conf": 73.42
+      }
+    ]
+  },
+  "ANANTRAJ.NS": {
+    "history": [
+      {
+        "date": "2026-07-30",
+        "fails": [
+          "SECTOR_RANK_TOO_LOW(rank=13>top6)"
+        ],
+        "conf": 76.76
+      }
+    ]
+  },
+  "TVSMOTOR.NS": {
+    "history": [
+      {
+        "date": "2026-07-30",
+        "fails": [
+          "CONF_FAIL(got 37.1, need 70)",
+          "RR_FAIL(got 1.42, need 1.7)"
+        ],
+        "conf": 37.135
+      }
+    ]
+  },
+  "ARTEMISMED.NS": {
+    "history": [
+      {
+        "date": "2026-07-30",
+        "fails": [
+          "CONF_FAIL(got 31.0, need 70)",
+          "RR_FAIL(got 1.38, need 1.7)"
+        ],
+        "conf": 30.950000000000003
       }
     ]
   }
