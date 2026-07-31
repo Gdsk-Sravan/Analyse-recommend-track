@@ -633,5 +633,17 @@
         "conf": 30.950000000000003
       }
     ]
+  },
+  "AARTIDRUGS.NS": {
+    "history": [
+      {
+        "date": "2026-07-31",
+        "fails": [
+          "CONF_FAIL(got 65.8, need 83)",
+          "TQ_FAIL(got 60.7, need 73)"
+        ],
+        "conf": 65.75
+      }
+    ]
   }
 }

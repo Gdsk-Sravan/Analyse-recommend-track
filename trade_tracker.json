@@ -17,7 +17,7 @@
       "t2_hit_date": null,
       "stop_hit_date": null,
       "expired_date": null,
-      "days_tracked": 10,
+      "days_tracked": 11,
       "pnl_history": [
         {
           "date": "2026-07-22",
@@ -53,6 +53,11 @@
           "date": "2026-07-30",
           "price": 323.2,
           "pnl": 0.0
+        },
+        {
+          "date": "2026-07-31",
+          "price": 323.2,
+          "pnl": 0.0
         }
       ],
       "partial_closed": false,
@@ -78,6 +83,6 @@
     "avg_win": 0,
     "avg_loss": 0,
     "loss_reasons": {},
-    "last_updated": "2026-07-30"
+    "last_updated": "2026-07-31"
   }
 }
