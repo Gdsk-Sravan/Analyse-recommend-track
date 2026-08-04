@@ -241,6 +241,13 @@
           "RR_FAIL(got 1.41, need 1.7)"
         ],
         "conf": 72.28
+      },
+      {
+        "date": "2026-08-04",
+        "fails": [
+          "RR_FAIL(got 1.42, need 1.7)"
+        ],
+        "conf": 93.275
       }
     ]
   },
@@ -360,6 +367,13 @@
           "SECTOR_RANK_TOO_LOW(rank=8>top6)"
         ],
         "conf": 74.4
+      },
+      {
+        "date": "2026-08-04",
+        "fails": [
+          "RR_FAIL(got 1.36, need 1.7)"
+        ],
+        "conf": 85.59
       }
     ]
   },
@@ -609,6 +623,14 @@
           "TQ_FAIL(got 59.0, need 73)"
         ],
         "conf": 66.34
+      },
+      {
+        "date": "2026-08-04",
+        "fails": [
+          "TQ_FAIL(got 59.1, need 68)",
+          "RR_FAIL(got 1.55, need 1.7)"
+        ],
+        "conf": 90.38
       }
     ]
   },
@@ -685,6 +707,13 @@
           "SECTOR_RANK_TOO_LOW(rank=15>top6)"
         ],
         "conf": 87.05
+      },
+      {
+        "date": "2026-08-04",
+        "fails": [
+          "SECTOR_RANK_TOO_LOW(rank=9>top6)"
+        ],
+        "conf": 87.91000000000001
       }
     ]
   },
@@ -696,6 +725,14 @@
           "SECTOR_RANK_TOO_LOW(rank=17>top6)"
         ],
         "conf": 94.0
+      },
+      {
+        "date": "2026-08-04",
+        "fails": [
+          "SECTOR_RANK_TOO_LOW(rank=17>top6)",
+          "INSTITUTIONAL_EXIT"
+        ],
+        "conf": 87.255
       }
     ]
   },
@@ -764,6 +801,14 @@
           "RR_FAIL(got 1.43, need 1.7)"
         ],
         "conf": 87.42
+      },
+      {
+        "date": "2026-08-04",
+        "fails": [
+          "CONF_FAIL(got 46.2, need 72)",
+          "RR_FAIL(got 1.44, need 1.7)"
+        ],
+        "conf": 46.19
       }
     ]
   },
@@ -810,6 +855,14 @@
           "RR_FAIL(got 1.44, need 1.7)"
         ],
         "conf": 94.0
+      },
+      {
+        "date": "2026-08-04",
+        "fails": [
+          "TQ_FAIL(got 61.7, need 68)",
+          "RR_FAIL(got 1.44, need 1.7)"
+        ],
+        "conf": 94.0
       }
     ]
   },
@@ -822,6 +875,14 @@
           "RR_FAIL(got 1.43, need 1.7)"
         ],
         "conf": 94.0
+      },
+      {
+        "date": "2026-08-04",
+        "fails": [
+          "TQ_FAIL(got 62.3, need 68)",
+          "RR_FAIL(got 1.43, need 1.7)"
+        ],
+        "conf": 93.30000000000001
       }
     ]
   },
@@ -834,6 +895,210 @@
           "RR_FAIL(got 1.44, need 1.7)"
         ],
         "conf": 48.07
+      },
+      {
+        "date": "2026-08-04",
+        "fails": [
+          "TQ_FAIL(got 63.8, need 68)",
+          "RR_FAIL(got 1.44, need 1.7)"
+        ],
+        "conf": 85.16
+      }
+    ]
+  },
+  "HYUNDAI.NS": {
+    "history": [
+      {
+        "date": "2026-08-04",
+        "fails": [
+          "TQ_FAIL(got 63.8, need 68)",
+          "RR_FAIL(got 1.42, need 1.7)"
+        ],
+        "conf": 94.0
+      }
+    ]
+  },
+  "AMAGI.NS": {
+    "history": [
+      {
+        "date": "2026-08-04",
+        "fails": [
+          "TQ_FAIL(got 63.6, need 68)"
+        ],
+        "conf": 90.41
+      }
+    ]
+  },
+  "ASKAUTOLTD.NS": {
+    "history": [
+      {
+        "date": "2026-08-04",
+        "fails": [
+          "RR_FAIL(got 1.42, need 1.7)"
+        ],
+        "conf": 83.32
+      }
+    ]
+  },
+  "EMUDHRA.NS": {
+    "history": [
+      {
+        "date": "2026-08-04",
+        "fails": [
+          "RR_FAIL(got 1.43, need 1.7)"
+        ],
+        "conf": 87.28
+      }
+    ]
+  },
+  "FILATEX.NS": {
+    "history": [
+      {
+        "date": "2026-08-04",
+        "fails": [
+          "TQ_FAIL(got 64.7, need 68)",
+          "RR_FAIL(got 1.69, need 1.7)"
+        ],
+        "conf": 74.355
+      }
+    ]
+  },
+  "KMEW.NS": {
+    "history": [
+      {
+        "date": "2026-08-04",
+        "fails": [
+          "SECTOR_RANK_TOO_LOW(rank=9>top6)"
+        ],
+        "conf": 84.80499999999999
+      }
+    ]
+  },
+  "SOTL.NS": {
+    "history": [
+      {
+        "date": "2026-08-04",
+        "fails": [
+          "SECTOR_RANK_TOO_LOW(rank=9>top6)"
+        ],
+        "conf": 71.96
+      }
+    ]
+  },
+  "STYLAMIND.NS": {
+    "history": [
+      {
+        "date": "2026-08-04",
+        "fails": [
+          "SECTOR_RANK_TOO_LOW(rank=9>top6)"
+        ],
+        "conf": 86.59
+      }
+    ]
+  },
+  "NETWEB.NS": {
+    "history": [
+      {
+        "date": "2026-08-04",
+        "fails": [
+          "CONF_FAIL(got 71.3, need 72)",
+          "RR_FAIL(got 1.45, need 1.7)"
+        ],
+        "conf": 71.295
+      }
+    ]
+  },
+  "BUILDPRO.NS": {
+    "history": [
+      {
+        "date": "2026-08-04",
+        "fails": [
+          "TQ_FAIL(got 61.5, need 68)",
+          "RR_FAIL(got 1.54, need 1.7)"
+        ],
+        "conf": 86.12
+      }
+    ]
+  },
+  "ECLERX.NS": {
+    "history": [
+      {
+        "date": "2026-08-04",
+        "fails": [
+          "TQ_FAIL(got 60.2, need 68)"
+        ],
+        "conf": 87.385
+      }
+    ]
+  },
+  "EXPLEOSOL.NS": {
+    "history": [
+      {
+        "date": "2026-08-04",
+        "fails": [
+          "TQ_FAIL(got 62.7, need 68)",
+          "RR_FAIL(got 1.43, need 1.7)"
+        ],
+        "conf": 92.705
+      }
+    ]
+  },
+  "KRISHANA.NS": {
+    "history": [
+      {
+        "date": "2026-08-04",
+        "fails": [
+          "TQ_FAIL(got 61.1, need 68)",
+          "RR_FAIL(got 1.51, need 1.7)"
+        ],
+        "conf": 90.97
+      }
+    ]
+  },
+  "DPABHUSHAN.NS": {
+    "history": [
+      {
+        "date": "2026-08-04",
+        "fails": [
+          "TQ_FAIL(got 53.8, need 68)"
+        ],
+        "conf": 89.64
+      }
+    ]
+  },
+  "GABRIEL.NS": {
+    "history": [
+      {
+        "date": "2026-08-04",
+        "fails": [
+          "TQ_FAIL(got 57.0, need 68)",
+          "RR_FAIL(got 1.65, need 1.7)"
+        ],
+        "conf": 81.46
+      }
+    ]
+  },
+  "MENONBE.NS": {
+    "history": [
+      {
+        "date": "2026-08-04",
+        "fails": [
+          "TQ_FAIL(got 51.4, need 68)",
+          "RR_FAIL(got 1.61, need 1.7)"
+        ],
+        "conf": 94.0
+      }
+    ]
+  },
+  "3IINFOLTD.NS": {
+    "history": [
+      {
+        "date": "2026-08-04",
+        "fails": [
+          "CONF_FAIL(got 45.6, need 72)",
+          "RR_FAIL(got 1.36, need 1.7)"
+        ],
+        "conf": 45.57
       }
     ]
   }

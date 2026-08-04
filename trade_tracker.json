@@ -1,5 +1,7 @@
 {
-  "buys": [
+  "buys": [],
+  "watchlist": [],
+  "completed": [
     {
       "symbol": "GREENPLY.NS",
       "rec_date": "2026-07-21",
@@ -12,12 +14,12 @@
       "regime": "SIDEWAYS",
       "sector": "METALS",
       "position_pct": 11.2,
-      "status": "ACTIVE",
+      "status": "EXPIRED",
       "t1_hit_date": null,
       "t2_hit_date": null,
       "stop_hit_date": null,
-      "expired_date": null,
-      "days_tracked": 14,
+      "expired_date": "2026-08-04",
+      "days_tracked": 15,
       "pnl_history": [
         {
           "date": "2026-07-22",
@@ -63,6 +65,11 @@
           "date": "2026-08-03",
           "price": 323.2,
           "pnl": 0.0
+        },
+        {
+          "date": "2026-08-04",
+          "price": 323.2,
+          "pnl": 0.0
         }
       ],
       "partial_closed": false,
@@ -76,18 +83,21 @@
       "runner_partial_pnl": 0.0,
       "runner_high_water": 0.0,
       "runner_close_date": null,
-      "trail_note": ""
+      "trail_note": "",
+      "final_pnl": 0.0,
+      "close_reason": "TIME_EXPIRED_FLAT",
+      "close_price": 323.2
     }
   ],
-  "watchlist": [],
-  "completed": [],
   "performance": {
-    "completed": 0,
-    "active": 1,
-    "win_rate": 0,
+    "completed": 1,
+    "active": 0,
+    "win_rate": 0.0,
     "avg_win": 0,
-    "avg_loss": 0,
-    "loss_reasons": {},
-    "last_updated": "2026-08-03"
+    "avg_loss": 0.0,
+    "loss_reasons": {
+      "TIME_EXPIRED_FLAT": 1
+    },
+    "last_updated": "2026-08-04"
   }
 }
