@@ -248,6 +248,14 @@
           "RR_FAIL(got 1.42, need 1.7)"
         ],
         "conf": 93.275
+      },
+      {
+        "date": "2026-08-05",
+        "fails": [
+          "TQ_FAIL(got 62.8, need 68)",
+          "RR_FAIL(got 1.42, need 1.7)"
+        ],
+        "conf": 94.0
       }
     ]
   },
@@ -259,6 +267,14 @@
           "SECTOR_RANK_TOO_LOW(rank=11>top6)"
         ],
         "conf": 73.15
+      },
+      {
+        "date": "2026-08-05",
+        "fails": [
+          "CONF_FAIL(got 62.4, need 72)",
+          "RR_FAIL(got 1.39, need 1.7)"
+        ],
+        "conf": 62.42
       }
     ]
   },
@@ -374,6 +390,14 @@
           "RR_FAIL(got 1.36, need 1.7)"
         ],
         "conf": 85.59
+      },
+      {
+        "date": "2026-08-05",
+        "fails": [
+          "TQ_FAIL(got 67.8, need 68)",
+          "RR_FAIL(got 1.36, need 1.7)"
+        ],
+        "conf": 85.5
       }
     ]
   },
@@ -809,6 +833,14 @@
           "RR_FAIL(got 1.44, need 1.7)"
         ],
         "conf": 46.19
+      },
+      {
+        "date": "2026-08-05",
+        "fails": [
+          "TQ_FAIL(got 59.7, need 68)",
+          "RR_FAIL(got 1.44, need 1.7)"
+        ],
+        "conf": 83.64
       }
     ]
   },
@@ -883,6 +915,14 @@
           "RR_FAIL(got 1.43, need 1.7)"
         ],
         "conf": 93.30000000000001
+      },
+      {
+        "date": "2026-08-05",
+        "fails": [
+          "TQ_FAIL(got 60.7, need 68)",
+          "RR_FAIL(got 1.43, need 1.7)"
+        ],
+        "conf": 92.8
       }
     ]
   },
@@ -1052,6 +1092,14 @@
           "RR_FAIL(got 1.51, need 1.7)"
         ],
         "conf": 90.97
+      },
+      {
+        "date": "2026-08-05",
+        "fails": [
+          "TQ_FAIL(got 59.0, need 68)",
+          "RR_FAIL(got 1.56, need 1.7)"
+        ],
+        "conf": 90.595
       }
     ]
   },
@@ -1087,6 +1135,13 @@
           "RR_FAIL(got 1.61, need 1.7)"
         ],
         "conf": 94.0
+      },
+      {
+        "date": "2026-08-05",
+        "fails": [
+          "TQ_FAIL(got 51.2, need 68)"
+        ],
+        "conf": 93.52
       }
     ]
   },
@@ -1099,6 +1154,17 @@
           "RR_FAIL(got 1.36, need 1.7)"
         ],
         "conf": 45.57
+      }
+    ]
+  },
+  "IFBIND.NS": {
+    "history": [
+      {
+        "date": "2026-08-05",
+        "fails": [
+          "RR_FAIL(got 1.41, need 1.7)"
+        ],
+        "conf": 85.01
       }
     ]
   }
