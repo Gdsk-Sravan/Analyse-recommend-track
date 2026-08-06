@@ -769,6 +769,14 @@
           "SECTOR_RANK_TOO_LOW(rank=26>top6)"
         ],
         "conf": 85.195
+      },
+      {
+        "date": "2026-08-06",
+        "fails": [
+          "TQ_FAIL(got 59.3, need 68)",
+          "RR_FAIL(got 1.45, need 1.7)"
+        ],
+        "conf": 84.17
       }
     ]
   },
@@ -841,6 +849,14 @@
           "RR_FAIL(got 1.44, need 1.7)"
         ],
         "conf": 83.64
+      },
+      {
+        "date": "2026-08-06",
+        "fails": [
+          "TQ_FAIL(got 65.3, need 68)",
+          "RR_FAIL(got 1.44, need 1.7)"
+        ],
+        "conf": 83.66
       }
     ]
   },
@@ -923,6 +939,14 @@
           "RR_FAIL(got 1.43, need 1.7)"
         ],
         "conf": 92.8
+      },
+      {
+        "date": "2026-08-06",
+        "fails": [
+          "TQ_FAIL(got 54.4, need 68)",
+          "RR_FAIL(got 1.43, need 1.7)"
+        ],
+        "conf": 92.81
       }
     ]
   },
@@ -952,6 +976,14 @@
         "date": "2026-08-04",
         "fails": [
           "TQ_FAIL(got 63.8, need 68)",
+          "RR_FAIL(got 1.42, need 1.7)"
+        ],
+        "conf": 94.0
+      },
+      {
+        "date": "2026-08-06",
+        "fails": [
+          "TQ_FAIL(got 66.7, need 68)",
           "RR_FAIL(got 1.42, need 1.7)"
         ],
         "conf": 94.0
@@ -1100,6 +1132,14 @@
           "RR_FAIL(got 1.56, need 1.7)"
         ],
         "conf": 90.595
+      },
+      {
+        "date": "2026-08-06",
+        "fails": [
+          "TQ_FAIL(got 63.6, need 68)",
+          "RR_FAIL(got 1.44, need 1.7)"
+        ],
+        "conf": 90.12
       }
     ]
   },
@@ -1111,6 +1151,13 @@
           "TQ_FAIL(got 53.8, need 68)"
         ],
         "conf": 89.64
+      },
+      {
+        "date": "2026-08-06",
+        "fails": [
+          "TQ_FAIL(got 58.6, need 68)"
+        ],
+        "conf": 90.3
       }
     ]
   },
@@ -1142,6 +1189,13 @@
           "TQ_FAIL(got 51.2, need 68)"
         ],
         "conf": 93.52
+      },
+      {
+        "date": "2026-08-06",
+        "fails": [
+          "TQ_FAIL(got 51.6, need 68)"
+        ],
+        "conf": 93.15
       }
     ]
   },
@@ -1165,6 +1219,63 @@
           "RR_FAIL(got 1.41, need 1.7)"
         ],
         "conf": 85.01
+      }
+    ]
+  },
+  "AVALON.NS": {
+    "history": [
+      {
+        "date": "2026-08-06",
+        "fails": [
+          "SECTOR_RANK_TOO_LOW(rank=7>top6)"
+        ],
+        "conf": 85.68
+      }
+    ]
+  },
+  "HAL.NS": {
+    "history": [
+      {
+        "date": "2026-08-06",
+        "fails": [
+          "RR_FAIL(got 1.41, need 1.7)"
+        ],
+        "conf": 88.94
+      }
+    ]
+  },
+  "MOTHERSON.NS": {
+    "history": [
+      {
+        "date": "2026-08-06",
+        "fails": [
+          "EVENT_BLOCK_RESULTS_IN_0D",
+          "INSTITUTIONAL_EXIT"
+        ],
+        "conf": 82.04
+      }
+    ]
+  },
+  "SBCL.NS": {
+    "history": [
+      {
+        "date": "2026-08-06",
+        "fails": [
+          "SECTOR_RANK_TOO_LOW(rank=10>top6)"
+        ],
+        "conf": 84.08
+      }
+    ]
+  },
+  "ATULAUTO.NS": {
+    "history": [
+      {
+        "date": "2026-08-06",
+        "fails": [
+          "TQ_FAIL(got 60.2, need 68)",
+          "RR_FAIL(got 1.43, need 1.7)"
+        ],
+        "conf": 86.505
       }
     ]
   }
