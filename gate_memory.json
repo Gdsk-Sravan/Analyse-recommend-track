@@ -222,6 +222,13 @@
           "SECTOR_RANK_TOO_LOW(rank=8>top6)"
         ],
         "conf": 76.13
+      },
+      {
+        "date": "2026-08-07",
+        "fails": [
+          "CONF_FAIL(got 70.1, need 72)"
+        ],
+        "conf": 70.1
       }
     ]
   },
@@ -398,6 +405,13 @@
           "RR_FAIL(got 1.36, need 1.7)"
         ],
         "conf": 85.5
+      },
+      {
+        "date": "2026-08-07",
+        "fails": [
+          "RR_FAIL(got 1.36, need 1.7)"
+        ],
+        "conf": 89.05
       }
     ]
   },
@@ -857,6 +871,14 @@
           "RR_FAIL(got 1.44, need 1.7)"
         ],
         "conf": 83.66
+      },
+      {
+        "date": "2026-08-07",
+        "fails": [
+          "TQ_FAIL(got 59.7, need 68)",
+          "RR_FAIL(got 1.44, need 1.7)"
+        ],
+        "conf": 85.43
       }
     ]
   },
@@ -947,6 +969,14 @@
           "RR_FAIL(got 1.43, need 1.7)"
         ],
         "conf": 92.81
+      },
+      {
+        "date": "2026-08-07",
+        "fails": [
+          "TQ_FAIL(got 60.4, need 68)",
+          "RR_FAIL(got 1.44, need 1.7)"
+        ],
+        "conf": 93.19
       }
     ]
   },
@@ -1032,6 +1062,14 @@
           "RR_FAIL(got 1.69, need 1.7)"
         ],
         "conf": 74.355
+      },
+      {
+        "date": "2026-08-07",
+        "fails": [
+          "TQ_FAIL(got 61.5, need 68)",
+          "RR_FAIL(got 1.45, need 1.7)"
+        ],
+        "conf": 73.76
       }
     ]
   },
@@ -1158,6 +1196,13 @@
           "TQ_FAIL(got 58.6, need 68)"
         ],
         "conf": 90.3
+      },
+      {
+        "date": "2026-08-07",
+        "fails": [
+          "TQ_FAIL(got 59.7, need 68)"
+        ],
+        "conf": 90.81
       }
     ]
   },
@@ -1196,6 +1241,13 @@
           "TQ_FAIL(got 51.6, need 68)"
         ],
         "conf": 93.15
+      },
+      {
+        "date": "2026-08-07",
+        "fails": [
+          "TQ_FAIL(got 56.0, need 68)"
+        ],
+        "conf": 93.09
       }
     ]
   },
@@ -1219,6 +1271,13 @@
           "RR_FAIL(got 1.41, need 1.7)"
         ],
         "conf": 85.01
+      },
+      {
+        "date": "2026-08-07",
+        "fails": [
+          "TQ_FAIL(got 65.2, need 68)"
+        ],
+        "conf": 81.23
       }
     ]
   },
@@ -1276,6 +1335,26 @@
           "RR_FAIL(got 1.43, need 1.7)"
         ],
         "conf": 86.505
+      },
+      {
+        "date": "2026-08-07",
+        "fails": [
+          "TQ_FAIL(got 64.8, need 68)",
+          "RR_FAIL(got 1.43, need 1.7)"
+        ],
+        "conf": 85.705
+      }
+    ]
+  },
+  "DIFFNKG.NS": {
+    "history": [
+      {
+        "date": "2026-08-07",
+        "fails": [
+          "TQ_FAIL(got 64.9, need 68)",
+          "RR_FAIL(got 1.40, need 1.7)"
+        ],
+        "conf": 85.93
       }
     ]
   }
