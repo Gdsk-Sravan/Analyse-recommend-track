@@ -1,231 +1,93 @@
 {
-  "ATULAUTO.NS": {
-    "first_seen": "2026-08-06",
-    "tier": "NEAR_MISS",
-    "tier_since": "2026-08-07",
-    "entry_ref": 576.9,
-    "last_seen": "2026-08-07",
-    "conf": 85.705,
+  "PPLPHARMA.NS": {
+    "first_seen": "2026-08-10",
+    "tier": "NEAR_MISS_RISING",
+    "tier_since": "2026-08-10",
+    "entry_ref": 213.61,
+    "last_seen": "2026-08-10",
+    "conf": 82.4,
     "conf_gap": 0.0,
-    "tq": 64.8,
-    "rr_ratio": 1.43,
-    "regime": "STRONG_BULL",
+    "tq": 69.1,
+    "rr_ratio": 1.44,
+    "regime": "BULL",
     "warnings": [
-      "FUND_DATA_MISSING: ROE/D/E/pledge unavailable (src=SCREENER+YF_RL) \u2014 ownership_quality weight redistributed to present factors",
-      "WIDE_STOP_WARN(got 13.7%, soft cap 8.0% \u2014 R/R gate handles this)"
-    ],
-    "fail_reasons": [
-      "TQ_FAIL(got 64.8, need 68)",
-      "RR_FAIL(got 1.43, need 1.7)"
-    ],
-    "blocker_reason": null,
-    "monitor_reason": null,
-    "trajectory": "FLAT"
-  },
-  "DIFFNKG.NS": {
-    "first_seen": "2026-08-07",
-    "tier": "NEAR_MISS",
-    "tier_since": "2026-08-07",
-    "entry_ref": 441.0,
-    "last_seen": "2026-08-07",
-    "conf": 85.93,
-    "conf_gap": 0.0,
-    "tq": 64.9,
-    "rr_ratio": 1.4,
-    "regime": "STRONG_BULL",
-    "warnings": [
-      "WIDE_STOP_WARN(got 13.8%, soft cap 8.0% \u2014 R/R gate handles this)",
+      "WIDE_STOP_WARN(got 12.5%, soft cap 7.5% \u2014 R/R gate handles this)",
       "NEAR_52W_HIGH_RESISTANCE"
     ],
     "fail_reasons": [
-      "TQ_FAIL(got 64.9, need 68)",
-      "RR_FAIL(got 1.40, need 1.7)"
+      "TQ_FAIL(got 69.1, need 71)",
+      "RR_FAIL(got 1.44, need 1.8)"
     ],
     "blocker_reason": null,
     "monitor_reason": null,
-    "trajectory": ""
-  },
-  "IFBIND.NS": {
-    "first_seen": "2026-08-07",
-    "tier": "NEAR_MISS",
-    "tier_since": "2026-08-07",
-    "entry_ref": 1404.4,
-    "last_seen": "2026-08-07",
-    "conf": 81.23,
-    "conf_gap": 0.0,
-    "tq": 65.2,
-    "rr_ratio": 1.76,
-    "regime": "STRONG_BULL",
-    "warnings": [
-      "WIDE_STOP_WARN(got 8.4%, soft cap 8.0% \u2014 R/R gate handles this)",
-      "WEAK_DELIVERY: 37% (20d avg 48%)"
-    ],
-    "fail_reasons": [
-      "TQ_FAIL(got 65.2, need 68)"
-    ],
-    "blocker_reason": null,
-    "monitor_reason": null,
-    "trajectory": ""
-  },
-  "IRISDOREME.NS": {
-    "first_seen": "2026-08-07",
-    "tier": "NEAR_MISS",
-    "tier_since": "2026-08-07",
-    "entry_ref": 54.52,
-    "last_seen": "2026-08-07",
-    "conf": 89.05,
-    "conf_gap": 0.0,
-    "tq": 68.6,
-    "rr_ratio": 1.36,
-    "regime": "STRONG_BULL",
-    "warnings": [
-      "MCAP_MISSING (proxy ~\u20b9908Cr)",
-      "WIDE_STOP_WARN(got 15.0%, soft cap 8.0% \u2014 R/R gate handles this)",
-      "NEAR_52W_HIGH_RESISTANCE",
-      "STRONG_ACCUMULATION: delivery 56% (20d avg 40%)"
-    ],
-    "fail_reasons": [
-      "RR_FAIL(got 1.36, need 1.7)"
-    ],
-    "blocker_reason": null,
-    "monitor_reason": null,
-    "trajectory": ""
-  },
-  "COMSYN.NS": {
-    "first_seen": "2026-08-07",
-    "tier": "NEAR_MISS",
-    "tier_since": "2026-08-07",
-    "entry_ref": 224.83,
-    "last_seen": "2026-08-07",
-    "conf": 70.1,
-    "conf_gap": 1.9,
-    "tq": 70.8,
-    "rr_ratio": 2.29,
-    "regime": "STRONG_BULL",
-    "warnings": [
-      "WIDE_STOP_WARN(got 15.0%, soft cap 8.0% \u2014 R/R gate handles this)",
-      "NEAR_52W_HIGH_RESISTANCE",
-      "HIGH_GAP_RISK: p90 gap 12.1% \u00b7 effective stop 27.1%"
-    ],
-    "fail_reasons": [
-      "CONF_FAIL(got 70.1, need 72)"
-    ],
-    "blocker_reason": null,
-    "monitor_reason": null,
-    "trajectory": ""
-  },
-  "FILATEX.NS": {
-    "first_seen": "2026-08-07",
-    "tier": "DEVELOPING",
-    "tier_since": "2026-08-07",
-    "entry_ref": 83.33,
-    "last_seen": "2026-08-07",
-    "conf": 73.76,
-    "conf_gap": 0.0,
-    "tq": 61.5,
-    "rr_ratio": 1.45,
-    "regime": "STRONG_BULL",
-    "warnings": [
-      "WIDE_STOP_WARN(got 15.0%, soft cap 8.0% \u2014 R/R gate handles this)",
-      "NEAR_52W_HIGH_RESISTANCE"
-    ],
-    "fail_reasons": [
-      "TQ_FAIL(got 61.5, need 68)",
-      "RR_FAIL(got 1.45, need 1.7)"
-    ],
-    "blocker_reason": null,
-    "monitor_reason": null,
-    "trajectory": ""
+    "trajectory": "RISING"
   },
   "SONACOMS.NS": {
     "first_seen": "2026-08-03",
     "tier": "DEVELOPING",
     "tier_since": "2026-08-07",
-    "entry_ref": 818.05,
-    "last_seen": "2026-08-07",
-    "conf": 93.19,
+    "entry_ref": 812.5,
+    "last_seen": "2026-08-10",
+    "conf": 85.51,
     "conf_gap": 0.0,
-    "tq": 60.4,
+    "tq": 65.7,
     "rr_ratio": 1.44,
-    "regime": "STRONG_BULL",
+    "regime": "BULL",
     "warnings": [
-      "WIDE_STOP_WARN(got 11.0%, soft cap 8.0% \u2014 R/R gate handles this)",
-      "NEAR_52W_HIGH_RESISTANCE"
+      "WIDE_STOP_WARN(got 11.4%, soft cap 7.5% \u2014 R/R gate handles this)",
+      "NEAR_52W_HIGH_RESISTANCE",
+      "WEAK_DELIVERY: 31% (20d avg 42%)"
     ],
     "fail_reasons": [
-      "TQ_FAIL(got 60.4, need 68)",
-      "RR_FAIL(got 1.44, need 1.7)"
+      "TQ_FAIL(got 65.7, need 71)",
+      "RR_FAIL(got 1.44, need 1.8)"
     ],
     "blocker_reason": null,
     "monitor_reason": null,
     "trajectory": "FLAT"
   },
-  "DPABHUSHAN.NS": {
-    "first_seen": "2026-08-06",
+  "PGIL.NS": {
+    "first_seen": "2026-08-10",
     "tier": "MONITOR",
-    "tier_since": "2026-08-06",
-    "entry_ref": 1443.4,
-    "last_seen": "2026-08-07",
-    "conf": 90.81,
+    "tier_since": "2026-08-10",
+    "entry_ref": 2428.9,
+    "last_seen": "2026-08-10",
+    "conf": 80.14,
     "conf_gap": 0.0,
-    "tq": 59.7,
-    "rr_ratio": 2.75,
-    "regime": "STRONG_BULL",
+    "tq": 59.3,
+    "rr_ratio": 1.43,
+    "regime": "BULL",
     "warnings": [
-      "WIDE_STOP_WARN(got 9.9%, soft cap 8.0% \u2014 R/R gate handles this)",
-      "HIGH_GAP_RISK: p90 gap 9.5% \u00b7 effective stop 19.4%",
-      "STRONG_ACCUMULATION: delivery 44% (20d avg 32%)"
+      "WIDE_STOP_WARN(got 14.7%, soft cap 7.5% \u2014 R/R gate handles this)",
+      "WEAK_DELIVERY: 32% (20d avg 41%)"
     ],
     "fail_reasons": [
-      "TQ_FAIL(got 59.7, need 68)"
+      "TQ_FAIL(got 59.3, need 71)",
+      "RR_FAIL(got 1.43, need 1.8)"
     ],
     "blocker_reason": null,
     "monitor_reason": "TQ_LOW",
     "trajectory": ""
   },
-  "MENONBE.NS": {
-    "first_seen": "2026-08-04",
+  "VIMTALABS.NS": {
+    "first_seen": "2026-08-10",
     "tier": "MONITOR",
-    "tier_since": "2026-08-04",
-    "entry_ref": 237.35,
-    "last_seen": "2026-08-07",
-    "conf": 93.09,
+    "tier_since": "2026-08-10",
+    "entry_ref": 645.65,
+    "last_seen": "2026-08-10",
+    "conf": 90.58,
     "conf_gap": 0.0,
-    "tq": 56.0,
-    "rr_ratio": 1.7,
-    "regime": "STRONG_BULL",
+    "tq": 59.8,
+    "rr_ratio": 1.86,
+    "regime": "BULL",
     "warnings": [
-      "WIDE_STOP_WARN(got 13.6%, soft cap 8.0% \u2014 R/R gate handles this)",
-      "NEAR_52W_HIGH_RESISTANCE"
+      "WIDE_STOP_WARN(got 11.5%, soft cap 7.5% \u2014 R/R gate handles this)"
     ],
     "fail_reasons": [
-      "TQ_FAIL(got 56.0, need 68)"
+      "TQ_FAIL(got 59.8, need 71)"
     ],
     "blocker_reason": null,
     "monitor_reason": "TQ_LOW",
-    "trajectory": "FLAT"
-  },
-  "NAZARA.NS": {
-    "first_seen": "2026-08-03",
-    "tier": "MONITOR",
-    "tier_since": "2026-08-07",
-    "entry_ref": 352.35,
-    "last_seen": "2026-08-07",
-    "conf": 85.43,
-    "conf_gap": 0.0,
-    "tq": 59.7,
-    "rr_ratio": 1.44,
-    "regime": "STRONG_BULL",
-    "warnings": [
-      "WIDE_STOP_WARN(got 12.1%, soft cap 8.0% \u2014 R/R gate handles this)",
-      "NEAR_52W_HIGH_RESISTANCE"
-    ],
-    "fail_reasons": [
-      "TQ_FAIL(got 59.7, need 68)",
-      "RR_FAIL(got 1.44, need 1.7)"
-    ],
-    "blocker_reason": null,
-    "monitor_reason": "TQ_LOW",
-    "trajectory": "RISING"
+    "trajectory": ""
   }
 }

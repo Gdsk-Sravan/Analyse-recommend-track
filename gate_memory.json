@@ -379,6 +379,14 @@
           "RR_FAIL(got 1.44, need 1.7)"
         ],
         "conf": 30.700000000000003
+      },
+      {
+        "date": "2026-08-10",
+        "fails": [
+          "TQ_FAIL(got 69.1, need 71)",
+          "RR_FAIL(got 1.44, need 1.8)"
+        ],
+        "conf": 82.4
       }
     ]
   },
@@ -939,14 +947,6 @@
   "SONACOMS.NS": {
     "history": [
       {
-        "date": "2026-08-03",
-        "fails": [
-          "TQ_FAIL(got 62.2, need 68)",
-          "RR_FAIL(got 1.43, need 1.7)"
-        ],
-        "conf": 94.0
-      },
-      {
         "date": "2026-08-04",
         "fails": [
           "TQ_FAIL(got 62.3, need 68)",
@@ -977,6 +977,14 @@
           "RR_FAIL(got 1.44, need 1.7)"
         ],
         "conf": 93.19
+      },
+      {
+        "date": "2026-08-10",
+        "fails": [
+          "TQ_FAIL(got 65.7, need 71)",
+          "RR_FAIL(got 1.44, need 1.8)"
+        ],
+        "conf": 85.51
       }
     ]
   },
@@ -1355,6 +1363,29 @@
           "RR_FAIL(got 1.40, need 1.7)"
         ],
         "conf": 85.93
+      }
+    ]
+  },
+  "PGIL.NS": {
+    "history": [
+      {
+        "date": "2026-08-10",
+        "fails": [
+          "TQ_FAIL(got 59.3, need 71)",
+          "RR_FAIL(got 1.43, need 1.8)"
+        ],
+        "conf": 80.14
+      }
+    ]
+  },
+  "VIMTALABS.NS": {
+    "history": [
+      {
+        "date": "2026-08-10",
+        "fails": [
+          "TQ_FAIL(got 59.8, need 71)"
+        ],
+        "conf": 90.58
       }
     ]
   }
