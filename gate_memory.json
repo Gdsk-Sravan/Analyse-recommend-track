@@ -57,6 +57,14 @@
           "TQ_FAIL(got 67.7, need 68)"
         ],
         "conf": 66.59
+      },
+      {
+        "date": "2026-08-11",
+        "fails": [
+          "CONF_FAIL(got 57.5, need 75)",
+          "RR_FAIL(got 1.42, need 1.8)"
+        ],
+        "conf": 57.53
       }
     ]
   },
@@ -151,6 +159,14 @@
           "RR_FAIL(got 1.41, need 1.7)"
         ],
         "conf": 74.345
+      },
+      {
+        "date": "2026-08-11",
+        "fails": [
+          "TQ_FAIL(got 63.0, need 71)",
+          "RR_FAIL(got 1.42, need 1.8)"
+        ],
+        "conf": 92.4
       }
     ]
   },
@@ -387,6 +403,14 @@
           "RR_FAIL(got 1.44, need 1.8)"
         ],
         "conf": 82.4
+      },
+      {
+        "date": "2026-08-11",
+        "fails": [
+          "TQ_FAIL(got 55.2, need 71)",
+          "RR_FAIL(got 1.49, need 1.8)"
+        ],
+        "conf": 81.61
       }
     ]
   },
@@ -1320,6 +1344,14 @@
           "INSTITUTIONAL_EXIT"
         ],
         "conf": 82.04
+      },
+      {
+        "date": "2026-08-11",
+        "fails": [
+          "TQ_FAIL(got 61.2, need 71)",
+          "RR_FAIL(got 1.44, need 1.8)"
+        ],
+        "conf": 84.07000000000001
       }
     ]
   },
@@ -1386,6 +1418,40 @@
           "TQ_FAIL(got 59.8, need 71)"
         ],
         "conf": 90.58
+      }
+    ]
+  },
+  "BELRISE.NS": {
+    "history": [
+      {
+        "date": "2026-08-11",
+        "fails": [
+          "RR_FAIL(got 1.42, need 1.8)"
+        ],
+        "conf": 79.115
+      }
+    ]
+  },
+  "HEROMOTOCO.NS": {
+    "history": [
+      {
+        "date": "2026-08-11",
+        "fails": [
+          "RR_FAIL(got 1.42, need 1.8)"
+        ],
+        "conf": 91.02
+      }
+    ]
+  },
+  "GLAND.NS": {
+    "history": [
+      {
+        "date": "2026-08-11",
+        "fails": [
+          "CONF_FAIL(got 60.2, need 75)",
+          "RR_FAIL(got 1.43, need 1.8)"
+        ],
+        "conf": 60.230000000000004
       }
     ]
   }
