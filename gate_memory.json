@@ -766,6 +766,13 @@
           "TQ_FAIL(got 60.7, need 73)"
         ],
         "conf": 65.75
+      },
+      {
+        "date": "2026-08-12",
+        "fails": [
+          "TQ_FAIL(got 66.2, need 71)"
+        ],
+        "conf": 79.26
       }
     ]
   },
@@ -1352,6 +1359,14 @@
           "RR_FAIL(got 1.44, need 1.8)"
         ],
         "conf": 84.07000000000001
+      },
+      {
+        "date": "2026-08-12",
+        "fails": [
+          "TQ_FAIL(got 67.7, need 71)",
+          "RR_FAIL(got 1.43, need 1.8)"
+        ],
+        "conf": 84.64
       }
     ]
   },
@@ -1429,6 +1444,14 @@
           "RR_FAIL(got 1.42, need 1.8)"
         ],
         "conf": 79.115
+      },
+      {
+        "date": "2026-08-12",
+        "fails": [
+          "CONF_FAIL(got 59.1, need 75)",
+          "RR_FAIL(got 1.42, need 1.8)"
+        ],
+        "conf": 59.09
       }
     ]
   },
@@ -1440,6 +1463,14 @@
           "RR_FAIL(got 1.42, need 1.8)"
         ],
         "conf": 91.02
+      },
+      {
+        "date": "2026-08-12",
+        "fails": [
+          "CONF_FAIL(got 49.4, need 75)",
+          "RR_FAIL(got 1.42, need 1.8)"
+        ],
+        "conf": 49.38
       }
     ]
   },
@@ -1452,6 +1483,18 @@
           "RR_FAIL(got 1.43, need 1.8)"
         ],
         "conf": 60.230000000000004
+      }
+    ]
+  },
+  "QPOWER.NS": {
+    "history": [
+      {
+        "date": "2026-08-12",
+        "fails": [
+          "CONF_FAIL(got 61.8, need 75)",
+          "RR_FAIL(got 1.44, need 1.8)"
+        ],
+        "conf": 61.78
       }
     ]
   }

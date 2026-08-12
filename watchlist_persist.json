@@ -1,91 +1,20 @@
 {
-  "BELRISE.NS": {
-    "first_seen": "2026-08-11",
+  "AARTIDRUGS.NS": {
+    "first_seen": "2026-08-12",
     "tier": "NEAR_MISS",
-    "tier_since": "2026-08-11",
-    "entry_ref": 253.97,
-    "last_seen": "2026-08-11",
-    "conf": 79.115,
+    "tier_since": "2026-08-12",
+    "entry_ref": 431.5,
+    "last_seen": "2026-08-12",
+    "conf": 79.26,
     "conf_gap": 0.0,
-    "tq": 75.8,
-    "rr_ratio": 1.42,
+    "tq": 66.2,
+    "rr_ratio": 1.82,
     "regime": "BULL",
     "warnings": [
-      "WIDE_STOP_WARN(got 8.7%, soft cap 7.5% \u2014 R/R gate handles this)",
-      "NEAR_52W_HIGH_RESISTANCE",
-      "WEAK_DELIVERY: 40% (20d avg 48%)"
+      "HIGH_GAP_RISK: p90 gap 4.5% \u00b7 effective stop 11.2%"
     ],
     "fail_reasons": [
-      "RR_FAIL(got 1.42, need 1.8)"
-    ],
-    "blocker_reason": null,
-    "monitor_reason": null,
-    "trajectory": ""
-  },
-  "HEROMOTOCO.NS": {
-    "first_seen": "2026-08-11",
-    "tier": "NEAR_MISS",
-    "tier_since": "2026-08-11",
-    "entry_ref": 5865.5,
-    "last_seen": "2026-08-11",
-    "conf": 91.02,
-    "conf_gap": 0.0,
-    "tq": 73.9,
-    "rr_ratio": 1.42,
-    "regime": "BULL",
-    "warnings": [
-      "WIDE_STOP_WARN(got 9.1%, soft cap 7.5% \u2014 R/R gate handles this)",
-      "NEAR_52W_HIGH_RESISTANCE"
-    ],
-    "fail_reasons": [
-      "RR_FAIL(got 1.42, need 1.8)"
-    ],
-    "blocker_reason": null,
-    "monitor_reason": null,
-    "trajectory": "FLAT"
-  },
-  "GLAND.NS": {
-    "first_seen": "2026-08-11",
-    "tier": "NEAR_MISS",
-    "tier_since": "2026-08-11",
-    "entry_ref": 2924.4,
-    "last_seen": "2026-08-11",
-    "conf": 60.230000000000004,
-    "conf_gap": 14.8,
-    "tq": 72.1,
-    "rr_ratio": 1.43,
-    "regime": "BULL",
-    "warnings": [
-      "WIDE_STOP_WARN(got 10.8%, soft cap 7.5% \u2014 R/R gate handles this)",
-      "NEAR_52W_HIGH_RESISTANCE"
-    ],
-    "fail_reasons": [
-      "CONF_FAIL(got 60.2, need 75)",
-      "RR_FAIL(got 1.43, need 1.8)"
-    ],
-    "blocker_reason": null,
-    "monitor_reason": null,
-    "trajectory": ""
-  },
-  "DIVISLAB.NS": {
-    "first_seen": "2026-08-11",
-    "tier": "DEVELOPING",
-    "tier_since": "2026-08-11",
-    "entry_ref": 8578.5,
-    "last_seen": "2026-08-11",
-    "conf": 92.4,
-    "conf_gap": 0.0,
-    "tq": 63.0,
-    "rr_ratio": 1.42,
-    "regime": "BULL",
-    "warnings": [
-      "FUND_DATA_MISSING: ROE/D/E/pledge unavailable (src=SCREENER+YF_RL) \u2014 ownership_quality weight redistributed to present factors",
-      "WIDE_STOP_WARN(got 8.9%, soft cap 7.5% \u2014 R/R gate handles this)",
-      "NEAR_52W_HIGH_RESISTANCE"
-    ],
-    "fail_reasons": [
-      "TQ_FAIL(got 63.0, need 71)",
-      "RR_FAIL(got 1.42, need 1.8)"
+      "TQ_FAIL(got 66.2, need 71)"
     ],
     "blocker_reason": null,
     "monitor_reason": null,
@@ -93,73 +22,97 @@
   },
   "MOTHERSON.NS": {
     "first_seen": "2026-08-11",
-    "tier": "DEVELOPING",
-    "tier_since": "2026-08-11",
-    "entry_ref": 169.26,
-    "last_seen": "2026-08-11",
-    "conf": 84.07000000000001,
+    "tier": "NEAR_MISS",
+    "tier_since": "2026-08-12",
+    "entry_ref": 169.5,
+    "last_seen": "2026-08-12",
+    "conf": 84.64,
     "conf_gap": 0.0,
-    "tq": 61.2,
-    "rr_ratio": 1.44,
+    "tq": 67.7,
+    "rr_ratio": 1.43,
     "regime": "BULL",
     "warnings": [
-      "WIDE_STOP_WARN(got 11.3%, soft cap 7.5% \u2014 R/R gate handles this)",
+      "WIDE_STOP_WARN(got 10.8%, soft cap 7.5% \u2014 R/R gate handles this)",
       "NEAR_52W_HIGH_RESISTANCE"
     ],
     "fail_reasons": [
-      "TQ_FAIL(got 61.2, need 71)",
-      "RR_FAIL(got 1.44, need 1.8)"
+      "TQ_FAIL(got 67.7, need 71)",
+      "RR_FAIL(got 1.43, need 1.8)"
     ],
     "blocker_reason": null,
     "monitor_reason": null,
-    "trajectory": "FADING"
+    "trajectory": "FLAT"
   },
-  "POLYMED.NS": {
-    "first_seen": "2026-08-11",
-    "tier": "DEVELOPING",
-    "tier_since": "2026-08-11",
-    "entry_ref": 1863.9,
-    "last_seen": "2026-08-11",
-    "conf": 57.53,
-    "conf_gap": 17.5,
-    "tq": 76.3,
-    "rr_ratio": 1.42,
+  "QPOWER.NS": {
+    "first_seen": "2026-08-12",
+    "tier": "NEAR_MISS",
+    "tier_since": "2026-08-12",
+    "entry_ref": 1294.5,
+    "last_seen": "2026-08-12",
+    "conf": 61.78,
+    "conf_gap": 13.2,
+    "tq": 71.1,
+    "rr_ratio": 1.44,
     "regime": "BULL",
     "warnings": [
-      "FUND_DATA_MISSING: ROE/D/E/pledge unavailable (src=SCREENER+YF_RL) \u2014 ownership_quality weight redistributed to present factors",
-      "WIDE_STOP_WARN(got 11.8%, soft cap 7.5% \u2014 R/R gate handles this)",
-      "NEAR_52W_HIGH_RESISTANCE",
-      "WEAK_DELIVERY: 38% (20d avg 47%)"
+      "WIDE_STOP_WARN(got 14.9%, soft cap 7.5% \u2014 R/R gate handles this)",
+      "SECTOR_WEAKENING"
     ],
     "fail_reasons": [
-      "CONF_FAIL(got 57.5, need 75)",
-      "RR_FAIL(got 1.42, need 1.8)"
+      "CONF_FAIL(got 61.8, need 75)",
+      "RR_FAIL(got 1.44, need 1.8)"
     ],
     "blocker_reason": null,
     "monitor_reason": null,
     "trajectory": ""
   },
-  "PPLPHARMA.NS": {
-    "first_seen": "2026-08-10",
-    "tier": "MONITOR",
-    "tier_since": "2026-08-11",
-    "entry_ref": 214.19,
-    "last_seen": "2026-08-11",
-    "conf": 81.61,
-    "conf_gap": 0.0,
-    "tq": 55.2,
-    "rr_ratio": 1.49,
+  "BELRISE.NS": {
+    "first_seen": "2026-08-11",
+    "tier": "DEVELOPING",
+    "tier_since": "2026-08-12",
+    "entry_ref": 261.35,
+    "last_seen": "2026-08-12",
+    "conf": 59.09,
+    "conf_gap": 15.9,
+    "tq": 78.9,
+    "rr_ratio": 1.42,
     "regime": "BULL",
     "warnings": [
-      "WIDE_STOP_WARN(got 10.5%, soft cap 7.5% \u2014 R/R gate handles this)",
-      "NEAR_52W_HIGH_RESISTANCE"
+      "FUND_DATA_MISSING: ROE/D/E/pledge unavailable (src=SCREENER+YF_RL) \u2014 ownership_quality weight redistributed to present factors",
+      "WIDE_STOP_WARN(got 9.3%, soft cap 7.5% \u2014 R/R gate handles this)",
+      "NEAR_52W_HIGH_RESISTANCE",
+      "WEAK_DELIVERY: 40% (20d avg 48%)"
     ],
     "fail_reasons": [
-      "TQ_FAIL(got 55.2, need 71)",
-      "RR_FAIL(got 1.49, need 1.8)"
+      "CONF_FAIL(got 59.1, need 75)",
+      "RR_FAIL(got 1.42, need 1.8)"
     ],
     "blocker_reason": null,
-    "monitor_reason": "TQ_LOW",
+    "monitor_reason": null,
+    "trajectory": "FLAT"
+  },
+  "HEROMOTOCO.NS": {
+    "first_seen": "2026-08-11",
+    "tier": "MONITOR",
+    "tier_since": "2026-08-12",
+    "entry_ref": 5895.0,
+    "last_seen": "2026-08-12",
+    "conf": 49.38,
+    "conf_gap": 25.6,
+    "tq": 72.1,
+    "rr_ratio": 1.42,
+    "regime": "BULL",
+    "warnings": [
+      "WIDE_STOP_WARN(got 8.5%, soft cap 7.5% \u2014 R/R gate handles this)",
+      "NEAR_52W_HIGH_RESISTANCE",
+      "STRONG_ACCUMULATION: delivery 67% (20d avg 51%)"
+    ],
+    "fail_reasons": [
+      "CONF_FAIL(got 49.4, need 75)",
+      "RR_FAIL(got 1.42, need 1.8)"
+    ],
+    "blocker_reason": null,
+    "monitor_reason": "CONF_FAR",
     "trajectory": "RISING"
   }
 }
