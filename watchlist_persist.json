@@ -1,50 +1,51 @@
 {
-  "UTLSOLAR.NS": {
+  "KRISHANA.NS": {
     "first_seen": "2026-08-13",
     "tier": "DEVELOPING",
-    "tier_since": "2026-08-13",
-    "entry_ref": 409.9,
-    "last_seen": "2026-08-13",
-    "conf": 62.81,
-    "conf_gap": 20.2,
-    "tq": 73.6,
-    "rr_ratio": 1.52,
+    "tier_since": "2026-08-14",
+    "entry_ref": 190.68,
+    "last_seen": "2026-08-14",
+    "conf": 68.33,
+    "conf_gap": 14.7,
+    "tq": 64.4,
+    "rr_ratio": 2.24,
     "regime": "TRANSITION",
     "warnings": [
-      "WIDE_STOP_WARN(got 12.5%, soft cap 7.0% \u2014 R/R gate handles this)",
-      "SECTOR_WEAKENING",
-      "WEAK_DELIVERY: 38% (20d avg 51%)"
+      "MCAP_MISSING (proxy ~\u20b97209Cr)",
+      "WIDE_STOP_WARN(got 7.4%, soft cap 7.0% \u2014 R/R gate handles this)",
+      "NEAR_52W_HIGH_RESISTANCE",
+      "HIGH_GAP_RISK: p90 gap 6.0% \u00b7 effective stop 13.4%"
     ],
     "fail_reasons": [
-      "CONF_FAIL(got 62.8, need 83)",
-      "RR_FAIL(got 1.52, need 2.0)"
+      "CONF_FAIL(got 68.3, need 83)",
+      "TQ_FAIL(got 64.4, need 73)"
     ],
     "blocker_reason": null,
     "monitor_reason": null,
     "trajectory": ""
   },
-  "KRISHANA.NS": {
-    "first_seen": "2026-08-13",
+  "PARAS.NS": {
+    "first_seen": "2026-08-14",
     "tier": "MONITOR",
-    "tier_since": "2026-08-13",
-    "entry_ref": 188.94,
-    "last_seen": "2026-08-13",
-    "conf": 74.59,
-    "conf_gap": 8.4,
-    "tq": 58.8,
-    "rr_ratio": 2.77,
+    "tier_since": "2026-08-14",
+    "entry_ref": 1377.5,
+    "last_seen": "2026-08-14",
+    "conf": 35.64,
+    "conf_gap": 47.4,
+    "tq": 72.6,
+    "rr_ratio": 1.55,
     "regime": "TRANSITION",
     "warnings": [
-      "MCAP_MISSING (proxy ~\u20b98398Cr)",
-      "NEAR_52W_HIGH_RESISTANCE",
-      "HIGH_GAP_RISK: p90 gap 7.9% \u00b7 effective stop 14.4%"
+      "FUND_DATA_MISSING: ROE/D/E/pledge unavailable (src=SCREENER+YF_RL) \u2014 ownership_quality weight redistributed to present factors",
+      "RR_INSTITUTIONAL_OVERRIDE(1.55 \u2265 1.50 \u2014 BQ=STRONG, sector=96, SA=84, vol=2.71x)",
+      "WIDE_STOP_WARN(got 10.8%, soft cap 7.0% \u2014 R/R gate handles this)"
     ],
     "fail_reasons": [
-      "CONF_FAIL(got 74.6, need 83)",
-      "TQ_FAIL(got 58.8, need 73)"
+      "CONF_FAIL(got 35.6, need 83)",
+      "TQ_FAIL(got 72.6, need 73)"
     ],
     "blocker_reason": null,
-    "monitor_reason": "TQ_LOW",
+    "monitor_reason": "CONF_FAR",
     "trajectory": ""
   }
 }

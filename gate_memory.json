@@ -1225,6 +1225,14 @@
           "TQ_FAIL(got 58.8, need 73)"
         ],
         "conf": 74.59
+      },
+      {
+        "date": "2026-08-14",
+        "fails": [
+          "CONF_FAIL(got 68.3, need 83)",
+          "TQ_FAIL(got 64.4, need 73)"
+        ],
+        "conf": 68.33
       }
     ]
   },
@@ -1515,6 +1523,18 @@
           "RR_FAIL(got 1.52, need 2.0)"
         ],
         "conf": 62.81
+      }
+    ]
+  },
+  "PARAS.NS": {
+    "history": [
+      {
+        "date": "2026-08-14",
+        "fails": [
+          "CONF_FAIL(got 35.6, need 83)",
+          "TQ_FAIL(got 72.6, need 73)"
+        ],
+        "conf": 35.64
       }
     ]
   }
