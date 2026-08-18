@@ -1527,6 +1527,14 @@
           "RR_FAIL(got 1.44, need 2.0)"
         ],
         "conf": 67.12
+      },
+      {
+        "date": "2026-08-18",
+        "fails": [
+          "CONF_FAIL(got 67.6, need 83)",
+          "RR_FAIL(got 1.44, need 2.0)"
+        ],
+        "conf": 67.57
       }
     ]
   },
@@ -1551,6 +1559,14 @@
           "TQ_FAIL(got 72.6, need 73)"
         ],
         "conf": 35.64
+      },
+      {
+        "date": "2026-08-18",
+        "fails": [
+          "TQ_FAIL(got 64.3, need 73)",
+          "RR_FAIL(got 1.45, need 2.0)"
+        ],
+        "conf": 83.875
       }
     ]
   },
@@ -1575,6 +1591,18 @@
           "RR_FAIL(got 1.82, need 2.0)"
         ],
         "conf": 57.43
+      }
+    ]
+  },
+  "GOKULAGRO.NS": {
+    "history": [
+      {
+        "date": "2026-08-18",
+        "fails": [
+          "CONF_FAIL(got 72.4, need 83)",
+          "TQ_FAIL(got 68.0, need 73)"
+        ],
+        "conf": 72.44
       }
     ]
   }
