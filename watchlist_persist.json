@@ -1,73 +1,95 @@
 {
-  "GOKULAGRO.NS": {
-    "first_seen": "2026-08-18",
+  "BLISSGVS.NS": {
+    "first_seen": "2026-08-19",
     "tier": "NEAR_MISS",
-    "tier_since": "2026-08-18",
-    "entry_ref": 236.92,
-    "last_seen": "2026-08-18",
-    "conf": 72.44,
-    "conf_gap": 10.6,
-    "tq": 68.0,
-    "rr_ratio": 2.66,
-    "regime": "TRANSITION",
-    "warnings": [
-      "SECTOR_WEAKENING",
-      "HIGH_GAP_RISK: p90 gap 6.0% \u00b7 effective stop 12.2%",
-      "STRONG_ACCUMULATION: delivery 54% (20d avg 41%)"
-    ],
-    "fail_reasons": [
-      "CONF_FAIL(got 72.4, need 83)",
-      "TQ_FAIL(got 68.0, need 73)"
-    ],
-    "blocker_reason": null,
-    "monitor_reason": null,
-    "trajectory": ""
-  },
-  "PARAS.NS": {
-    "first_seen": "2026-08-18",
-    "tier": "DEVELOPING",
-    "tier_since": "2026-08-18",
-    "entry_ref": 1527.3,
-    "last_seen": "2026-08-18",
-    "conf": 83.875,
+    "tier_since": "2026-08-19",
+    "entry_ref": 573.8,
+    "last_seen": "2026-08-19",
+    "conf": 92.925,
     "conf_gap": 0.0,
-    "tq": 64.3,
-    "rr_ratio": 1.45,
-    "regime": "TRANSITION",
-    "warnings": [
-      "FUND_DATA_MISSING: ROE/D/E/pledge unavailable (src=SCREENER+YF_RL) \u2014 ownership_quality weight redistributed to present factors",
-      "WIDE_STOP_WARN(got 13.9%, soft cap 7.0% \u2014 R/R gate handles this)",
-      "NEAR_52W_HIGH_RESISTANCE"
-    ],
-    "fail_reasons": [
-      "TQ_FAIL(got 64.3, need 73)",
-      "RR_FAIL(got 1.45, need 2.0)"
-    ],
-    "blocker_reason": null,
-    "monitor_reason": null,
-    "trajectory": "RISING"
-  },
-  "QPOWER.NS": {
-    "first_seen": "2026-08-17",
-    "tier": "DEVELOPING",
-    "tier_since": "2026-08-17",
-    "entry_ref": 1325.1,
-    "last_seen": "2026-08-18",
-    "conf": 67.57,
-    "conf_gap": 15.4,
-    "tq": 76.4,
+    "tq": 70.4,
     "rr_ratio": 1.44,
     "regime": "TRANSITION",
     "warnings": [
       "WIDE_STOP_WARN(got 15.0%, soft cap 7.0% \u2014 R/R gate handles this)",
-      "SECTOR_WEAKENING"
+      "NEAR_52W_HIGH_RESISTANCE"
     ],
     "fail_reasons": [
-      "CONF_FAIL(got 67.6, need 83)",
+      "TQ_FAIL(got 70.4, need 73)",
       "RR_FAIL(got 1.44, need 2.0)"
     ],
     "blocker_reason": null,
     "monitor_reason": null,
     "trajectory": ""
+  },
+  "KRBL.NS": {
+    "first_seen": "2026-08-19",
+    "tier": "NEAR_MISS",
+    "tier_since": "2026-08-19",
+    "entry_ref": 399.6,
+    "last_seen": "2026-08-19",
+    "conf": 68.94,
+    "conf_gap": 14.1,
+    "tq": 73.2,
+    "rr_ratio": 1.65,
+    "regime": "TRANSITION",
+    "warnings": [
+      "WIDE_STOP_WARN(got 8.9%, soft cap 7.0% \u2014 R/R gate handles this)"
+    ],
+    "fail_reasons": [
+      "CONF_FAIL(got 68.9, need 83)",
+      "RR_FAIL(got 1.65, need 2.0)"
+    ],
+    "blocker_reason": null,
+    "monitor_reason": null,
+    "trajectory": "FLAT"
+  },
+  "GOKULAGRO.NS": {
+    "first_seen": "2026-08-18",
+    "tier": "NEAR_MISS",
+    "tier_since": "2026-08-18",
+    "entry_ref": 243.02,
+    "last_seen": "2026-08-19",
+    "conf": 68.78,
+    "conf_gap": 14.2,
+    "tq": 73.5,
+    "rr_ratio": 1.87,
+    "regime": "TRANSITION",
+    "warnings": [
+      "WIDE_STOP_WARN(got 8.6%, soft cap 7.0% \u2014 R/R gate handles this)",
+      "NEAR_52W_HIGH_RESISTANCE",
+      "HIGH_GAP_RISK: p90 gap 6.0% \u00b7 effective stop 14.6%",
+      "STRONG_ACCUMULATION: delivery 54% (20d avg 41%)"
+    ],
+    "fail_reasons": [
+      "CONF_FAIL(got 68.8, need 83)",
+      "RR_FAIL(got 1.87, need 2.0)"
+    ],
+    "blocker_reason": null,
+    "monitor_reason": null,
+    "trajectory": ""
+  },
+  "SOLARINDS.NS": {
+    "first_seen": "2026-08-19",
+    "tier": "DEVELOPING",
+    "tier_since": "2026-08-19",
+    "entry_ref": 19721.0,
+    "last_seen": "2026-08-19",
+    "conf": 66.81,
+    "conf_gap": 16.2,
+    "tq": 73.2,
+    "rr_ratio": 1.7,
+    "regime": "TRANSITION",
+    "warnings": [
+      "WIDE_STOP_WARN(got 7.4%, soft cap 7.0% \u2014 R/R gate handles this)",
+      "SECTOR_WEAKENING"
+    ],
+    "fail_reasons": [
+      "CONF_FAIL(got 66.8, need 83)",
+      "RR_FAIL(got 1.70, need 2.0)"
+    ],
+    "blocker_reason": null,
+    "monitor_reason": null,
+    "trajectory": "RISING"
   }
 }
