@@ -1641,5 +1641,113 @@
         "conf": 92.925
       }
     ]
+  },
+  "HERITGFOOD.NS": {
+    "history": [
+      {
+        "date": "2026-08-20",
+        "fails": [
+          "CONF_FAIL(got 68.4, need 83)",
+          "RR_FAIL(got 1.61, need 2.0)"
+        ],
+        "conf": 68.445
+      }
+    ]
+  },
+  "SJS.NS": {
+    "history": [
+      {
+        "date": "2026-08-20",
+        "fails": [
+          "CONF_FAIL(got 70.6, need 83)",
+          "TQ_FAIL(got 67.7, need 73)"
+        ],
+        "conf": 70.635
+      }
+    ]
+  },
+  "RAMRAT.NS": {
+    "history": [
+      {
+        "date": "2026-08-20",
+        "fails": [
+          "CONF_FAIL(got 70.2, need 83)",
+          "TQ_FAIL(got 63.5, need 73)"
+        ],
+        "conf": 70.19
+      }
+    ]
+  },
+  "VSSL.NS": {
+    "history": [
+      {
+        "date": "2026-08-20",
+        "fails": [
+          "CONF_FAIL(got 69.2, need 83)",
+          "TQ_FAIL(got 64.6, need 73)"
+        ],
+        "conf": 69.15
+      }
+    ]
+  },
+  "SANSERA.NS": {
+    "history": [
+      {
+        "date": "2026-08-20",
+        "fails": [
+          "CONF_FAIL(got 68.6, need 83)",
+          "TQ_FAIL(got 60.3, need 73)"
+        ],
+        "conf": 68.585
+      }
+    ]
+  },
+  "NRBBEARING.NS": {
+    "history": [
+      {
+        "date": "2026-08-20",
+        "fails": [
+          "CONF_FAIL(got 68.4, need 83)",
+          "TQ_FAIL(got 64.7, need 73)"
+        ],
+        "conf": 68.39
+      }
+    ]
+  },
+  "LTFOODS.NS": {
+    "history": [
+      {
+        "date": "2026-08-20",
+        "fails": [
+          "CONF_FAIL(got 67.2, need 83)",
+          "TQ_FAIL(got 69.1, need 73)"
+        ],
+        "conf": 67.22
+      }
+    ]
+  },
+  "MEESHO.NS": {
+    "history": [
+      {
+        "date": "2026-08-20",
+        "fails": [
+          "CONF_FAIL(got 66.0, need 83)",
+          "RR_FAIL(got 1.43, need 2.0)"
+        ],
+        "conf": 65.96
+      }
+    ]
+  },
+  "TBOTEK.NS": {
+    "history": [
+      {
+        "date": "2026-08-20",
+        "fails": [
+          "CONF_FAIL(got 65.1, need 83)",
+          "TQ_FAIL(got 61.6, need 73)"
+        ],
+        "conf": 65.14
+      }
+    ]
   }
 }
