@@ -1749,5 +1749,17 @@
         "conf": 65.14
       }
     ]
+  },
+  "DEEPINDS.NS": {
+    "history": [
+      {
+        "date": "2026-08-21",
+        "fails": [
+          "CONF_FAIL(got 74.5, need 83)",
+          "TQ_FAIL(got 56.2, need 73)"
+        ],
+        "conf": 74.475
+      }
+    ]
   }
 }
