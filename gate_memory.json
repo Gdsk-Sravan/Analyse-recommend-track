@@ -1761,5 +1761,89 @@
         "conf": 74.475
       }
     ]
+  },
+  "GSPCROP.NS": {
+    "history": [
+      {
+        "date": "2026-08-24",
+        "fails": [
+          "CONF_FAIL(got 70.3, need 83)",
+          "RR_FAIL(got 1.44, need 2.0)"
+        ],
+        "conf": 70.31
+      }
+    ]
+  },
+  "ALKYLAMINE.NS": {
+    "history": [
+      {
+        "date": "2026-08-24",
+        "fails": [
+          "CONF_FAIL(got 69.7, need 83)",
+          "RR_FAIL(got 1.41, need 2.0)"
+        ],
+        "conf": 69.69
+      }
+    ]
+  },
+  "FCL.NS": {
+    "history": [
+      {
+        "date": "2026-08-24",
+        "fails": [
+          "CONF_FAIL(got 68.9, need 83)",
+          "TQ_FAIL(got 71.1, need 73)"
+        ],
+        "conf": 68.87
+      }
+    ]
+  },
+  "JAYNECOIND.NS": {
+    "history": [
+      {
+        "date": "2026-08-24",
+        "fails": [
+          "CONF_FAIL(got 67.3, need 83)",
+          "RR_FAIL(got 1.42, need 2.0)"
+        ],
+        "conf": 67.32
+      }
+    ]
+  },
+  "IGPL.NS": {
+    "history": [
+      {
+        "date": "2026-08-24",
+        "fails": [
+          "CONF_FAIL(got 64.7, need 83)",
+          "RR_FAIL(got 1.96, need 2.0)"
+        ],
+        "conf": 64.69
+      }
+    ]
+  },
+  "JSWSTEEL.NS": {
+    "history": [
+      {
+        "date": "2026-08-24",
+        "fails": [
+          "CONF_FAIL(got 64.2, need 83)",
+          "RR_FAIL(got 1.39, need 2.0)"
+        ],
+        "conf": 64.25
+      }
+    ]
+  },
+  "BRIGADE.NS": {
+    "history": [
+      {
+        "date": "2026-08-24",
+        "fails": [
+          "CONF_FAIL(got 56.5, need 83)",
+          "RR_FAIL(got 1.42, need 2.0)"
+        ],
+        "conf": 56.55
+      }
+    ]
   }
 }

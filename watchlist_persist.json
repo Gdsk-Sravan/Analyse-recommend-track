@@ -1,25 +1,173 @@
 {
-  "DEEPINDS.NS": {
-    "first_seen": "2026-08-21",
-    "tier": "MONITOR",
-    "tier_since": "2026-08-21",
-    "entry_ref": 688.05,
-    "last_seen": "2026-08-21",
-    "conf": 74.475,
-    "conf_gap": 8.5,
-    "tq": 56.2,
-    "rr_ratio": 2.48,
+  "GSPCROP.NS": {
+    "first_seen": "2026-08-24",
+    "tier": "NEAR_MISS",
+    "tier_since": "2026-08-24",
+    "entry_ref": 622.2,
+    "last_seen": "2026-08-24",
+    "conf": 70.31,
+    "conf_gap": 12.7,
+    "tq": 75.8,
+    "rr_ratio": 1.44,
     "regime": "TRANSITION",
     "warnings": [
-      "WIDE_STOP_WARN(got 8.9%, soft cap 7.0% \u2014 R/R gate handles this)",
-      "HIGH_GAP_RISK: p90 gap 9.8% \u00b7 effective stop 18.7%"
+      "MCAP_MISSING (proxy ~\u20b94500Cr)",
+      "WIDE_STOP_WARN(got 7.1%, soft cap 7.0% \u2014 R/R gate handles this)",
+      "NEAR_52W_HIGH_RESISTANCE",
+      "STRONG_ACCUMULATION: delivery 37% (20d avg 25%)"
     ],
     "fail_reasons": [
-      "CONF_FAIL(got 74.5, need 83)",
-      "TQ_FAIL(got 56.2, need 73)"
+      "CONF_FAIL(got 70.3, need 83)",
+      "RR_FAIL(got 1.44, need 2.0)"
     ],
     "blocker_reason": null,
-    "monitor_reason": "TQ_LOW",
+    "monitor_reason": null,
     "trajectory": ""
+  },
+  "ALKYLAMINE.NS": {
+    "first_seen": "2026-08-24",
+    "tier": "NEAR_MISS",
+    "tier_since": "2026-08-24",
+    "entry_ref": 2083.8,
+    "last_seen": "2026-08-24",
+    "conf": 69.69,
+    "conf_gap": 13.3,
+    "tq": 75.3,
+    "rr_ratio": 1.41,
+    "regime": "TRANSITION",
+    "warnings": [
+      "FUND_DATA_MISSING: ROE/D/E/pledge unavailable (src=SCREENER+YF_RL) \u2014 ownership_quality weight redistributed to present factors",
+      "WIDE_STOP_WARN(got 10.3%, soft cap 7.0% \u2014 R/R gate handles this)",
+      "SECTOR_WEAKENING",
+      "NEAR_52W_HIGH_RESISTANCE",
+      "WEAK_DELIVERY: 29% (20d avg 40%)"
+    ],
+    "fail_reasons": [
+      "CONF_FAIL(got 69.7, need 83)",
+      "RR_FAIL(got 1.41, need 2.0)"
+    ],
+    "blocker_reason": null,
+    "monitor_reason": null,
+    "trajectory": ""
+  },
+  "FCL.NS": {
+    "first_seen": "2026-08-24",
+    "tier": "NEAR_MISS",
+    "tier_since": "2026-08-24",
+    "entry_ref": 49.62,
+    "last_seen": "2026-08-24",
+    "conf": 68.87,
+    "conf_gap": 14.1,
+    "tq": 71.1,
+    "rr_ratio": 1.58,
+    "regime": "TRANSITION",
+    "warnings": [
+      "FUND_DATA_MISSING: ROE/D/E/pledge unavailable (src=SCREENER+YF_RL) \u2014 ownership_quality weight redistributed to present factors",
+      "RR_INSTITUTIONAL_OVERRIDE(1.58 \u2265 1.50 \u2014 BQ=STRONG, sector=96, SA=80, vol=2.71x)",
+      "WIDE_STOP_WARN(got 15.0%, soft cap 7.0% \u2014 R/R gate handles this)",
+      "WEAK_DELIVERY: 33% (20d avg 39%)"
+    ],
+    "fail_reasons": [
+      "CONF_FAIL(got 68.9, need 83)",
+      "TQ_FAIL(got 71.1, need 73)"
+    ],
+    "blocker_reason": null,
+    "monitor_reason": null,
+    "trajectory": "FLAT"
+  },
+  "JAYNECOIND.NS": {
+    "first_seen": "2026-08-24",
+    "tier": "DEVELOPING",
+    "tier_since": "2026-08-24",
+    "entry_ref": 104.22,
+    "last_seen": "2026-08-24",
+    "conf": 67.32,
+    "conf_gap": 15.7,
+    "tq": 78.5,
+    "rr_ratio": 1.42,
+    "regime": "TRANSITION",
+    "warnings": [
+      "FUND_DATA_MISSING: ROE/D/E/pledge unavailable (src=SCREENER+YF_RL) \u2014 ownership_quality weight redistributed to present factors",
+      "WIDE_STOP_WARN(got 11.9%, soft cap 7.0% \u2014 R/R gate handles this)"
+    ],
+    "fail_reasons": [
+      "CONF_FAIL(got 67.3, need 83)",
+      "RR_FAIL(got 1.42, need 2.0)"
+    ],
+    "blocker_reason": null,
+    "monitor_reason": null,
+    "trajectory": ""
+  },
+  "IGPL.NS": {
+    "first_seen": "2026-08-24",
+    "tier": "DEVELOPING",
+    "tier_since": "2026-08-24",
+    "entry_ref": 501.05,
+    "last_seen": "2026-08-24",
+    "conf": 64.69,
+    "conf_gap": 18.3,
+    "tq": 75.7,
+    "rr_ratio": 1.96,
+    "regime": "TRANSITION",
+    "warnings": [
+      "FUND_DATA_MISSING: ROE/D/E/pledge unavailable (src=SCREENER+YF_RL) \u2014 ownership_quality weight redistributed to present factors",
+      "WIDE_STOP_WARN(got 9.6%, soft cap 7.0% \u2014 R/R gate handles this)",
+      "HIGH_GAP_RISK: p90 gap 6.3% \u00b7 effective stop 15.9%",
+      "WEAK_DELIVERY: 41% (20d avg 55%)"
+    ],
+    "fail_reasons": [
+      "CONF_FAIL(got 64.7, need 83)",
+      "RR_FAIL(got 1.96, need 2.0)"
+    ],
+    "blocker_reason": null,
+    "monitor_reason": null,
+    "trajectory": ""
+  },
+  "JSWSTEEL.NS": {
+    "first_seen": "2026-08-24",
+    "tier": "DEVELOPING",
+    "tier_since": "2026-08-24",
+    "entry_ref": 1327.0,
+    "last_seen": "2026-08-24",
+    "conf": 64.25,
+    "conf_gap": 18.8,
+    "tq": 76.6,
+    "rr_ratio": 1.39,
+    "regime": "TRANSITION",
+    "warnings": [
+      "NEAR_52W_HIGH_RESISTANCE"
+    ],
+    "fail_reasons": [
+      "CONF_FAIL(got 64.2, need 83)",
+      "RR_FAIL(got 1.39, need 2.0)"
+    ],
+    "blocker_reason": null,
+    "monitor_reason": null,
+    "trajectory": ""
+  },
+  "BRIGADE.NS": {
+    "first_seen": "2026-08-24",
+    "tier": "MONITOR",
+    "tier_since": "2026-08-24",
+    "entry_ref": 654.1,
+    "last_seen": "2026-08-24",
+    "conf": 56.55,
+    "conf_gap": 26.5,
+    "tq": 73.4,
+    "rr_ratio": 1.42,
+    "regime": "TRANSITION",
+    "warnings": [
+      "FUND_DATA_MISSING: ROE/D/E/pledge unavailable (src=SCREENER+YF_RL) \u2014 ownership_quality weight redistributed to present factors",
+      "WIDE_STOP_WARN(got 12.0%, soft cap 7.0% \u2014 R/R gate handles this)",
+      "SECTOR_WEAKENING",
+      "NEAR_52W_HIGH_RESISTANCE"
+    ],
+    "fail_reasons": [
+      "CONF_FAIL(got 56.5, need 83)",
+      "RR_FAIL(got 1.42, need 2.0)"
+    ],
+    "blocker_reason": null,
+    "monitor_reason": "CONF_FAR",
+    "trajectory": "FLAT"
   }
 }
