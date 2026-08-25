@@ -1195,14 +1195,6 @@
   "KRISHANA.NS": {
     "history": [
       {
-        "date": "2026-08-04",
-        "fails": [
-          "TQ_FAIL(got 61.1, need 68)",
-          "RR_FAIL(got 1.51, need 1.7)"
-        ],
-        "conf": 90.97
-      },
-      {
         "date": "2026-08-05",
         "fails": [
           "TQ_FAIL(got 59.0, need 68)",
@@ -1233,6 +1225,14 @@
           "TQ_FAIL(got 64.4, need 73)"
         ],
         "conf": 68.33
+      },
+      {
+        "date": "2026-08-25",
+        "fails": [
+          "CONF_FAIL(got 66.7, need 70)",
+          "RR_FAIL(got 1.41, need 1.7)"
+        ],
+        "conf": 66.67
       }
     ]
   },
@@ -1627,6 +1627,14 @@
           "RR_FAIL(got 1.87, need 2.0)"
         ],
         "conf": 68.78
+      },
+      {
+        "date": "2026-08-25",
+        "fails": [
+          "CONF_FAIL(got 66.3, need 70)",
+          "RR_FAIL(got 1.42, need 1.7)"
+        ],
+        "conf": 66.34
       }
     ]
   },
@@ -1651,6 +1659,14 @@
           "RR_FAIL(got 1.61, need 2.0)"
         ],
         "conf": 68.445
+      },
+      {
+        "date": "2026-08-25",
+        "fails": [
+          "CONF_FAIL(got 67.8, need 70)",
+          "RR_FAIL(got 1.40, need 1.7)"
+        ],
+        "conf": 67.82
       }
     ]
   },
@@ -1843,6 +1859,63 @@
           "RR_FAIL(got 1.42, need 2.0)"
         ],
         "conf": 56.55
+      }
+    ]
+  },
+  "DBOL.NS": {
+    "history": [
+      {
+        "date": "2026-08-25",
+        "fails": [
+          "TQ_FAIL(got 67.0, need 68)"
+        ],
+        "conf": 74.98
+      }
+    ]
+  },
+  "UNIPARTS.NS": {
+    "history": [
+      {
+        "date": "2026-08-25",
+        "fails": [
+          "SECTOR_RANK_TOO_LOW(rank=11>top6)"
+        ],
+        "conf": 75.43
+      }
+    ]
+  },
+  "INDOBORAX.NS": {
+    "history": [
+      {
+        "date": "2026-08-25",
+        "fails": [
+          "CONF_FAIL(got 65.8, need 70)",
+          "TQ_FAIL(got 60.1, need 68)"
+        ],
+        "conf": 65.815
+      }
+    ]
+  },
+  "AWL.NS": {
+    "history": [
+      {
+        "date": "2026-08-25",
+        "fails": [
+          "CONF_FAIL(got 51.5, need 70)",
+          "RR_FAIL(got 1.47, need 1.7)"
+        ],
+        "conf": 51.49
+      }
+    ]
+  },
+  "AVADHSUGAR.NS": {
+    "history": [
+      {
+        "date": "2026-08-25",
+        "fails": [
+          "TQ_FAIL(got 49.1, need 68)"
+        ],
+        "conf": 75.925
       }
     ]
   }
