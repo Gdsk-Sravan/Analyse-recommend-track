@@ -1918,5 +1918,17 @@
         "conf": 75.925
       }
     ]
+  },
+  "KRONOX.NS": {
+    "history": [
+      {
+        "date": "2026-08-26",
+        "fails": [
+          "CONF_FAIL(got 64.0, need 85)",
+          "TQ_FAIL(got 56.7, need 73)"
+        ],
+        "conf": 63.95
+      }
+    ]
   }
 }
