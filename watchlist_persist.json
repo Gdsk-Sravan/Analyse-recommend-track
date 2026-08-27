@@ -1,26 +1,24 @@
 {
-  "KRONOX.NS": {
-    "first_seen": "2026-08-26",
-    "tier": "MONITOR",
-    "tier_since": "2026-08-26",
-    "entry_ref": 195.44,
-    "last_seen": "2026-08-26",
-    "conf": 63.95,
-    "conf_gap": 21.0,
-    "tq": 56.7,
-    "rr_ratio": 2.06,
+  "LAURUSLABS.NS": {
+    "first_seen": "2026-08-27",
+    "tier": "NEAR_MISS",
+    "tier_since": "2026-08-27",
+    "entry_ref": 1929.4,
+    "last_seen": "2026-08-27",
+    "conf": 86.13,
+    "conf_gap": 0.0,
+    "tq": 75.4,
+    "rr_ratio": 1.41,
     "regime": "TRANSITION",
     "warnings": [
-      "MCAP_MISSING (proxy ~\u20b99257Cr)",
-      "WIDE_STOP_WARN(got 15.0%, soft cap 7.0% \u2014 R/R gate handles this)",
-      "HIGH_GAP_RISK: p90 gap 12.2% \u00b7 effective stop 27.2%"
+      "WIDE_STOP_WARN(got 8.0%, soft cap 7.0% \u2014 R/R gate handles this)",
+      "NEAR_52W_HIGH_RESISTANCE"
     ],
     "fail_reasons": [
-      "CONF_FAIL(got 64.0, need 85)",
-      "TQ_FAIL(got 56.7, need 73)"
+      "RR_FAIL(got 1.41, need 2.0)"
     ],
     "blocker_reason": null,
-    "monitor_reason": "TQ_LOW",
-    "trajectory": "FLAT"
+    "monitor_reason": null,
+    "trajectory": ""
   }
 }
