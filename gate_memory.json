@@ -1939,6 +1939,14 @@
           "RR_FAIL(got 1.41, need 2.0)"
         ],
         "conf": 86.13
+      },
+      {
+        "date": "2026-08-28",
+        "fails": [
+          "TQ_FAIL(got 65.7, need 73)",
+          "RR_FAIL(got 1.41, need 2.0)"
+        ],
+        "conf": 88.36
       }
     ]
   }

@@ -1,13 +1,13 @@
 {
   "LAURUSLABS.NS": {
     "first_seen": "2026-08-27",
-    "tier": "NEAR_MISS",
-    "tier_since": "2026-08-27",
-    "entry_ref": 1929.4,
-    "last_seen": "2026-08-27",
-    "conf": 86.13,
+    "tier": "DEVELOPING",
+    "tier_since": "2026-08-28",
+    "entry_ref": 1938.5,
+    "last_seen": "2026-08-28",
+    "conf": 88.36,
     "conf_gap": 0.0,
-    "tq": 75.4,
+    "tq": 65.7,
     "rr_ratio": 1.41,
     "regime": "TRANSITION",
     "warnings": [
@@ -15,6 +15,7 @@
       "NEAR_52W_HIGH_RESISTANCE"
     ],
     "fail_reasons": [
+      "TQ_FAIL(got 65.7, need 73)",
       "RR_FAIL(got 1.41, need 2.0)"
     ],
     "blocker_reason": null,
