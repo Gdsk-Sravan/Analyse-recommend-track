@@ -38,6 +38,13 @@
           "RR_FAIL(got 1.52, need 1.7)"
         ],
         "conf": 74.68
+      },
+      {
+        "date": "2026-08-31",
+        "fails": [
+          "RR_FAIL(got 1.42, need 2.0)"
+        ],
+        "conf": 92.49
       }
     ]
   },
@@ -167,6 +174,13 @@
           "RR_FAIL(got 1.42, need 1.8)"
         ],
         "conf": 92.4
+      },
+      {
+        "date": "2026-08-31",
+        "fails": [
+          "RR_FAIL(got 1.41, need 2.0)"
+        ],
+        "conf": 90.825
       }
     ]
   },
@@ -1647,6 +1661,14 @@
           "RR_FAIL(got 1.44, need 2.0)"
         ],
         "conf": 92.925
+      },
+      {
+        "date": "2026-08-31",
+        "fails": [
+          "TQ_FAIL(got 71.3, need 73)",
+          "RR_FAIL(got 1.44, need 2.0)"
+        ],
+        "conf": 92.26
       }
     ]
   },
@@ -1947,6 +1969,42 @@
           "RR_FAIL(got 1.41, need 2.0)"
         ],
         "conf": 88.36
+      }
+    ]
+  },
+  "AUROPHARMA.NS": {
+    "history": [
+      {
+        "date": "2026-08-31",
+        "fails": [
+          "CONF_FAIL(got 80.4, need 83)",
+          "RR_FAIL(got 1.40, need 2.0)"
+        ],
+        "conf": 80.435
+      }
+    ]
+  },
+  "INDGN.NS": {
+    "history": [
+      {
+        "date": "2026-08-31",
+        "fails": [
+          "CONF_FAIL(got 71.2, need 83)",
+          "RR_FAIL(got 1.42, need 2.0)"
+        ],
+        "conf": 71.23
+      }
+    ]
+  },
+  "GKSL.NS": {
+    "history": [
+      {
+        "date": "2026-08-31",
+        "fails": [
+          "CONF_FAIL(got 67.1, need 83)",
+          "RR_FAIL(got 1.44, need 2.0)"
+        ],
+        "conf": 67.07
       }
     ]
   }

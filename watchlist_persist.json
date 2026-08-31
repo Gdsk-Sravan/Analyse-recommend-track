@@ -1,22 +1,141 @@
 {
-  "LAURUSLABS.NS": {
-    "first_seen": "2026-08-27",
-    "tier": "DEVELOPING",
-    "tier_since": "2026-08-28",
-    "entry_ref": 1938.5,
-    "last_seen": "2026-08-28",
-    "conf": 88.36,
+  "BLISSGVS.NS": {
+    "first_seen": "2026-08-31",
+    "tier": "NEAR_MISS",
+    "tier_since": "2026-08-31",
+    "entry_ref": 616.75,
+    "last_seen": "2026-08-31",
+    "conf": 92.26,
     "conf_gap": 0.0,
-    "tq": 65.7,
+    "tq": 71.3,
+    "rr_ratio": 1.44,
+    "regime": "TRANSITION",
+    "warnings": [
+      "FUND_DATA_MISSING: ROE/D/E/pledge unavailable (src=SCREENER+YF_RL) \u2014 ownership_quality weight redistributed to present factors",
+      "WIDE_STOP_WARN(got 15.0%, soft cap 7.0% \u2014 R/R gate handles this)",
+      "NEAR_52W_HIGH_RESISTANCE"
+    ],
+    "fail_reasons": [
+      "TQ_FAIL(got 71.3, need 73)",
+      "RR_FAIL(got 1.44, need 2.0)"
+    ],
+    "blocker_reason": null,
+    "monitor_reason": null,
+    "trajectory": ""
+  },
+  "OFSS.NS": {
+    "first_seen": "2026-08-31",
+    "tier": "NEAR_MISS",
+    "tier_since": "2026-08-31",
+    "entry_ref": 12540.0,
+    "last_seen": "2026-08-31",
+    "conf": 92.49,
+    "conf_gap": 0.0,
+    "tq": 83.1,
+    "rr_ratio": 1.42,
+    "regime": "TRANSITION",
+    "warnings": [
+      "WIDE_STOP_WARN(got 9.3%, soft cap 7.0% \u2014 R/R gate handles this)",
+      "SECTOR_WEAKENING",
+      "CONTRARIAN_SECTOR_RANK(9>top6 \u2014 allowed: conf 92.5\u226588, TQ 83.1\u226575)",
+      "NEAR_52W_HIGH_RESISTANCE",
+      "STRONG_ACCUMULATION: delivery 58% (20d avg 43%)"
+    ],
+    "fail_reasons": [
+      "RR_FAIL(got 1.42, need 2.0)"
+    ],
+    "blocker_reason": null,
+    "monitor_reason": null,
+    "trajectory": ""
+  },
+  "AUROPHARMA.NS": {
+    "first_seen": "2026-08-31",
+    "tier": "NEAR_MISS",
+    "tier_since": "2026-08-31",
+    "entry_ref": 1717.0,
+    "last_seen": "2026-08-31",
+    "conf": 80.435,
+    "conf_gap": 2.6,
+    "tq": 77.9,
+    "rr_ratio": 1.4,
+    "regime": "TRANSITION",
+    "warnings": [
+      "WIDE_STOP_WARN(got 7.3%, soft cap 7.0% \u2014 R/R gate handles this)",
+      "NEAR_52W_HIGH_RESISTANCE"
+    ],
+    "fail_reasons": [
+      "CONF_FAIL(got 80.4, need 83)",
+      "RR_FAIL(got 1.40, need 2.0)"
+    ],
+    "blocker_reason": null,
+    "monitor_reason": null,
+    "trajectory": ""
+  },
+  "INDGN.NS": {
+    "first_seen": "2026-08-31",
+    "tier": "NEAR_MISS",
+    "tier_since": "2026-08-31",
+    "entry_ref": 611.65,
+    "last_seen": "2026-08-31",
+    "conf": 71.23,
+    "conf_gap": 11.8,
+    "tq": 78.5,
+    "rr_ratio": 1.42,
+    "regime": "TRANSITION",
+    "warnings": [
+      "WIDE_STOP_WARN(got 9.3%, soft cap 7.0% \u2014 R/R gate handles this)",
+      "NEAR_52W_HIGH_RESISTANCE",
+      "WEAK_DELIVERY: 43% (20d avg 58%)"
+    ],
+    "fail_reasons": [
+      "CONF_FAIL(got 71.2, need 83)",
+      "RR_FAIL(got 1.42, need 2.0)"
+    ],
+    "blocker_reason": null,
+    "monitor_reason": null,
+    "trajectory": ""
+  },
+  "DIVISLAB.NS": {
+    "first_seen": "2026-08-31",
+    "tier": "NEAR_MISS_FADING",
+    "tier_since": "2026-08-31",
+    "entry_ref": 9467.0,
+    "last_seen": "2026-08-31",
+    "conf": 90.825,
+    "conf_gap": 0.0,
+    "tq": 73.6,
     "rr_ratio": 1.41,
     "regime": "TRANSITION",
     "warnings": [
+      "FUND_DATA_MISSING: ROE/D/E/pledge unavailable (src=SCREENER+YF_RL) \u2014 ownership_quality weight redistributed to present factors",
       "WIDE_STOP_WARN(got 8.0%, soft cap 7.0% \u2014 R/R gate handles this)",
       "NEAR_52W_HIGH_RESISTANCE"
     ],
     "fail_reasons": [
-      "TQ_FAIL(got 65.7, need 73)",
       "RR_FAIL(got 1.41, need 2.0)"
+    ],
+    "blocker_reason": null,
+    "monitor_reason": null,
+    "trajectory": "FADING"
+  },
+  "GKSL.NS": {
+    "first_seen": "2026-08-31",
+    "tier": "DEVELOPING",
+    "tier_since": "2026-08-31",
+    "entry_ref": 158.14,
+    "last_seen": "2026-08-31",
+    "conf": 67.07,
+    "conf_gap": 15.9,
+    "tq": 75.7,
+    "rr_ratio": 1.44,
+    "regime": "TRANSITION",
+    "warnings": [
+      "FUND_DATA_MISSING: ROE/D/E/pledge unavailable (src=SCREENER+YF_RL) \u2014 ownership_quality weight redistributed to present factors",
+      "WIDE_STOP_WARN(got 15.0%, soft cap 7.0% \u2014 R/R gate handles this)"
+    ],
+    "fail_reasons": [
+      "CONF_FAIL(got 67.1, need 83)",
+      "RR_FAIL(got 1.44, need 2.0)"
     ],
     "blocker_reason": null,
     "monitor_reason": null,
