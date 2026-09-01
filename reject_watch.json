@@ -1,5 +1,1690 @@
 [
   {
+    "date": "2026-09-01",
+    "symbol": "MODISONLTD.NS",
+    "close": 499.45,
+    "reasons": [
+      "TQ_FAIL(got 61.9, need 73)",
+      "RR_FAIL(got 1.40, need 2.0)",
+      "SECTOR_RANK_TOO_LOW(rank=9>top6)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 61.9,
+    "confidence": 86.2,
+    "market_cap_cr": 1627.0,
+    "avg_val_lakhs": 686.0
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "INDIGOPNTS.NS",
+    "close": 1172.4,
+    "reasons": [
+      "CONF_FAIL(got 75.2, need 83)",
+      "TQ_FAIL(got 71.3, need 73)",
+      "SECTOR_RANK_TOO_LOW(rank=9>top6)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 71.3,
+    "confidence": 75.215,
+    "market_cap_cr": 5598.0,
+    "avg_val_lakhs": 2250.8
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "BLISSGVS.NS",
+    "close": 630.4,
+    "reasons": [
+      "CONF_FAIL(got 74.1, need 83)",
+      "TQ_FAIL(got 67.8, need 73)",
+      "RR_FAIL(got 1.47, need 2.0)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 67.8,
+    "confidence": 74.14,
+    "market_cap_cr": 6703.0,
+    "avg_val_lakhs": 2425.2
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "JINDALSAW.NS",
+    "close": 309.75,
+    "reasons": [
+      "CONF_FAIL(got 74.0, need 83)",
+      "RR_FAIL(got 1.45, need 2.0)",
+      "SECTOR_RANK_TOO_LOW(rank=9>top6)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 74.2,
+    "confidence": 73.99,
+    "market_cap_cr": 19809.0,
+    "avg_val_lakhs": 8593.6
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "UNIVCABLES.NS",
+    "close": 1644.6,
+    "reasons": [
+      "ROE_TOO_LOW(8.9%<10%)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 66.0,
+    "confidence": 73.79,
+    "market_cap_cr": 5696.0,
+    "avg_val_lakhs": 4243.4
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "KPRMILL.NS",
+    "close": 1158.5,
+    "reasons": [
+      "CONF_FAIL(got 73.7, need 83)",
+      "TQ_FAIL(got 67.0, need 73)",
+      "SECTOR_RANK_TOO_LOW(rank=9>top6)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 67.0,
+    "confidence": 73.745,
+    "market_cap_cr": 39566.0,
+    "avg_val_lakhs": 3440.6
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "AKUMS.NS",
+    "close": 779.05,
+    "reasons": [
+      "ROE_TOO_LOW(8.4%<10%)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 76.0,
+    "confidence": 73.675,
+    "market_cap_cr": 12260.0,
+    "avg_val_lakhs": 3488.5
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "DIVISLAB.NS",
+    "close": 9165.0,
+    "reasons": [
+      "CONF_FAIL(got 73.6, need 83)",
+      "TQ_FAIL(got 68.4, need 73)",
+      "RR_FAIL(got 1.41, need 2.0)"
+    ],
+    "sector": "PHARMA",
+    "trade_quality": 68.4,
+    "confidence": 73.605,
+    "market_cap_cr": 249144.0,
+    "avg_val_lakhs": 36133.3
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "VGUARD.NS",
+    "close": 343.05,
+    "reasons": [
+      "CONF_FAIL(got 73.6, need 83)",
+      "TQ_FAIL(got 69.5, need 73)",
+      "SECTOR_RANK_TOO_LOW(rank=9>top6)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 69.5,
+    "confidence": 73.565,
+    "market_cap_cr": 15008.0,
+    "avg_val_lakhs": 3920.3
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "RATNAVEER.NS",
+    "close": 291.35,
+    "reasons": [
+      "ROE_TOO_LOW(9.6%<10%)"
+    ],
+    "sector": "BUILDING_MAT",
+    "trade_quality": 50.1,
+    "confidence": 73.075,
+    "market_cap_cr": 2446.0,
+    "avg_val_lakhs": 21479.7
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "MMFL.NS",
+    "close": 657.45,
+    "reasons": [
+      "CONF_FAIL(got 72.9, need 83)",
+      "TQ_FAIL(got 65.1, need 73)",
+      "SECTOR_RANK_TOO_LOW(rank=9>top6)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 65.1,
+    "confidence": 72.9,
+    "market_cap_cr": 3176.0,
+    "avg_val_lakhs": 1612.1
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "UNIPARTS.NS",
+    "close": 901.15,
+    "reasons": [
+      "CONF_FAIL(got 72.6, need 83)",
+      "TQ_FAIL(got 67.9, need 73)",
+      "RR_FAIL(got 1.42, need 2.0)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 67.9,
+    "confidence": 72.605,
+    "market_cap_cr": 4071.0,
+    "avg_val_lakhs": 2125.6
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "WELENT.NS",
+    "close": 705.55,
+    "reasons": [
+      "CONF_FAIL(got 72.2, need 83)",
+      "TQ_FAIL(got 66.6, need 73)",
+      "RR_FAIL(got 1.43, need 2.0)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 66.6,
+    "confidence": 72.21,
+    "market_cap_cr": 9730.0,
+    "avg_val_lakhs": 4503.0
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "ALIVUS.NS",
+    "close": 1443.7,
+    "reasons": [
+      "CONF_FAIL(got 72.2, need 83)",
+      "RR_FAIL(got 1.69, need 2.0)",
+      "SECTOR_RANK_TOO_LOW(rank=9>top6)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 78.1,
+    "confidence": 72.185,
+    "market_cap_cr": 17745.0,
+    "avg_val_lakhs": 2385.4
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "CORDSCABLE.NS",
+    "close": 312.95,
+    "reasons": [
+      "CONF_FAIL(got 72.2, need 83)",
+      "TQ_FAIL(got 60.9, need 73)",
+      "RR_FAIL(got 1.46, need 2.0)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 60.9,
+    "confidence": 72.16,
+    "market_cap_cr": 0.0,
+    "avg_val_lakhs": 318.3
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "JTLIND.NS",
+    "close": 87.97,
+    "reasons": [
+      "ROE_TOO_LOW(7.3%<10%)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 65.2,
+    "confidence": 72.16,
+    "market_cap_cr": 3352.0,
+    "avg_val_lakhs": 3058.0
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "INDGN.NS",
+    "close": 605.4,
+    "reasons": [
+      "CONF_FAIL(got 72.1, need 83)",
+      "TQ_FAIL(got 67.6, need 73)",
+      "RR_FAIL(got 1.42, need 2.0)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 67.6,
+    "confidence": 72.08,
+    "market_cap_cr": 14577.0,
+    "avg_val_lakhs": 5362.2
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "PRINCEPIPE.NS",
+    "close": 291.75,
+    "reasons": [
+      "SETUP_EDGE_SKIP(REGIME_CHOP_NO_BREAKOUT(TRANSITION/OTHER))"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 69.1,
+    "confidence": 71.5,
+    "market_cap_cr": 0.0,
+    "avg_val_lakhs": 693.4
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "MAHSEAMLES.NS",
+    "close": 649.6,
+    "reasons": [
+      "CONF_FAIL(got 71.4, need 83)",
+      "TQ_FAIL(got 66.3, need 73)",
+      "RR_FAIL(got 1.43, need 2.0)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 66.3,
+    "confidence": 71.37,
+    "market_cap_cr": 8705.0,
+    "avg_val_lakhs": 1522.4
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "SBFC.NS",
+    "close": 99.95,
+    "reasons": [
+      "CONF_FAIL(got 71.3, need 83)",
+      "RR_FAIL(got 1.39, need 2.0)",
+      "SECTOR_RANK_TOO_LOW(rank=9>top6)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 75.8,
+    "confidence": 71.255,
+    "market_cap_cr": 11079.0,
+    "avg_val_lakhs": 2981.2
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "ALEMBICLTD.NS",
+    "close": 98.85,
+    "reasons": [
+      "CONF_FAIL(got 70.9, need 83)",
+      "TQ_FAIL(got 65.8, need 73)",
+      "RR_FAIL(got 1.39, need 2.0)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 65.8,
+    "confidence": 70.87,
+    "market_cap_cr": 2535.0,
+    "avg_val_lakhs": 631.1
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "RUBICON.NS",
+    "close": 1822.2,
+    "reasons": [
+      "CONF_FAIL(got 70.9, need 83)",
+      "TQ_FAIL(got 60.2, need 73)",
+      "SECTOR_RANK_TOO_LOW(rank=9>top6)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 60.2,
+    "confidence": 70.865,
+    "market_cap_cr": 30196.0,
+    "avg_val_lakhs": 8351.5
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "BODALCHEM.NS",
+    "close": 126.76,
+    "reasons": [
+      "CONF_FAIL(got 70.3, need 83)",
+      "TQ_FAIL(got 60.4, need 73)",
+      "RR_FAIL(got 1.44, need 2.0)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 60.4,
+    "confidence": 70.33,
+    "market_cap_cr": 1603.0,
+    "avg_val_lakhs": 1097.4
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "RSL.NS",
+    "close": 176.74,
+    "reasons": [
+      "CONF_FAIL(got 70.2, need 83)",
+      "TQ_FAIL(got 59.9, need 73)",
+      "RR_FAIL(got 1.89, need 2.0)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 59.9,
+    "confidence": 70.23,
+    "market_cap_cr": 0.0,
+    "avg_val_lakhs": 1411.2
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "VSSL.NS",
+    "close": 354.85,
+    "reasons": [
+      "CONF_FAIL(got 69.8, need 83)",
+      "TQ_FAIL(got 65.0, need 73)",
+      "SECTOR_RANK_TOO_LOW(rank=9>top6)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 65.0,
+    "confidence": 69.78,
+    "market_cap_cr": 3430.0,
+    "avg_val_lakhs": 901.2
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "KOPRAN.NS",
+    "close": 217.58,
+    "reasons": [
+      "ROE_TOO_LOW(4.9%<10%)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 66.6,
+    "confidence": 69.67,
+    "market_cap_cr": 1049.0,
+    "avg_val_lakhs": 487.7
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "COFORGE.NS",
+    "close": 1988.9,
+    "reasons": [
+      "CONF_FAIL(got 69.7, need 83)",
+      "TQ_FAIL(got 64.9, need 73)",
+      "RR_FAIL(got 1.41, need 2.0)"
+    ],
+    "sector": "IT",
+    "trade_quality": 64.9,
+    "confidence": 69.66,
+    "market_cap_cr": 87931.0,
+    "avg_val_lakhs": 39952.2
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "UFLEX.NS",
+    "close": 645.05,
+    "reasons": [
+      "ROE_TOO_LOW(4.3%<10%)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 58.6,
+    "confidence": 69.425,
+    "market_cap_cr": 4661.0,
+    "avg_val_lakhs": 4184.2
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "GODREJAGRO.NS",
+    "close": 654.4,
+    "reasons": [
+      "CONF_FAIL(got 69.3, need 83)",
+      "RR_FAIL(got 1.45, need 2.0)",
+      "SECTOR_RANK_TOO_LOW(rank=9>top6)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 75.5,
+    "confidence": 69.32,
+    "market_cap_cr": 12589.0,
+    "avg_val_lakhs": 5547.3
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "GUJTHEM.NS",
+    "close": 419.95,
+    "reasons": [
+      "CONF_FAIL(got 69.2, need 83)",
+      "TQ_FAIL(got 68.8, need 73)",
+      "RR_FAIL(got 1.43, need 2.0)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 68.8,
+    "confidence": 69.25,
+    "market_cap_cr": 4572.0,
+    "avg_val_lakhs": 1286.4
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "ENTERO.NS",
+    "close": 1805.0,
+    "reasons": [
+      "ROE_TOO_LOW(6.9%<10%)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 49.8,
+    "confidence": 69.08,
+    "market_cap_cr": 7873.0,
+    "avg_val_lakhs": 7330.0
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "ASIANENE.NS",
+    "close": 488.4,
+    "reasons": [
+      "CONF_FAIL(got 68.8, need 83)",
+      "TQ_FAIL(got 60.2, need 73)",
+      "SECTOR_RANK_TOO_LOW(rank=9>top6)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 60.2,
+    "confidence": 68.75,
+    "market_cap_cr": 2374.0,
+    "avg_val_lakhs": 3211.4
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "VINCOFE.NS",
+    "close": 176.85,
+    "reasons": [
+      "CONF_FAIL(got 68.7, need 83)",
+      "TQ_FAIL(got 67.1, need 73)",
+      "RR_FAIL(got 1.45, need 2.0)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 67.1,
+    "confidence": 68.69,
+    "market_cap_cr": 2575.0,
+    "avg_val_lakhs": 5388.5
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "DYCL.NS",
+    "close": 542.4,
+    "reasons": [
+      "CONF_FAIL(got 68.7, need 83)",
+      "TQ_FAIL(got 62.0, need 73)",
+      "RR_FAIL(got 1.45, need 2.0)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 62.0,
+    "confidence": 68.68,
+    "market_cap_cr": 0.0,
+    "avg_val_lakhs": 5570.0
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "HARSHA.NS",
+    "close": 453.7,
+    "reasons": [
+      "CONF_FAIL(got 68.5, need 83)",
+      "TQ_FAIL(got 69.1, need 73)",
+      "RR_FAIL(got 1.92, need 2.0)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 69.1,
+    "confidence": 68.505,
+    "market_cap_cr": 4132.0,
+    "avg_val_lakhs": 996.7
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "SOTL.NS",
+    "close": 771.4,
+    "reasons": [
+      "CONF_FAIL(got 68.2, need 83)",
+      "TQ_FAIL(got 68.7, need 73)",
+      "RR_FAIL(got 1.45, need 2.0)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 68.7,
+    "confidence": 68.24,
+    "market_cap_cr": 5293.0,
+    "avg_val_lakhs": 8581.9
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "SAGILITY.NS",
+    "close": 46.45,
+    "reasons": [
+      "CONF_FAIL(got 68.1, need 83)",
+      "RR_FAIL(got 1.43, need 2.0)",
+      "SECTOR_RANK_TOO_LOW(rank=9>top6)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 76.0,
+    "confidence": 68.14,
+    "market_cap_cr": 21768.0,
+    "avg_val_lakhs": 10550.2
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "RRKABEL.NS",
+    "close": 2869.8,
+    "reasons": [
+      "CONF_FAIL(got 67.9, need 83)",
+      "SECTOR_RANK_TOO_LOW(rank=9>top6)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 74.7,
+    "confidence": 67.89999999999999,
+    "market_cap_cr": 32435.0,
+    "avg_val_lakhs": 12262.8
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "ANTHEM.NS",
+    "close": 924.5,
+    "reasons": [
+      "CONF_FAIL(got 67.9, need 83)",
+      "RR_FAIL(got 1.87, need 2.0)",
+      "SECTOR_RANK_TOO_LOW(rank=9>top6)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 79.9,
+    "confidence": 67.89,
+    "market_cap_cr": 52160.0,
+    "avg_val_lakhs": 6722.6
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "IFCI.NS",
+    "close": 87.26,
+    "reasons": [
+      "CONF_FAIL(got 67.7, need 83)",
+      "TQ_FAIL(got 72.3, need 73)",
+      "SECTOR_RANK_TOO_LOW(rank=9>top6)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 72.3,
+    "confidence": 67.66,
+    "market_cap_cr": 23508.0,
+    "avg_val_lakhs": 27802.7
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "KMEW.NS",
+    "close": 2936.0,
+    "reasons": [
+      "CONF_FAIL(got 67.6, need 83)",
+      "TQ_FAIL(got 61.4, need 73)",
+      "SECTOR_RANK_TOO_LOW(rank=9>top6)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 61.4,
+    "confidence": 67.58,
+    "market_cap_cr": 7424.0,
+    "avg_val_lakhs": 3232.4
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "WONDERLA.NS",
+    "close": 536.25,
+    "reasons": [
+      "CONF_FAIL(got 67.5, need 83)",
+      "TQ_FAIL(got 62.7, need 73)",
+      "RR_FAIL(got 1.37, need 2.0)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 62.7,
+    "confidence": 67.48,
+    "market_cap_cr": 0.0,
+    "avg_val_lakhs": 930.1
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "ATLANTAELE.NS",
+    "close": 1823.6,
+    "reasons": [
+      "CONF_FAIL(got 67.4, need 83)",
+      "TQ_FAIL(got 64.5, need 73)",
+      "SECTOR_RANK_TOO_LOW(rank=9>top6)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 64.5,
+    "confidence": 67.39,
+    "market_cap_cr": 14028.0,
+    "avg_val_lakhs": 2955.6
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "CPPLUS.NS",
+    "close": 3726.9,
+    "reasons": [
+      "CONF_FAIL(got 67.4, need 83)",
+      "TQ_FAIL(got 71.8, need 73)",
+      "RR_FAIL(got 1.52, need 2.0)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 71.8,
+    "confidence": 67.38,
+    "market_cap_cr": 44050.0,
+    "avg_val_lakhs": 10231.5
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "FMGOETZE.NS",
+    "close": 624.85,
+    "reasons": [
+      "CONF_FAIL(got 67.3, need 83)",
+      "TQ_FAIL(got 50.4, need 73)",
+      "RR_FAIL(got 1.45, need 2.0)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 50.4,
+    "confidence": 67.35,
+    "market_cap_cr": 3475.0,
+    "avg_val_lakhs": 17768.8
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "AGI.NS",
+    "close": 782.25,
+    "reasons": [
+      "CONF_FAIL(got 67.3, need 83)",
+      "TQ_FAIL(got 70.8, need 73)",
+      "RR_FAIL(got 1.41, need 2.0)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 70.8,
+    "confidence": 67.315,
+    "market_cap_cr": 5040.0,
+    "avg_val_lakhs": 1233.1
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "MARINE.NS",
+    "close": 432.6,
+    "reasons": [
+      "CONF_FAIL(got 67.3, need 83)",
+      "TQ_FAIL(got 62.1, need 73)",
+      "RR_FAIL(got 1.45, need 2.0)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 62.1,
+    "confidence": 67.26,
+    "market_cap_cr": 6054.0,
+    "avg_val_lakhs": 5341.8
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "IDBI.NS",
+    "close": 92.06,
+    "reasons": [
+      "CONF_FAIL(got 67.3, need 83)",
+      "TQ_FAIL(got 62.1, need 73)",
+      "RR_FAIL(got 1.44, need 2.0)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 62.1,
+    "confidence": 67.26,
+    "market_cap_cr": 99008.0,
+    "avg_val_lakhs": 9892.7
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "QUESS.NS",
+    "close": 379.5,
+    "reasons": [
+      "CONF_FAIL(got 67.2, need 83)",
+      "TQ_FAIL(got 59.2, need 73)",
+      "RR_FAIL(got 1.43, need 2.0)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 59.2,
+    "confidence": 67.205,
+    "market_cap_cr": 5676.0,
+    "avg_val_lakhs": 2712.2
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "TDPOWERSYS.NS",
+    "close": 758.05,
+    "reasons": [
+      "CONF_FAIL(got 67.2, need 83)",
+      "TQ_FAIL(got 66.2, need 73)",
+      "SECTOR_RANK_TOO_LOW(rank=8>top6)"
+    ],
+    "sector": "POWER_EQ",
+    "trade_quality": 66.2,
+    "confidence": 67.165,
+    "market_cap_cr": 23693.0,
+    "avg_val_lakhs": 25267.8
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "HAPPYFORGE.NS",
+    "close": 2420.4,
+    "reasons": [
+      "CONF_FAIL(got 67.1, need 83)",
+      "TQ_FAIL(got 56.1, need 73)",
+      "RR_FAIL(got 1.43, need 2.0)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 56.1,
+    "confidence": 67.14,
+    "market_cap_cr": 22844.0,
+    "avg_val_lakhs": 3183.8
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "ROSSTECH.NS",
+    "close": 1136.2,
+    "reasons": [
+      "DE_TOO_HIGH(2.64>1.50)"
+    ],
+    "sector": "IT",
+    "trade_quality": 67.2,
+    "confidence": 67.02,
+    "market_cap_cr": 4291.0,
+    "avg_val_lakhs": 2691.6
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "SUDEEPPHRM.NS",
+    "close": 1230.9,
+    "reasons": [
+      "CONF_FAIL(got 67.0, need 83)",
+      "TQ_FAIL(got 56.8, need 73)",
+      "RR_FAIL(got 1.57, need 2.0)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 56.8,
+    "confidence": 67.01,
+    "market_cap_cr": 13895.0,
+    "avg_val_lakhs": 4245.5
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "THELEELA.NS",
+    "close": 575.35,
+    "reasons": [
+      "ROE_TOO_LOW(8.2%<10%)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 65.1,
+    "confidence": 66.955,
+    "market_cap_cr": 19192.0,
+    "avg_val_lakhs": 3685.6
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "YATHARTH.NS",
+    "close": 974.8,
+    "reasons": [
+      "CONF_FAIL(got 66.9, need 83)",
+      "TQ_FAIL(got 70.2, need 73)",
+      "RR_FAIL(got 1.42, need 2.0)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 70.2,
+    "confidence": 66.86,
+    "market_cap_cr": 9387.0,
+    "avg_val_lakhs": 4812.2
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "AETHER.NS",
+    "close": 1683.7,
+    "reasons": [
+      "ROE_TOO_LOW(9.7%<10%)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 69.2,
+    "confidence": 66.855,
+    "market_cap_cr": 22334.0,
+    "avg_val_lakhs": 3628.6
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "PARAGMILK.NS",
+    "close": 259.1,
+    "reasons": [
+      "CONF_FAIL(got 66.8, need 83)",
+      "RR_FAIL(got 1.44, need 2.0)",
+      "SECTOR_RANK_TOO_LOW(rank=9>top6)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 76.6,
+    "confidence": 66.84,
+    "market_cap_cr": 3247.0,
+    "avg_val_lakhs": 2817.6
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "KOTAKBANK.NS",
+    "close": 425.0,
+    "reasons": [
+      "CONF_FAIL(got 66.8, need 83)",
+      "RR_FAIL(got 1.41, need 2.0)",
+      "SECTOR_RANK_TOO_LOW(rank=11>top6)"
+    ],
+    "sector": "BANKING",
+    "trade_quality": 74.2,
+    "confidence": 66.75,
+    "market_cap_cr": 423938.0,
+    "avg_val_lakhs": 48410.6
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "MANGLMCEM.NS",
+    "close": 1084.0,
+    "reasons": [
+      "CONF_FAIL(got 66.6, need 83)",
+      "TQ_FAIL(got 72.6, need 73)",
+      "RR_FAIL(got 1.43, need 2.0)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 72.6,
+    "confidence": 66.61,
+    "market_cap_cr": 0.0,
+    "avg_val_lakhs": 2507.8
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "SUVEN.NS",
+    "close": 381.6,
+    "reasons": [
+      "CONF_FAIL(got 66.6, need 83)",
+      "TQ_FAIL(got 59.8, need 73)",
+      "RR_FAIL(got 1.81, need 2.0)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 59.8,
+    "confidence": 66.59,
+    "market_cap_cr": 10773.0,
+    "avg_val_lakhs": 3214.2
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "IGPL.NS",
+    "close": 548.35,
+    "reasons": [
+      "ROE_TOO_LOW(0.2%<10%)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 60.7,
+    "confidence": 66.55,
+    "market_cap_cr": 1685.0,
+    "avg_val_lakhs": 670.9
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "APLAPOLLO.NS",
+    "close": 2234.0,
+    "reasons": [
+      "CONF_FAIL(got 66.5, need 83)",
+      "RR_FAIL(got 1.44, need 2.0)",
+      "SECTOR_RANK_TOO_LOW(rank=9>top6)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 74.1,
+    "confidence": 66.47,
+    "market_cap_cr": 61956.0,
+    "avg_val_lakhs": 12952.1
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "E2E.NS",
+    "close": 620.9,
+    "reasons": [
+      "CONF_FAIL(got 66.4, need 83)",
+      "TQ_FAIL(got 69.7, need 73)",
+      "SECTOR_RANK_TOO_LOW(rank=9>top6)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 69.7,
+    "confidence": 66.44,
+    "market_cap_cr": 12764.0,
+    "avg_val_lakhs": 7345.2
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "RGL.NS",
+    "close": 136.96,
+    "reasons": [
+      "ROE_TOO_LOW(6.9%<10%)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 71.8,
+    "confidence": 66.43,
+    "market_cap_cr": 1470.0,
+    "avg_val_lakhs": 4706.5
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "RPEL.NS",
+    "close": 1727.1,
+    "reasons": [
+      "CONF_FAIL(got 66.3, need 83)",
+      "TQ_FAIL(got 58.9, need 73)",
+      "RR_FAIL(got 1.74, need 2.0)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 58.9,
+    "confidence": 66.29,
+    "market_cap_cr": 7946.0,
+    "avg_val_lakhs": 1690.2
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "ATHERENERG.NS",
+    "close": 1725.6,
+    "reasons": [
+      "CONF_FAIL(got 66.3, need 83)",
+      "TQ_FAIL(got 62.4, need 73)",
+      "RR_FAIL(got 1.44, need 2.0)"
+    ],
+    "sector": "POWER_EQ",
+    "trade_quality": 62.4,
+    "confidence": 66.285,
+    "market_cap_cr": 69963.0,
+    "avg_val_lakhs": 75890.3
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "SAIL.NS",
+    "close": 193.0,
+    "reasons": [
+      "ROE_TOO_LOW(6.4%<10%)"
+    ],
+    "sector": "METALS",
+    "trade_quality": 71.7,
+    "confidence": 66.26,
+    "market_cap_cr": 78990.0,
+    "avg_val_lakhs": 45712.2
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "PVP.NS",
+    "close": 65.06,
+    "reasons": [
+      "CONF_FAIL(got 66.2, need 83)",
+      "TQ_FAIL(got 50.8, need 73)",
+      "RR_FAIL(got 1.87, need 2.0)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 50.8,
+    "confidence": 66.225,
+    "market_cap_cr": 1697.0,
+    "avg_val_lakhs": 1928.5
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "QPOWER.NS",
+    "close": 1488.0,
+    "reasons": [
+      "CONF_FAIL(got 66.2, need 83)",
+      "TQ_FAIL(got 67.6, need 73)",
+      "RR_FAIL(got 1.43, need 2.0)"
+    ],
+    "sector": "POWER_EQ",
+    "trade_quality": 67.6,
+    "confidence": 66.205,
+    "market_cap_cr": 11520.0,
+    "avg_val_lakhs": 3853.8
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "AEROFLEX.NS",
+    "close": 552.05,
+    "reasons": [
+      "CONF_FAIL(got 66.2, need 83)",
+      "TQ_FAIL(got 70.7, need 73)",
+      "RR_FAIL(got 1.45, need 2.0)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 70.7,
+    "confidence": 66.19,
+    "market_cap_cr": 7295.0,
+    "avg_val_lakhs": 7295.1
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "PIRAMALFIN.NS",
+    "close": 2226.1,
+    "reasons": [
+      "ROE_TOO_LOW(0.9%<10%)"
+    ],
+    "sector": "FINANCE",
+    "trade_quality": 71.7,
+    "confidence": 66.05,
+    "market_cap_cr": 50635.0,
+    "avg_val_lakhs": 7247.7
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "CAPLIPOINT.NS",
+    "close": 2711.2,
+    "reasons": [
+      "CONF_FAIL(got 66.0, need 83)",
+      "RR_FAIL(got 1.40, need 2.0)",
+      "SECTOR_RANK_TOO_LOW(rank=9>top6)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 76.8,
+    "confidence": 66.02,
+    "market_cap_cr": 20610.0,
+    "avg_val_lakhs": 4845.0
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "AVALON.NS",
+    "close": 2318.6,
+    "reasons": [
+      "CONF_FAIL(got 66.0, need 83)",
+      "TQ_FAIL(got 56.1, need 73)",
+      "SECTOR_RANK_TOO_LOW(rank=9>top6)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 56.1,
+    "confidence": 66.01,
+    "market_cap_cr": 15537.0,
+    "avg_val_lakhs": 12069.6
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "GIPCL.NS",
+    "close": 198.8,
+    "reasons": [
+      "CONF_FAIL(got 66.0, need 83)",
+      "TQ_FAIL(got 58.2, need 73)",
+      "RR_FAIL(got 1.43, need 2.0)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 58.2,
+    "confidence": 65.97,
+    "market_cap_cr": 3087.0,
+    "avg_val_lakhs": 2364.0
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "COHANCE.NS",
+    "close": 460.0,
+    "reasons": [
+      "CONF_FAIL(got 65.8, need 83)",
+      "SECTOR_RANK_TOO_LOW(rank=9>top6)",
+      "INSTITUTIONAL_EXIT"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 78.6,
+    "confidence": 65.845,
+    "market_cap_cr": 17588.0,
+    "avg_val_lakhs": 7039.8
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "INDSWFTLAB.NS",
+    "close": 368.15,
+    "reasons": [
+      "ROE_TOO_LOW(3.9%<10%)"
+    ],
+    "sector": "PHARMA",
+    "trade_quality": 45.0,
+    "confidence": 65.76,
+    "market_cap_cr": 3199.0,
+    "avg_val_lakhs": 6800.6
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "STLNETWORK.NS",
+    "close": 27.16,
+    "reasons": [
+      "CONF_FAIL(got 65.7, need 83)",
+      "TQ_FAIL(got 63.2, need 73)",
+      "RR_FAIL(got 1.79, need 2.0)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 63.2,
+    "confidence": 65.73,
+    "market_cap_cr": 1323.0,
+    "avg_val_lakhs": 321.2
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "RAMRAT.NS",
+    "close": 570.2,
+    "reasons": [
+      "CONF_FAIL(got 65.7, need 83)",
+      "TQ_FAIL(got 59.0, need 73)",
+      "RR_FAIL(got 1.44, need 2.0)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 59.0,
+    "confidence": 65.73,
+    "market_cap_cr": 5321.0,
+    "avg_val_lakhs": 2649.3
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "IOLCP.NS",
+    "close": 190.48,
+    "reasons": [
+      "ROE_TOO_LOW(8.4%<10%)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 58.3,
+    "confidence": 65.69,
+    "market_cap_cr": 5588.0,
+    "avg_val_lakhs": 8236.7
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "GKSL.NS",
+    "close": 162.45,
+    "reasons": [
+      "CONF_FAIL(got 65.2, need 83)",
+      "TQ_FAIL(got 66.6, need 73)",
+      "SECTOR_RANK_TOO_LOW(rank=9>top6)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 66.6,
+    "confidence": 65.25,
+    "market_cap_cr": 1277.0,
+    "avg_val_lakhs": 1410.7
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "COMSYN.NS",
+    "close": 304.35,
+    "reasons": [
+      "CONF_FAIL(got 65.2, need 83)",
+      "TQ_FAIL(got 59.8, need 73)",
+      "RR_FAIL(got 1.59, need 2.0)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 59.8,
+    "confidence": 65.19,
+    "market_cap_cr": 1230.0,
+    "avg_val_lakhs": 2573.8
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "DIFFNKG.NS",
+    "close": 477.5,
+    "reasons": [
+      "CONF_FAIL(got 65.1, need 83)",
+      "TQ_FAIL(got 63.2, need 73)",
+      "RR_FAIL(got 1.44, need 2.0)"
+    ],
+    "sector": "TEXTILES",
+    "trade_quality": 63.2,
+    "confidence": 65.1,
+    "market_cap_cr": 1792.0,
+    "avg_val_lakhs": 2875.3
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "THEMISMED.NS",
+    "close": 123.57,
+    "reasons": [
+      "ROE_TOO_LOW(0.4%<10%)"
+    ],
+    "sector": "PHARMA",
+    "trade_quality": 62.4,
+    "confidence": 65.05,
+    "market_cap_cr": 1143.0,
+    "avg_val_lakhs": 303.5
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "MANINFRA.NS",
+    "close": 124.56,
+    "reasons": [
+      "CONF_FAIL(got 64.7, need 83)",
+      "RR_FAIL(got 1.42, need 2.0)",
+      "SECTOR_LAGGING"
+    ],
+    "sector": "INFRA",
+    "trade_quality": 73.8,
+    "confidence": 64.72,
+    "market_cap_cr": 5034.0,
+    "avg_val_lakhs": 3212.6
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "MOL.NS",
+    "close": 64.85,
+    "reasons": [
+      "ROE_TOO_LOW(1.9%<10%)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 71.3,
+    "confidence": 64.63,
+    "market_cap_cr": 1649.0,
+    "avg_val_lakhs": 1621.3
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "MOREPENLAB.NS",
+    "close": 103.65,
+    "reasons": [
+      "ROE_TOO_LOW(6.2%<10%)"
+    ],
+    "sector": "PHARMA",
+    "trade_quality": 45.1,
+    "confidence": 64.6,
+    "market_cap_cr": 5682.0,
+    "avg_val_lakhs": 31628.7
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "SETL.NS",
+    "close": 387.05,
+    "reasons": [
+      "CONF_FAIL(got 64.6, need 83)",
+      "TQ_FAIL(got 57.8, need 73)",
+      "RR_FAIL(got 1.43, need 2.0)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 57.8,
+    "confidence": 64.56,
+    "market_cap_cr": 7709.0,
+    "avg_val_lakhs": 3927.7
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "OAL.NS",
+    "close": 446.3,
+    "reasons": [
+      "ROE_TOO_LOW(0.5%<10%)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 63.0,
+    "confidence": 64.45,
+    "market_cap_cr": 1500.0,
+    "avg_val_lakhs": 451.4
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "GHCLTEXTIL.NS",
+    "close": 140.45,
+    "reasons": [
+      "CONF_FAIL(got 64.4, need 83)",
+      "RR_FAIL(got 1.44, need 2.0)",
+      "SECTOR_RANK_TOO_LOW(rank=9>top6)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 73.6,
+    "confidence": 64.44,
+    "market_cap_cr": 0.0,
+    "avg_val_lakhs": 1111.9
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "DIVGIITTS.NS",
+    "close": 1268.8,
+    "reasons": [
+      "CONF_FAIL(got 64.3, need 83)",
+      "TQ_FAIL(got 70.9, need 73)",
+      "SECTOR_RANK_TOO_LOW(rank=9>top6)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 70.9,
+    "confidence": 64.35,
+    "market_cap_cr": 0.0,
+    "avg_val_lakhs": 3889.1
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "INDORAMA.NS",
+    "close": 68.01,
+    "reasons": [
+      "CONF_FAIL(got 64.2, need 83)",
+      "TQ_FAIL(got 71.5, need 73)",
+      "RR_FAIL(got 1.52, need 2.0)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 71.5,
+    "confidence": 64.215,
+    "market_cap_cr": 1778.0,
+    "avg_val_lakhs": 327.0
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "INDOBORAX.NS",
+    "close": 516.05,
+    "reasons": [
+      "CONF_FAIL(got 64.0, need 83)",
+      "TQ_FAIL(got 67.8, need 73)",
+      "RR_FAIL(got 1.63, need 2.0)"
+    ],
+    "sector": "CHEMICALS",
+    "trade_quality": 67.8,
+    "confidence": 63.980000000000004,
+    "market_cap_cr": 1655.0,
+    "avg_val_lakhs": 3209.0
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "CUB.NS",
+    "close": 234.99,
+    "reasons": [
+      "CONF_FAIL(got 63.8, need 83)",
+      "TQ_FAIL(got 66.7, need 73)",
+      "RR_FAIL(got 1.43, need 2.0)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 66.7,
+    "confidence": 63.815,
+    "market_cap_cr": 23307.0,
+    "avg_val_lakhs": 5875.3
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "ENGINERSIN.NS",
+    "close": 280.05,
+    "reasons": [
+      "CONF_FAIL(got 63.7, need 83)",
+      "TQ_FAIL(got 69.9, need 73)",
+      "RR_FAIL(got 1.45, need 2.0)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 69.9,
+    "confidence": 63.715,
+    "market_cap_cr": 15741.0,
+    "avg_val_lakhs": 14558.8
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "EBGNG.NS",
+    "close": 650.5,
+    "reasons": [
+      "CONF_FAIL(got 62.9, need 83)",
+      "TQ_FAIL(got 72.9, need 73)",
+      "RR_FAIL(got 1.61, need 2.0)"
+    ],
+    "sector": "POWER_EQ",
+    "trade_quality": 72.9,
+    "confidence": 62.93000000000001,
+    "market_cap_cr": 7425.0,
+    "avg_val_lakhs": 4156.4
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "AYMSYNTEX.NS",
+    "close": 294.2,
+    "reasons": [
+      "CONF_FAIL(got 62.8, need 83)",
+      "TQ_FAIL(got 69.9, need 73)",
+      "RR_FAIL(got 1.46, need 2.0)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 69.9,
+    "confidence": 62.769999999999996,
+    "market_cap_cr": 1730.0,
+    "avg_val_lakhs": 380.5
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "MUKKA.NS",
+    "close": 26.7,
+    "reasons": [
+      "CONF_FAIL(got 62.7, need 83)",
+      "SECTOR_RANK_TOO_LOW(rank=9>top6)",
+      "SUSPECT_PUMP_LOW_DELIVERY"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 74.8,
+    "confidence": 62.715,
+    "market_cap_cr": 804.0,
+    "avg_val_lakhs": 205.0
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "SAILIFE.NS",
+    "close": 1518.1,
+    "reasons": [
+      "CONF_FAIL(got 62.7, need 83)",
+      "RR_FAIL(got 1.69, need 2.0)",
+      "SECTOR_RANK_TOO_LOW(rank=9>top6)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 77.3,
+    "confidence": 62.68000000000001,
+    "market_cap_cr": 32249.0,
+    "avg_val_lakhs": 9649.2
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "ASIANHOTNR.NS",
+    "close": 369.2,
+    "reasons": [
+      "CONF_FAIL(got 62.5, need 83)",
+      "TQ_FAIL(got 69.8, need 73)",
+      "RR_FAIL(got 1.36, need 2.0)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 69.8,
+    "confidence": 62.5,
+    "market_cap_cr": 1579.0,
+    "avg_val_lakhs": 318.4
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "KAMATHOTEL.NS",
+    "close": 233.89,
+    "reasons": [
+      "CONF_FAIL(got 62.5, need 83)",
+      "TQ_FAIL(got 68.9, need 73)",
+      "RR_FAIL(got 1.51, need 2.0)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 68.9,
+    "confidence": 62.459999999999994,
+    "market_cap_cr": 693.0,
+    "avg_val_lakhs": 229.1
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "UDS.NS",
+    "close": 227.12,
+    "reasons": [
+      "ROE_TOO_LOW(8.8%<10%)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 80.3,
+    "confidence": 62.379999999999995,
+    "market_cap_cr": 1520.0,
+    "avg_val_lakhs": 808.1
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "GRAPHITE.NS",
+    "close": 732.9,
+    "reasons": [
+      "ROE_TOO_LOW(3.1%<10%)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 77.4,
+    "confidence": 62.25,
+    "market_cap_cr": 14317.0,
+    "avg_val_lakhs": 9422.0
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "RBZJEWEL.NS",
+    "close": 169.0,
+    "reasons": [
+      "CONF_FAIL(got 62.2, need 83)",
+      "TQ_FAIL(got 69.7, need 73)",
+      "RR_FAIL(got 1.40, need 2.0)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 69.7,
+    "confidence": 62.2,
+    "market_cap_cr": 0.0,
+    "avg_val_lakhs": 619.7
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "AEROENTER.NS",
+    "close": 143.39,
+    "reasons": [
+      "ROE_TOO_LOW(8.4%<10%)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 77.2,
+    "confidence": 62.150000000000006,
+    "market_cap_cr": 1630.0,
+    "avg_val_lakhs": 1002.8
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "WELCORP.NS",
+    "close": 2553.6,
+    "reasons": [
+      "CONF_FAIL(got 61.7, need 83)",
+      "TQ_FAIL(got 52.9, need 73)",
+      "RR_FAIL(got 1.45, need 2.0)"
+    ],
+    "sector": "METALS",
+    "trade_quality": 52.9,
+    "confidence": 61.739999999999995,
+    "market_cap_cr": 67445.0,
+    "avg_val_lakhs": 56114.2
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "MANALIPETC.NS",
+    "close": 84.04,
+    "reasons": [
+      "CONF_FAIL(got 60.7, need 83)",
+      "TQ_FAIL(got 70.7, need 73)",
+      "RR_FAIL(got 1.63, need 2.0)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 70.7,
+    "confidence": 60.650000000000006,
+    "market_cap_cr": 1451.0,
+    "avg_val_lakhs": 5718.9
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "TNPETRO.NS",
+    "close": 132.35,
+    "reasons": [
+      "CONF_FAIL(got 60.3, need 83)",
+      "TQ_FAIL(got 61.4, need 73)",
+      "RR_FAIL(got 1.44, need 2.0)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 61.4,
+    "confidence": 60.290000000000006,
+    "market_cap_cr": 1193.0,
+    "avg_val_lakhs": 2755.1
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "JINDWORLD.NS",
+    "close": 42.08,
+    "reasons": [
+      "ROE_TOO_LOW(7.8%<10%)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 74.6,
+    "confidence": 59.56,
+    "market_cap_cr": 4216.0,
+    "avg_val_lakhs": 3743.7
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "CYIENTDLM.NS",
+    "close": 857.2,
+    "reasons": [
+      "CONF_FAIL(got 56.6, need 83)",
+      "TQ_FAIL(got 62.3, need 73)",
+      "RR_FAIL(got 1.45, need 2.0)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 62.3,
+    "confidence": 56.59,
+    "market_cap_cr": 6805.0,
+    "avg_val_lakhs": 5331.9
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "MANINDS.NS",
+    "close": 762.75,
+    "reasons": [
+      "ROE_TOO_LOW(9.2%<10%)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 66.4,
+    "confidence": 54.78,
+    "market_cap_cr": 5720.0,
+    "avg_val_lakhs": 8786.1
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "OMAXE.NS",
+    "close": 126.77,
+    "reasons": [
+      "CONF_FAIL(got 54.7, need 83)",
+      "TQ_FAIL(got 62.8, need 73)",
+      "SECTOR_RANK_TOO_LOW(rank=9>top6)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 62.8,
+    "confidence": 54.69,
+    "market_cap_cr": 2315.0,
+    "avg_val_lakhs": 7191.5
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "CYIENT.NS",
+    "close": 1164.6,
+    "reasons": [
+      "ROE_TOO_LOW(8.6%<10%)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 50.8,
+    "confidence": 54.65,
+    "market_cap_cr": 12963.0,
+    "avg_val_lakhs": 16080.8
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "KIRIINDUS.NS",
+    "close": 515.95,
+    "reasons": [
+      "CONF_FAIL(got 54.0, need 83)",
+      "TQ_FAIL(got 59.2, need 73)",
+      "RR_FAIL(got 1.56, need 2.0)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 59.2,
+    "confidence": 54.04,
+    "market_cap_cr": 3358.0,
+    "avg_val_lakhs": 5668.8
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "VISHNU.NS",
+    "close": 661.75,
+    "reasons": [
+      "CONF_FAIL(got 53.2, need 83)",
+      "RR_FAIL(got 1.75, need 2.0)",
+      "SECTOR_RANK_TOO_LOW(rank=9>top6)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 78.8,
+    "confidence": 53.245,
+    "market_cap_cr": 4452.0,
+    "avg_val_lakhs": 713.3
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "DCBBANK.NS",
+    "close": 224.39,
+    "reasons": [
+      "CONF_FAIL(got 51.6, need 83)",
+      "TQ_FAIL(got 69.9, need 73)",
+      "RR_FAIL(got 1.44, need 2.0)"
+    ],
+    "sector": "FINANCE",
+    "trade_quality": 69.9,
+    "confidence": 51.65,
+    "market_cap_cr": 0.0,
+    "avg_val_lakhs": 6184.8
+  },
+  {
+    "date": "2026-09-01",
+    "symbol": "INOXINDIA.NS",
+    "close": 2165.9,
+    "reasons": [
+      "CONF_FAIL(got 51.0, need 83)",
+      "TQ_FAIL(got 65.9, need 73)",
+      "RR_FAIL(got 1.45, need 2.0)"
+    ],
+    "sector": "DIVERSIFIED",
+    "trade_quality": 65.9,
+    "confidence": 50.95,
+    "market_cap_cr": 19617.0,
+    "avg_val_lakhs": 7861.2
+  },
+  {
     "date": "2026-08-31",
     "symbol": "MODISONLTD.NS",
     "close": 454.05,

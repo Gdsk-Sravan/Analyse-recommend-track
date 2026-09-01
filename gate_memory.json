@@ -45,6 +45,14 @@
           "RR_FAIL(got 1.42, need 2.0)"
         ],
         "conf": 92.49
+      },
+      {
+        "date": "2026-09-01",
+        "fails": [
+          "CONF_FAIL(got 72.9, need 83)",
+          "RR_FAIL(got 1.65, need 2.0)"
+        ],
+        "conf": 72.935
       }
     ]
   },
@@ -127,6 +135,14 @@
           "RR_FAIL(got 1.40, need 1.7)"
         ],
         "conf": 47.33
+      },
+      {
+        "date": "2026-09-01",
+        "fails": [
+          "CONF_FAIL(got 68.8, need 83)",
+          "TQ_FAIL(got 61.9, need 73)"
+        ],
+        "conf": 68.78
       }
     ]
   },
@@ -1471,6 +1487,14 @@
           "TQ_FAIL(got 59.8, need 71)"
         ],
         "conf": 90.58
+      },
+      {
+        "date": "2026-09-01",
+        "fails": [
+          "CONF_FAIL(got 70.4, need 83)",
+          "RR_FAIL(got 1.75, need 2.0)"
+        ],
+        "conf": 70.41
       }
     ]
   },
@@ -2005,6 +2029,18 @@
           "RR_FAIL(got 1.44, need 2.0)"
         ],
         "conf": 67.07
+      }
+    ]
+  },
+  "GLENMARK.NS": {
+    "history": [
+      {
+        "date": "2026-09-01",
+        "fails": [
+          "CONF_FAIL(got 55.6, need 83)",
+          "RR_FAIL(got 1.42, need 2.0)"
+        ],
+        "conf": 55.64
       }
     ]
   }
