@@ -1,96 +1,92 @@
 {
-  "OFSS.NS": {
-    "first_seen": "2026-08-31",
+  "INDGN.NS": {
+    "first_seen": "2026-09-02",
     "tier": "NEAR_MISS_RISING",
-    "tier_since": "2026-09-01",
-    "entry_ref": 12187.0,
-    "last_seen": "2026-09-01",
-    "conf": 72.935,
-    "conf_gap": 10.1,
-    "tq": 77.4,
-    "rr_ratio": 1.65,
+    "tier_since": "2026-09-02",
+    "entry_ref": 600.15,
+    "last_seen": "2026-09-02",
+    "conf": 71.1,
+    "conf_gap": 11.9,
+    "tq": 73.0,
+    "rr_ratio": 1.53,
     "regime": "TRANSITION",
     "warnings": [
-      "WIDE_STOP_WARN(got 7.3%, soft cap 7.0% \u2014 R/R gate handles this)",
-      "SECTOR_WEAKENING",
+      "WIDE_STOP_WARN(got 7.6%, soft cap 7.0% \u2014 R/R gate handles this)",
       "NEAR_52W_HIGH_RESISTANCE"
     ],
     "fail_reasons": [
-      "CONF_FAIL(got 72.9, need 83)",
-      "RR_FAIL(got 1.65, need 2.0)"
+      "CONF_FAIL(got 71.1, need 83)",
+      "RR_FAIL(got 1.53, need 2.0)"
     ],
     "blocker_reason": null,
     "monitor_reason": null,
     "trajectory": "RISING"
   },
-  "VIMTALABS.NS": {
-    "first_seen": "2026-09-01",
+  "PGIL.NS": {
+    "first_seen": "2026-09-02",
     "tier": "NEAR_MISS",
-    "tier_since": "2026-09-01",
-    "entry_ref": 661.75,
-    "last_seen": "2026-09-01",
-    "conf": 70.41,
-    "conf_gap": 12.6,
-    "tq": 78.1,
-    "rr_ratio": 1.75,
+    "tier_since": "2026-09-02",
+    "entry_ref": 2361.6,
+    "last_seen": "2026-09-02",
+    "conf": 75.62,
+    "conf_gap": 7.4,
+    "tq": 70.1,
+    "rr_ratio": 3.26,
     "regime": "TRANSITION",
     "warnings": [
-      "WIDE_STOP_WARN(got 8.1%, soft cap 7.0% \u2014 R/R gate handles this)",
-      "NEAR_52W_HIGH_RESISTANCE",
-      "WEAK_DELIVERY: 30% (20d avg 40%)"
+      "HIGH_GAP_RISK: p90 gap 6.9% \u00b7 effective stop 11.6%"
     ],
     "fail_reasons": [
-      "CONF_FAIL(got 70.4, need 83)",
-      "RR_FAIL(got 1.75, need 2.0)"
+      "CONF_FAIL(got 75.6, need 83)",
+      "TQ_FAIL(got 70.1, need 73)"
     ],
     "blocker_reason": null,
     "monitor_reason": null,
     "trajectory": ""
   },
-  "IPCALAB.NS": {
-    "first_seen": "2026-09-01",
+  "ASIANENE.NS": {
+    "first_seen": "2026-09-02",
     "tier": "DEVELOPING",
-    "tier_since": "2026-09-01",
-    "entry_ref": 1987.6,
-    "last_seen": "2026-09-01",
-    "conf": 68.78,
-    "conf_gap": 14.2,
-    "tq": 61.9,
-    "rr_ratio": 2.16,
+    "tier_since": "2026-09-02",
+    "entry_ref": 504.1,
+    "last_seen": "2026-09-02",
+    "conf": 68.08,
+    "conf_gap": 14.9,
+    "tq": 67.4,
+    "rr_ratio": 2.34,
     "regime": "TRANSITION",
     "warnings": [
-      "NEAR_52W_HIGH_RESISTANCE",
-      "HIGH_GAP_RISK: p90 gap 5.2% \u00b7 effective stop 11.9%"
+      "WIDE_STOP_WARN(got 11.5%, soft cap 7.0% \u2014 R/R gate handles this)",
+      "HIGH_GAP_RISK: p90 gap 9.5% \u00b7 effective stop 20.9%"
     ],
     "fail_reasons": [
-      "CONF_FAIL(got 68.8, need 83)",
-      "TQ_FAIL(got 61.9, need 73)"
+      "CONF_FAIL(got 68.1, need 83)",
+      "TQ_FAIL(got 67.4, need 73)"
     ],
     "blocker_reason": null,
     "monitor_reason": null,
     "trajectory": ""
   },
-  "GLENMARK.NS": {
-    "first_seen": "2026-09-01",
+  "DEEPINDS.NS": {
+    "first_seen": "2026-09-02",
     "tier": "MONITOR",
-    "tier_since": "2026-09-01",
-    "entry_ref": 2470.4,
-    "last_seen": "2026-09-01",
-    "conf": 55.64,
-    "conf_gap": 27.4,
-    "tq": 75.7,
-    "rr_ratio": 1.42,
+    "tier_since": "2026-09-02",
+    "entry_ref": 693.65,
+    "last_seen": "2026-09-02",
+    "conf": 71.65,
+    "conf_gap": 11.3,
+    "tq": 59.6,
+    "rr_ratio": 2.18,
     "regime": "TRANSITION",
     "warnings": [
-      "WIDE_STOP_WARN(got 8.7%, soft cap 7.0% \u2014 R/R gate handles this)",
-      "NEAR_52W_HIGH_RESISTANCE"
+      "WIDE_STOP_WARN(got 10.2%, soft cap 7.0% \u2014 R/R gate handles this)"
     ],
     "fail_reasons": [
-      "CONF_FAIL(got 55.6, need 83)",
-      "RR_FAIL(got 1.42, need 2.0)"
+      "CONF_FAIL(got 71.7, need 83)",
+      "TQ_FAIL(got 59.6, need 73)"
     ],
     "blocker_reason": null,
-    "monitor_reason": "CONF_FAR",
-    "trajectory": "FADING"
+    "monitor_reason": "TQ_LOW",
+    "trajectory": ""
   }
 }

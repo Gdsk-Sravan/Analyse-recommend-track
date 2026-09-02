@@ -1476,6 +1476,14 @@
           "RR_FAIL(got 1.43, need 1.8)"
         ],
         "conf": 80.14
+      },
+      {
+        "date": "2026-09-02",
+        "fails": [
+          "CONF_FAIL(got 75.6, need 83)",
+          "TQ_FAIL(got 70.1, need 73)"
+        ],
+        "conf": 75.62
       }
     ]
   },
@@ -1821,6 +1829,14 @@
           "TQ_FAIL(got 56.2, need 73)"
         ],
         "conf": 74.475
+      },
+      {
+        "date": "2026-09-02",
+        "fails": [
+          "CONF_FAIL(got 71.7, need 83)",
+          "TQ_FAIL(got 59.6, need 73)"
+        ],
+        "conf": 71.65
       }
     ]
   },
@@ -2017,6 +2033,14 @@
           "RR_FAIL(got 1.42, need 2.0)"
         ],
         "conf": 71.23
+      },
+      {
+        "date": "2026-09-02",
+        "fails": [
+          "CONF_FAIL(got 71.1, need 83)",
+          "RR_FAIL(got 1.53, need 2.0)"
+        ],
+        "conf": 71.1
       }
     ]
   },
@@ -2041,6 +2065,18 @@
           "RR_FAIL(got 1.42, need 2.0)"
         ],
         "conf": 55.64
+      }
+    ]
+  },
+  "ASIANENE.NS": {
+    "history": [
+      {
+        "date": "2026-09-02",
+        "fails": [
+          "CONF_FAIL(got 68.1, need 83)",
+          "TQ_FAIL(got 67.4, need 73)"
+        ],
+        "conf": 68.08
       }
     ]
   }
