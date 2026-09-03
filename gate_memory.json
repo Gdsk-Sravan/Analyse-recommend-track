@@ -537,6 +537,14 @@
           "RR_FAIL(got 1.45, need 1.7)"
         ],
         "conf": 49.73
+      },
+      {
+        "date": "2026-09-03",
+        "fails": [
+          "CONF_FAIL(got 64.7, need 83)",
+          "TQ_FAIL(got 70.4, need 73)"
+        ],
+        "conf": 64.66
       }
     ]
   },
@@ -1837,6 +1845,14 @@
           "TQ_FAIL(got 59.6, need 73)"
         ],
         "conf": 71.65
+      },
+      {
+        "date": "2026-09-03",
+        "fails": [
+          "CONF_FAIL(got 65.7, need 83)",
+          "TQ_FAIL(got 68.1, need 73)"
+        ],
+        "conf": 65.72
       }
     ]
   },
@@ -2077,6 +2093,41 @@
           "TQ_FAIL(got 67.4, need 73)"
         ],
         "conf": 68.08
+      }
+    ]
+  },
+  "BHAGERIA.NS": {
+    "history": [
+      {
+        "date": "2026-09-03",
+        "fails": [
+          "TQ_FAIL(got 60.4, need 73)",
+          "RR_FAIL(got 1.35, need 2.0)"
+        ],
+        "conf": 84.6
+      }
+    ]
+  },
+  "JKPAPER.NS": {
+    "history": [
+      {
+        "date": "2026-09-03",
+        "fails": [
+          "CONF_FAIL(got 67.6, need 83)"
+        ],
+        "conf": 67.63
+      }
+    ]
+  },
+  "ANDHRSUGAR.NS": {
+    "history": [
+      {
+        "date": "2026-09-03",
+        "fails": [
+          "CONF_FAIL(got 55.3, need 83)",
+          "TQ_FAIL(got 66.7, need 73)"
+        ],
+        "conf": 55.26
       }
     ]
   }
