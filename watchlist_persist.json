@@ -1,119 +1,48 @@
 {
-  "BHAGERIA.NS": {
-    "first_seen": "2026-09-03",
-    "tier": "DEVELOPING",
-    "tier_since": "2026-09-03",
-    "entry_ref": 290.15,
-    "last_seen": "2026-09-03",
-    "conf": 84.6,
-    "conf_gap": 0.0,
-    "tq": 60.4,
-    "rr_ratio": 1.35,
+  "INDGN.NS": {
+    "first_seen": "2026-09-04",
+    "tier": "NEAR_MISS_FADING",
+    "tier_since": "2026-09-04",
+    "entry_ref": 601.5,
+    "last_seen": "2026-09-04",
+    "conf": 74.46,
+    "conf_gap": 8.5,
+    "tq": 73.1,
+    "rr_ratio": 1.4,
     "regime": "TRANSITION",
     "warnings": [
-      "FUND_DATA_MISSING: ROE/D/E/pledge unavailable (src=SCREENER+YF_RL) \u2014 ownership_quality weight redistributed to present factors",
-      "WIDE_STOP_WARN(got 13.8%, soft cap 7.0% \u2014 R/R gate handles this)",
+      "WIDE_STOP_WARN(got 7.7%, soft cap 7.0% \u2014 R/R gate handles this)",
       "NEAR_52W_HIGH_RESISTANCE"
     ],
     "fail_reasons": [
-      "TQ_FAIL(got 60.4, need 73)",
-      "RR_FAIL(got 1.35, need 2.0)"
+      "CONF_FAIL(got 74.5, need 83)",
+      "RR_FAIL(got 1.40, need 2.0)"
     ],
     "blocker_reason": null,
     "monitor_reason": null,
-    "trajectory": ""
+    "trajectory": "FADING"
   },
-  "JKPAPER.NS": {
-    "first_seen": "2026-09-03",
-    "tier": "DEVELOPING",
-    "tier_since": "2026-09-03",
-    "entry_ref": 410.15,
-    "last_seen": "2026-09-03",
-    "conf": 67.63,
-    "conf_gap": 15.4,
-    "tq": 80.4,
-    "rr_ratio": 2.05,
+  "BLISSGVS.NS": {
+    "first_seen": "2026-09-04",
+    "tier": "MONITOR",
+    "tier_since": "2026-09-04",
+    "entry_ref": 671.0,
+    "last_seen": "2026-09-04",
+    "conf": 88.0,
+    "conf_gap": 0.0,
+    "tq": 53.5,
+    "rr_ratio": 1.44,
     "regime": "TRANSITION",
     "warnings": [
-      "FUND_DATA_MISSING: ROE/D/E/pledge unavailable (src=SCREENER+YF_RL) \u2014 ownership_quality weight redistributed to present factors",
-      "NEAR_52W_HIGH_RESISTANCE",
-      "HIGH_GAP_RISK: p90 gap 3.9% \u00b7 effective stop 10.2%"
-    ],
-    "fail_reasons": [
-      "CONF_FAIL(got 67.6, need 83)"
-    ],
-    "blocker_reason": null,
-    "monitor_reason": null,
-    "trajectory": ""
-  },
-  "DEEPINDS.NS": {
-    "first_seen": "2026-09-02",
-    "tier": "DEVELOPING",
-    "tier_since": "2026-09-03",
-    "entry_ref": 744.85,
-    "last_seen": "2026-09-03",
-    "conf": 65.72,
-    "conf_gap": 17.3,
-    "tq": 68.1,
-    "rr_ratio": 1.5,
-    "regime": "TRANSITION",
-    "warnings": [
-      "RR_INSTITUTIONAL_OVERRIDE(1.50 \u2265 1.50 \u2014 BQ=STRONG, sector=92, SA=80, vol=3.31x)",
       "WIDE_STOP_WARN(got 15.0%, soft cap 7.0% \u2014 R/R gate handles this)",
       "NEAR_52W_HIGH_RESISTANCE"
     ],
     "fail_reasons": [
-      "CONF_FAIL(got 65.7, need 83)",
-      "TQ_FAIL(got 68.1, need 73)"
+      "TQ_FAIL(got 53.5, need 73)",
+      "RR_FAIL(got 1.44, need 2.0)"
     ],
     "blocker_reason": null,
-    "monitor_reason": null,
-    "trajectory": ""
-  },
-  "CHENNPETRO.NS": {
-    "first_seen": "2026-09-03",
-    "tier": "DEVELOPING",
-    "tier_since": "2026-09-03",
-    "entry_ref": 1440.0,
-    "last_seen": "2026-09-03",
-    "conf": 64.66,
-    "conf_gap": 18.3,
-    "tq": 70.4,
-    "rr_ratio": 2.04,
-    "regime": "TRANSITION",
-    "warnings": [
-      "WIDE_STOP_WARN(got 8.4%, soft cap 7.0% \u2014 R/R gate handles this)",
-      "HIGH_GAP_RISK: p90 gap 5.7% \u00b7 effective stop 14.2%"
-    ],
-    "fail_reasons": [
-      "CONF_FAIL(got 64.7, need 83)",
-      "TQ_FAIL(got 70.4, need 73)"
-    ],
-    "blocker_reason": null,
-    "monitor_reason": null,
-    "trajectory": ""
-  },
-  "ANDHRSUGAR.NS": {
-    "first_seen": "2026-09-03",
-    "tier": "MONITOR",
-    "tier_since": "2026-09-03",
-    "entry_ref": 101.29,
-    "last_seen": "2026-09-03",
-    "conf": 55.26,
-    "conf_gap": 27.7,
-    "tq": 66.7,
-    "rr_ratio": 2.8,
-    "regime": "TRANSITION",
-    "warnings": [
-      "FUND_DATA_MISSING: ROE/D/E/pledge unavailable (src=SCREENER+YF_RL) \u2014 ownership_quality weight redistributed to present factors",
-      "HIGH_GAP_RISK: p90 gap 5.6% \u00b7 effective stop 12.3%"
-    ],
-    "fail_reasons": [
-      "CONF_FAIL(got 55.3, need 83)",
-      "TQ_FAIL(got 66.7, need 73)"
-    ],
-    "blocker_reason": null,
-    "monitor_reason": "LOW_CONF_AND_TQ",
+    "monitor_reason": "TQ_LOW",
     "trajectory": ""
   }
 }

@@ -1709,6 +1709,14 @@
           "RR_FAIL(got 1.44, need 2.0)"
         ],
         "conf": 92.26
+      },
+      {
+        "date": "2026-09-04",
+        "fails": [
+          "TQ_FAIL(got 53.5, need 73)",
+          "RR_FAIL(got 1.44, need 2.0)"
+        ],
+        "conf": 88.0
       }
     ]
   },
@@ -2057,6 +2065,14 @@
           "RR_FAIL(got 1.53, need 2.0)"
         ],
         "conf": 71.1
+      },
+      {
+        "date": "2026-09-04",
+        "fails": [
+          "CONF_FAIL(got 74.5, need 83)",
+          "RR_FAIL(got 1.40, need 2.0)"
+        ],
+        "conf": 74.46
       }
     ]
   },
