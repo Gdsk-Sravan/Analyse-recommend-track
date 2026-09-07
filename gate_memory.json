@@ -792,6 +792,14 @@
           "RR_FAIL(got 1.38, need 1.7)"
         ],
         "conf": 30.950000000000003
+      },
+      {
+        "date": "2026-09-07",
+        "fails": [
+          "CONF_FAIL(got 55.4, need 83)",
+          "RR_FAIL(got 1.45, need 2.0)"
+        ],
+        "conf": 55.43
       }
     ]
   },
@@ -967,6 +975,14 @@
           "SECTOR_RANK_TOO_LOW(rank=15>top6)"
         ],
         "conf": 80.655
+      },
+      {
+        "date": "2026-09-07",
+        "fails": [
+          "CONF_FAIL(got 63.0, need 83)",
+          "RR_FAIL(got 1.76, need 2.0)"
+        ],
+        "conf": 62.995000000000005
       }
     ]
   },
@@ -1561,6 +1577,14 @@
           "RR_FAIL(got 1.43, need 1.8)"
         ],
         "conf": 60.230000000000004
+      },
+      {
+        "date": "2026-09-07",
+        "fails": [
+          "CONF_FAIL(got 62.6, need 83)",
+          "RR_FAIL(got 1.65, need 2.0)"
+        ],
+        "conf": 62.59
       }
     ]
   },
@@ -1821,6 +1845,14 @@
           "RR_FAIL(got 1.43, need 2.0)"
         ],
         "conf": 65.96
+      },
+      {
+        "date": "2026-09-07",
+        "fails": [
+          "CONF_FAIL(got 50.8, need 83)",
+          "TQ_FAIL(got 68.6, need 73)"
+        ],
+        "conf": 50.83
       }
     ]
   },
@@ -2144,6 +2176,184 @@
           "TQ_FAIL(got 66.7, need 73)"
         ],
         "conf": 55.26
+      }
+    ]
+  },
+  "SKIPPER.NS": {
+    "history": [
+      {
+        "date": "2026-09-07",
+        "fails": [
+          "CONF_FAIL(got 72.0, need 83)",
+          "RR_FAIL(got 1.45, need 2.0)"
+        ],
+        "conf": 72.05
+      }
+    ]
+  },
+  "TEXRAIL.NS": {
+    "history": [
+      {
+        "date": "2026-09-07",
+        "fails": [
+          "CONF_FAIL(got 71.3, need 83)",
+          "RR_FAIL(got 1.42, need 2.0)"
+        ],
+        "conf": 71.265
+      }
+    ]
+  },
+  "CLEAN.NS": {
+    "history": [
+      {
+        "date": "2026-09-07",
+        "fails": [
+          "CONF_FAIL(got 71.0, need 83)",
+          "TQ_FAIL(got 71.9, need 73)"
+        ],
+        "conf": 71.035
+      }
+    ]
+  },
+  "SAMBHV.NS": {
+    "history": [
+      {
+        "date": "2026-09-07",
+        "fails": [
+          "CONF_FAIL(got 68.4, need 83)"
+        ],
+        "conf": 68.43
+      }
+    ]
+  },
+  "PAISALO.NS": {
+    "history": [
+      {
+        "date": "2026-09-07",
+        "fails": [
+          "CONF_FAIL(got 68.3, need 83)",
+          "RR_FAIL(got 1.43, need 2.0)"
+        ],
+        "conf": 68.265
+      }
+    ]
+  },
+  "STLNETWORK.NS": {
+    "history": [
+      {
+        "date": "2026-09-07",
+        "fails": [
+          "TQ_FAIL(got 67.1, need 73)",
+          "RR_FAIL(got 1.35, need 2.0)"
+        ],
+        "conf": 85.19
+      }
+    ]
+  },
+  "AEROENTER.NS": {
+    "history": [
+      {
+        "date": "2026-09-07",
+        "fails": [
+          "CONF_FAIL(got 67.7, need 83)",
+          "RR_FAIL(got 1.57, need 2.0)"
+        ],
+        "conf": 67.74
+      }
+    ]
+  },
+  "SENORES.NS": {
+    "history": [
+      {
+        "date": "2026-09-07",
+        "fails": [
+          "CONF_FAIL(got 66.7, need 83)"
+        ],
+        "conf": 66.685
+      }
+    ]
+  },
+  "SPLPETRO.NS": {
+    "history": [
+      {
+        "date": "2026-09-07",
+        "fails": [
+          "CONF_FAIL(got 65.3, need 83)",
+          "RR_FAIL(got 1.40, need 2.0)"
+        ],
+        "conf": 65.3
+      }
+    ]
+  },
+  "PENIND.NS": {
+    "history": [
+      {
+        "date": "2026-09-07",
+        "fails": [
+          "CONF_FAIL(got 65.0, need 83)",
+          "RR_FAIL(got 1.38, need 2.0)"
+        ],
+        "conf": 64.99
+      }
+    ]
+  },
+  "BODALCHEM.NS": {
+    "history": [
+      {
+        "date": "2026-09-07",
+        "fails": [
+          "TQ_FAIL(got 54.1, need 73)",
+          "RR_FAIL(got 1.81, need 2.0)"
+        ],
+        "conf": 83.03
+      }
+    ]
+  },
+  "RBZJEWEL.NS": {
+    "history": [
+      {
+        "date": "2026-09-07",
+        "fails": [
+          "CONF_FAIL(got 69.9, need 83)",
+          "TQ_FAIL(got 51.8, need 73)"
+        ],
+        "conf": 69.92
+      }
+    ]
+  },
+  "OMAXE.NS": {
+    "history": [
+      {
+        "date": "2026-09-07",
+        "fails": [
+          "CONF_FAIL(got 62.1, need 83)",
+          "TQ_FAIL(got 51.9, need 73)"
+        ],
+        "conf": 62.14
+      }
+    ]
+  },
+  "URBANCO.NS": {
+    "history": [
+      {
+        "date": "2026-09-07",
+        "fails": [
+          "CONF_FAIL(got 56.4, need 83)",
+          "TQ_FAIL(got 58.6, need 73)"
+        ],
+        "conf": 56.445
+      }
+    ]
+  },
+  "GUFICBIO.NS": {
+    "history": [
+      {
+        "date": "2026-09-07",
+        "fails": [
+          "CONF_FAIL(got 53.5, need 83)",
+          "RR_FAIL(got 1.38, need 2.0)"
+        ],
+        "conf": 53.47
       }
     ]
   }
