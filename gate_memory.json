@@ -197,6 +197,13 @@
           "RR_FAIL(got 1.41, need 2.0)"
         ],
         "conf": 90.825
+      },
+      {
+        "date": "2026-09-08",
+        "fails": [
+          "RR_FAIL(got 1.41, need 2.0)"
+        ],
+        "conf": 87.875
       }
     ]
   },
@@ -441,6 +448,14 @@
           "RR_FAIL(got 1.49, need 1.8)"
         ],
         "conf": 81.61
+      },
+      {
+        "date": "2026-09-08",
+        "fails": [
+          "CONF_FAIL(got 63.3, need 83)",
+          "RR_FAIL(got 1.44, need 2.0)"
+        ],
+        "conf": 63.3
       }
     ]
   },
@@ -1645,6 +1660,14 @@
           "RR_FAIL(got 1.45, need 2.0)"
         ],
         "conf": 83.875
+      },
+      {
+        "date": "2026-09-08",
+        "fails": [
+          "CONF_FAIL(got 55.6, need 83)",
+          "TQ_FAIL(got 72.9, need 73)"
+        ],
+        "conf": 55.64
       }
     ]
   },
@@ -2354,6 +2377,30 @@
           "RR_FAIL(got 1.38, need 2.0)"
         ],
         "conf": 53.47
+      }
+    ]
+  },
+  "ARVIND.NS": {
+    "history": [
+      {
+        "date": "2026-09-08",
+        "fails": [
+          "CONF_FAIL(got 73.1, need 83)",
+          "RR_FAIL(got 1.41, need 2.0)"
+        ],
+        "conf": 73.12
+      }
+    ]
+  },
+  "GRANULES.NS": {
+    "history": [
+      {
+        "date": "2026-09-08",
+        "fails": [
+          "CONF_FAIL(got 62.0, need 83)",
+          "RR_FAIL(got 1.42, need 2.0)"
+        ],
+        "conf": 62.03
       }
     ]
   }
