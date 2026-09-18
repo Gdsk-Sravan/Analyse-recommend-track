@@ -2403,5 +2403,17 @@
         "conf": 62.03
       }
     ]
+  },
+  "RATNAVEER.NS": {
+    "history": [
+      {
+        "date": "2026-09-18",
+        "fails": [
+          "CONF_FAIL(got 66.3, need 83)",
+          "TQ_FAIL(got 65.5, need 73)"
+        ],
+        "conf": 66.35
+      }
+    ]
   }
 }
