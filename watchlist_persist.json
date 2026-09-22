@@ -1,1 +1,217 @@
-{}
+{
+  "RAMRAT.NS": {
+    "first_seen": "2026-09-22",
+    "tier": "NEAR_MISS_RISING",
+    "tier_since": "2026-09-22",
+    "entry_ref": 562.75,
+    "last_seen": "2026-09-22",
+    "conf": 71.69,
+    "conf_gap": 0.0,
+    "tq": 71.9,
+    "rr_ratio": 1.76,
+    "regime": "SIDEWAYS",
+    "warnings": [
+      "WIDE_STOP_WARN(got 11.6%, soft cap 8.0% \u2014 R/R gate handles this)",
+      "SECTOR_RANK_WEAK: sector ranked #13 \u2014 needs top-6 unless conf\u226588",
+      "HIGH_GAP_RISK: p90 gap 7.0% \u00b7 effective stop 18.6%",
+      "STRONG_ACCUMULATION: delivery 81% (20d avg 42%)"
+    ],
+    "fail_reasons": [
+      "SECTOR_RANK_TOO_LOW(rank=13>top6)"
+    ],
+    "blocker_reason": null,
+    "monitor_reason": null,
+    "trajectory": "RISING"
+  },
+  "GLOBAL.NS": {
+    "first_seen": "2026-09-22",
+    "tier": "NEAR_MISS_RISING",
+    "tier_since": "2026-09-22",
+    "entry_ref": 132.23,
+    "last_seen": "2026-09-22",
+    "conf": 69.11,
+    "conf_gap": 0.9,
+    "tq": 70.4,
+    "rr_ratio": 2.31,
+    "regime": "SIDEWAYS",
+    "warnings": [
+      "MARGINAL_CONF(69.1<70, grace-band; TQ 70.4 & R/R 2.31x compensate)",
+      "WIDE_STOP_WARN(got 8.2%, soft cap 8.0% \u2014 R/R gate handles this)",
+      "SECTOR_RANK_WEAK: sector ranked #13 \u2014 needs top-6 unless conf\u226588",
+      "HIGH_GAP_RISK: p90 gap 7.7% \u00b7 effective stop 16.0%"
+    ],
+    "fail_reasons": [
+      "SECTOR_RANK_TOO_LOW(rank=13>top6)"
+    ],
+    "blocker_reason": null,
+    "monitor_reason": null,
+    "trajectory": "RISING"
+  },
+  "FINCABLES.NS": {
+    "first_seen": "2026-09-22",
+    "tier": "NEAR_MISS",
+    "tier_since": "2026-09-22",
+    "entry_ref": 1468.1,
+    "last_seen": "2026-09-22",
+    "conf": 70.27,
+    "conf_gap": 0.0,
+    "tq": 71.7,
+    "rr_ratio": 1.75,
+    "regime": "SIDEWAYS",
+    "warnings": [
+      "FUND_DATA_MISSING: ROE/D/E/pledge unavailable (src=SCREENER+YF_RL) \u2014 ownership_quality weight redistributed to present factors",
+      "WIDE_STOP_WARN(got 12.2%, soft cap 8.0% \u2014 R/R gate handles this)",
+      "SECTOR_RANK_WEAK: sector ranked #19 \u2014 needs top-6 unless conf\u226588",
+      "NEAR_52W_HIGH_RESISTANCE"
+    ],
+    "fail_reasons": [
+      "SECTOR_LAGGING",
+      "SECTOR_RANK_TOO_LOW(rank=19>top6)"
+    ],
+    "blocker_reason": null,
+    "monitor_reason": null,
+    "trajectory": ""
+  },
+  "KSL.NS": {
+    "first_seen": "2026-09-22",
+    "tier": "NEAR_MISS",
+    "tier_since": "2026-09-22",
+    "entry_ref": 959.15,
+    "last_seen": "2026-09-22",
+    "conf": 78.59,
+    "conf_gap": 0.0,
+    "tq": 69.1,
+    "rr_ratio": 2.77,
+    "regime": "SIDEWAYS",
+    "warnings": [
+      "SECTOR_WEAKENING",
+      "SECTOR_RANK_WEAK: sector ranked #14 \u2014 needs top-6 unless conf\u226588",
+      "HIGH_GAP_RISK: p90 gap 5.8% \u00b7 effective stop 12.3%"
+    ],
+    "fail_reasons": [
+      "SECTOR_RANK_TOO_LOW(rank=14>top6)"
+    ],
+    "blocker_reason": null,
+    "monitor_reason": null,
+    "trajectory": ""
+  },
+  "SSWL.NS": {
+    "first_seen": "2026-09-22",
+    "tier": "NEAR_MISS",
+    "tier_since": "2026-09-22",
+    "entry_ref": 364.8,
+    "last_seen": "2026-09-22",
+    "conf": 70.74499999999999,
+    "conf_gap": 0.0,
+    "tq": 68.7,
+    "rr_ratio": 2.02,
+    "regime": "SIDEWAYS",
+    "warnings": [
+      "WIDE_STOP_WARN(got 11.1%, soft cap 8.0% \u2014 R/R gate handles this)",
+      "SECTOR_RANK_WEAK: sector ranked #13 \u2014 needs top-6 unless conf\u226588",
+      "HIGH_GAP_RISK: p90 gap 8.8% \u00b7 effective stop 19.9%",
+      "WEAK_DELIVERY: 31% (20d avg 42%)"
+    ],
+    "fail_reasons": [
+      "SECTOR_RANK_TOO_LOW(rank=13>top6)"
+    ],
+    "blocker_reason": null,
+    "monitor_reason": null,
+    "trajectory": ""
+  },
+  "RATNAMANI.NS": {
+    "first_seen": "2026-09-22",
+    "tier": "NEAR_MISS",
+    "tier_since": "2026-09-22",
+    "entry_ref": 2781.7,
+    "last_seen": "2026-09-22",
+    "conf": 69.56,
+    "conf_gap": 0.4,
+    "tq": 71.3,
+    "rr_ratio": 2.83,
+    "regime": "SIDEWAYS",
+    "warnings": [
+      "MARGINAL_CONF(69.6<70, grace-band; TQ 71.3 & R/R 2.83x compensate)",
+      "SECTOR_RANK_WEAK: sector ranked #13 \u2014 needs top-6 unless conf\u226588",
+      "HIGH_GAP_RISK: p90 gap 5.5% \u00b7 effective stop 11.9%"
+    ],
+    "fail_reasons": [
+      "SECTOR_RANK_TOO_LOW(rank=13>top6)"
+    ],
+    "blocker_reason": null,
+    "monitor_reason": null,
+    "trajectory": ""
+  },
+  "VARROC.NS": {
+    "first_seen": "2026-09-22",
+    "tier": "NEAR_MISS",
+    "tier_since": "2026-09-22",
+    "entry_ref": 864.5,
+    "last_seen": "2026-09-22",
+    "conf": 69.495,
+    "conf_gap": 0.5,
+    "tq": 78.8,
+    "rr_ratio": 2.38,
+    "regime": "SIDEWAYS",
+    "warnings": [
+      "MARGINAL_CONF(69.5<70, grace-band; TQ 78.8 & R/R 2.38x compensate)",
+      "SECTOR_RANK_WEAK: sector ranked #13 \u2014 needs top-6 unless conf\u226588",
+      "HIGH_GAP_RISK: p90 gap 5.8% \u00b7 effective stop 12.8%",
+      "WEAK_DELIVERY: 30% (20d avg 40%)"
+    ],
+    "fail_reasons": [
+      "SECTOR_RANK_TOO_LOW(rank=13>top6)"
+    ],
+    "blocker_reason": null,
+    "monitor_reason": null,
+    "trajectory": ""
+  },
+  "INDOCO.NS": {
+    "first_seen": "2026-09-22",
+    "tier": "NEAR_MISS",
+    "tier_since": "2026-09-22",
+    "entry_ref": 254.51,
+    "last_seen": "2026-09-22",
+    "conf": 59.754999999999995,
+    "conf_gap": 10.2,
+    "tq": 70.0,
+    "rr_ratio": 2.7,
+    "regime": "SIDEWAYS",
+    "warnings": [
+      "WIDE_STOP_WARN(got 10.5%, soft cap 8.0% \u2014 R/R gate handles this)",
+      "HIGH_GAP_RISK: p90 gap 10.1% \u00b7 effective stop 20.6%",
+      "STRONG_ACCUMULATION: delivery 46% (20d avg 35%)"
+    ],
+    "fail_reasons": [
+      "CONF_FAIL(got 59.8, need 70)"
+    ],
+    "blocker_reason": null,
+    "monitor_reason": null,
+    "trajectory": ""
+  },
+  "RATNAVEER.NS": {
+    "first_seen": "2026-09-22",
+    "tier": "MONITOR",
+    "tier_since": "2026-09-22",
+    "entry_ref": 332.3,
+    "last_seen": "2026-09-22",
+    "conf": 68.28,
+    "conf_gap": 1.7,
+    "tq": 50.8,
+    "rr_ratio": 1.77,
+    "regime": "SIDEWAYS",
+    "warnings": [
+      "WIDE_STOP_WARN(got 15.0%, soft cap 8.0% \u2014 R/R gate handles this)",
+      "NEAR_52W_HIGH_RESISTANCE",
+      "HIGH_GAP_RISK: p90 gap 9.7% \u00b7 effective stop 24.7%",
+      "WEAK_DELIVERY: 21% (20d avg 29%)"
+    ],
+    "fail_reasons": [
+      "CONF_FAIL(got 68.3, need 70)",
+      "TQ_FAIL(got 50.8, need 68)"
+    ],
+    "blocker_reason": null,
+    "monitor_reason": "TQ_LOW",
+    "trajectory": "RISING"
+  }
+}

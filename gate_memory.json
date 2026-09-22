@@ -1808,6 +1808,13 @@
           "TQ_FAIL(got 63.5, need 73)"
         ],
         "conf": 70.19
+      },
+      {
+        "date": "2026-09-22",
+        "fails": [
+          "SECTOR_RANK_TOO_LOW(rank=13>top6)"
+        ],
+        "conf": 71.69
       }
     ]
   },
@@ -2413,6 +2420,92 @@
           "TQ_FAIL(got 65.5, need 73)"
         ],
         "conf": 66.35
+      },
+      {
+        "date": "2026-09-22",
+        "fails": [
+          "CONF_FAIL(got 68.3, need 70)",
+          "TQ_FAIL(got 50.8, need 68)"
+        ],
+        "conf": 68.28
+      }
+    ]
+  },
+  "GLOBAL.NS": {
+    "history": [
+      {
+        "date": "2026-09-22",
+        "fails": [
+          "SECTOR_RANK_TOO_LOW(rank=13>top6)"
+        ],
+        "conf": 69.11
+      }
+    ]
+  },
+  "FINCABLES.NS": {
+    "history": [
+      {
+        "date": "2026-09-22",
+        "fails": [
+          "SECTOR_LAGGING",
+          "SECTOR_RANK_TOO_LOW(rank=19>top6)"
+        ],
+        "conf": 70.27
+      }
+    ]
+  },
+  "KSL.NS": {
+    "history": [
+      {
+        "date": "2026-09-22",
+        "fails": [
+          "SECTOR_RANK_TOO_LOW(rank=14>top6)"
+        ],
+        "conf": 78.59
+      }
+    ]
+  },
+  "SSWL.NS": {
+    "history": [
+      {
+        "date": "2026-09-22",
+        "fails": [
+          "SECTOR_RANK_TOO_LOW(rank=13>top6)"
+        ],
+        "conf": 70.74499999999999
+      }
+    ]
+  },
+  "RATNAMANI.NS": {
+    "history": [
+      {
+        "date": "2026-09-22",
+        "fails": [
+          "SECTOR_RANK_TOO_LOW(rank=13>top6)"
+        ],
+        "conf": 69.56
+      }
+    ]
+  },
+  "VARROC.NS": {
+    "history": [
+      {
+        "date": "2026-09-22",
+        "fails": [
+          "SECTOR_RANK_TOO_LOW(rank=13>top6)"
+        ],
+        "conf": 69.495
+      }
+    ]
+  },
+  "INDOCO.NS": {
+    "history": [
+      {
+        "date": "2026-09-22",
+        "fails": [
+          "CONF_FAIL(got 59.8, need 70)"
+        ],
+        "conf": 59.754999999999995
       }
     ]
   }
