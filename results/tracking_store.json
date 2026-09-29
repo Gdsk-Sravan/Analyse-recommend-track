@@ -1,5 +1,5 @@
 {
-  "last_saved": "2026-09-28T19:21:17",
+  "last_saved": "2026-09-29T19:20:59",
   "records": {
     "20MICRONS.NS_20260717": {
       "created_at": "2026-07-17",
@@ -634,9 +634,9 @@
     "AARTIPHARM.NS_20260811": {
       "created_at": "2026-08-11",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 914.0,
+        "current_price": 972.8,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -736,7 +736,7 @@
       "t2_hit_date": null,
       "tracking_id": "AARTIPHARM.NS_20260811",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "AARTISURF.NS_20260814": {
       "created_at": "2026-08-14",
@@ -951,9 +951,9 @@
     "ABDL.NS_20260915": {
       "created_at": "2026-09-15",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 723.45,
+        "current_price": 716.5,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -1049,7 +1049,7 @@
       "t2_hit_date": null,
       "tracking_id": "ABDL.NS_20260915",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "ABSLAMC.NS_20260911": {
       "created_at": "2026-09-11",
@@ -1363,9 +1363,9 @@
     "ACUTAAS.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-09-18",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 3440.3,
+        "current_price": 3304.1,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -1464,14 +1464,14 @@
       "t2_hit_date": null,
       "tracking_id": "ACUTAAS.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-18"
+      "updated_at": "2026-09-29"
     },
     "ADVANCE.NS_20260730": {
       "created_at": "2026-07-30",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 121.5,
+        "current_price": 120.19,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -1569,7 +1569,7 @@
       "t2_hit_date": null,
       "tracking_id": "ADVANCE.NS_20260730",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "AEGISLOG.NS_20260716": {
       "created_at": "2026-07-16",
@@ -1784,9 +1784,9 @@
     "AEQUS.NS_20260818": {
       "created_at": "2026-08-18",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 260.1,
+        "current_price": 271.63,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -1884,7 +1884,7 @@
       "t2_hit_date": null,
       "tracking_id": "AEQUS.NS_20260818",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "AEROENTER.NS_20260820": {
       "created_at": "2026-08-20",
@@ -2099,9 +2099,9 @@
     "AETHER.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 1739.2,
+        "current_price": 1749.9,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -2197,7 +2197,7 @@
       "t2_hit_date": null,
       "tracking_id": "AETHER.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "AFFLE.NS_20260728": {
       "created_at": "2026-07-28",
@@ -2512,6 +2512,109 @@
       "tracking_id": "AGI.NS_20260821",
       "tracking_status": "ACTIVE",
       "updated_at": "2026-09-25"
+    },
+    "AHCL.NS_20260929": {
+      "created_at": "2026-09-29",
+      "current": {
+        "as_of_date": "2026-09-29",
+        "confidence": null,
+        "current_price": 36.39,
+        "opportunity_score": null,
+        "rr": null,
+        "stage": "REJECTED",
+        "tq": null
+      },
+      "days_active": 0,
+      "days_to_stop": null,
+      "days_to_t1": null,
+      "days_to_t2": null,
+      "entry": {
+        "base_confidence": null,
+        "chop_momentum_penalty": null,
+        "conf_gap": null,
+        "confidence": 47.0,
+        "decision": "REJECTED",
+        "delivery": {
+          "delivery_pct_20d_avg": null,
+          "delivery_pct_today": null,
+          "delivery_ratio": null,
+          "delivery_signal": null,
+          "delivery_source": null
+        },
+        "factors": {
+          "macro_alignment": null,
+          "momentum_quality": null,
+          "mtf_quality": null,
+          "news_risk": null,
+          "options_sentiment": null,
+          "ownership_quality": null,
+          "rs_vs_nifty": null,
+          "sector_composite_score": null,
+          "sector_strength": null,
+          "trend_quality": null,
+          "volume_delivery": null
+        },
+        "fail_reasons": [
+          "REGIME_NO_BUY"
+        ],
+        "opportunity_score": 54.4,
+        "origin": "main_pipeline",
+        "phase_i_skip": null,
+        "reference_entry_price": 36.39,
+        "regime": "STRONG_BEAR",
+        "research": {
+          "de_ratio": null,
+          "dii_change": null,
+          "distance_from_52w_high": null,
+          "eps": null,
+          "eps_growth": null,
+          "fii_change": null,
+          "fundamentals_source": null,
+          "market_cap_cr": null,
+          "profit_growth": null,
+          "promoter_pledge_pct": null,
+          "research_grade": null,
+          "revenue_growth": null,
+          "roce": null,
+          "roe": null,
+          "sector_relative_strength": null
+        },
+        "rr": 0.0,
+        "sector": "DIVERSIFIED",
+        "setup_conf_bonus": null,
+        "setup_type": "BREAKOUT",
+        "stage": "REJECTED",
+        "stop_price": 30.93,
+        "t1_price": 38.2095,
+        "t2_price": 40.029,
+        "tier": null,
+        "tq": 45.1,
+        "trajectory": null,
+        "warnings": []
+      },
+      "first_seen_date": "2026-09-29",
+      "journey_path": [
+        "REJECTED"
+      ],
+      "last_stage_change_date": "2026-09-29",
+      "mae_pct": 0.0,
+      "max_price_seen": 36.39,
+      "mfe_pct": 0.0,
+      "migration_status": "NATIVE",
+      "min_price_seen": 36.39,
+      "previous_stage": null,
+      "stage_change_count": 0,
+      "stop_hit": false,
+      "stop_hit_date": null,
+      "strategy_version": "V1_FREEZE_20260711",
+      "symbol": "AHCL.NS",
+      "t1_hit": false,
+      "t1_hit_date": null,
+      "t2_hit": false,
+      "t2_hit_date": null,
+      "tracking_id": "AHCL.NS_20260929",
+      "tracking_status": "ACTIVE",
+      "updated_at": "2026-09-29"
     },
     "AIAENG.NS_20260716": {
       "created_at": "2026-07-16",
@@ -3034,9 +3137,9 @@
     "ALEMBICLTD.NS_20260821": {
       "created_at": "2026-08-21",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 106.91,
+        "current_price": 108.44,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -3135,7 +3238,7 @@
       "t2_hit_date": null,
       "tracking_id": "ALEMBICLTD.NS_20260821",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "ALGOQUANT.NS_20260716": {
       "created_at": "2026-07-16",
@@ -4089,9 +4192,9 @@
     "ANTELOPUS.NS_20260720": {
       "created_at": "2026-07-20",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 1159.45,
+        "current_price": 1162.5,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -4187,7 +4290,7 @@
       "t2_hit_date": null,
       "tracking_id": "ANTELOPUS.NS_20260720",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "ANTHEM.NS_20260811": {
       "created_at": "2026-08-11",
@@ -4717,9 +4820,9 @@
     "APLLTD.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 854.35,
+        "current_price": 861.5,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -4815,7 +4918,7 @@
       "t2_hit_date": null,
       "tracking_id": "APLLTD.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "APOLLO.NS_20260908": {
       "created_at": "2026-09-08",
@@ -5551,9 +5654,9 @@
     "ARTEMISMED.NS_20260729": {
       "created_at": "2026-07-29",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 365.9,
+        "current_price": 366.6,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -5657,7 +5760,7 @@
       "t2_hit_date": null,
       "tracking_id": "ARTEMISMED.NS_20260729",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "ARVIND.NS_20260908": {
       "created_at": "2026-09-08",
@@ -8178,6 +8281,109 @@
       "tracking_status": "ACTIVE",
       "updated_at": "2026-08-25"
     },
+    "AXISCADES.NS_20260929": {
+      "created_at": "2026-09-29",
+      "current": {
+        "as_of_date": "2026-09-29",
+        "confidence": null,
+        "current_price": 2067.4,
+        "opportunity_score": null,
+        "rr": null,
+        "stage": "REJECTED",
+        "tq": null
+      },
+      "days_active": 0,
+      "days_to_stop": null,
+      "days_to_t1": null,
+      "days_to_t2": null,
+      "entry": {
+        "base_confidence": null,
+        "chop_momentum_penalty": null,
+        "conf_gap": null,
+        "confidence": 28.549999999999997,
+        "decision": "REJECTED",
+        "delivery": {
+          "delivery_pct_20d_avg": null,
+          "delivery_pct_today": null,
+          "delivery_ratio": null,
+          "delivery_signal": null,
+          "delivery_source": null
+        },
+        "factors": {
+          "macro_alignment": null,
+          "momentum_quality": null,
+          "mtf_quality": null,
+          "news_risk": null,
+          "options_sentiment": null,
+          "ownership_quality": null,
+          "rs_vs_nifty": null,
+          "sector_composite_score": null,
+          "sector_strength": null,
+          "trend_quality": null,
+          "volume_delivery": null
+        },
+        "fail_reasons": [
+          "REGIME_NO_BUY"
+        ],
+        "opportunity_score": 46.6,
+        "origin": "main_pipeline",
+        "phase_i_skip": null,
+        "reference_entry_price": 2067.4,
+        "regime": "STRONG_BEAR",
+        "research": {
+          "de_ratio": null,
+          "dii_change": null,
+          "distance_from_52w_high": null,
+          "eps": null,
+          "eps_growth": null,
+          "fii_change": null,
+          "fundamentals_source": null,
+          "market_cap_cr": null,
+          "profit_growth": null,
+          "promoter_pledge_pct": null,
+          "research_grade": null,
+          "revenue_growth": null,
+          "roce": null,
+          "roe": null,
+          "sector_relative_strength": null
+        },
+        "rr": 0.0,
+        "sector": "DIVERSIFIED",
+        "setup_conf_bonus": null,
+        "setup_type": "BREAKOUT",
+        "stage": "REJECTED",
+        "stop_price": 1757.29,
+        "t1_price": 2170.77,
+        "t2_price": 2274.14,
+        "tier": null,
+        "tq": 68.1,
+        "trajectory": null,
+        "warnings": []
+      },
+      "first_seen_date": "2026-09-29",
+      "journey_path": [
+        "REJECTED"
+      ],
+      "last_stage_change_date": "2026-09-29",
+      "mae_pct": 0.0,
+      "max_price_seen": 2067.4,
+      "mfe_pct": 0.0,
+      "migration_status": "NATIVE",
+      "min_price_seen": 2067.4,
+      "previous_stage": null,
+      "stage_change_count": 0,
+      "stop_hit": false,
+      "stop_hit_date": null,
+      "strategy_version": "V1_FREEZE_20260711",
+      "symbol": "AXISCADES.NS",
+      "t1_hit": false,
+      "t1_hit_date": null,
+      "t2_hit": false,
+      "t2_hit_date": null,
+      "tracking_id": "AXISCADES.NS_20260929",
+      "tracking_status": "ACTIVE",
+      "updated_at": "2026-09-29"
+    },
     "AYE.NS_20260721": {
       "created_at": "2026-07-21",
       "current": {
@@ -10592,9 +10798,9 @@
     "BHAGERIA.NS_20260903": {
       "created_at": "2026-09-03",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 380.85,
+        "current_price": 377.85,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -10692,7 +10898,7 @@
       "t2_hit_date": null,
       "tracking_id": "BHAGERIA.NS_20260903",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "BHAGYANGR.NS_20260723": {
       "created_at": "2026-07-23",
@@ -11324,9 +11530,9 @@
     "BLISSGVS.NS_20260818": {
       "created_at": "2026-08-18",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 737.65,
+        "current_price": 710.9,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -11430,7 +11636,7 @@
       "t2_hit_date": null,
       "tracking_id": "BLISSGVS.NS_20260818",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "BLKASHYAP.NS_20260716": {
       "created_at": "2026-07-16",
@@ -11847,9 +12053,9 @@
     "BLUSPRING.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 149.44,
+        "current_price": 143.11,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -11945,7 +12151,7 @@
       "t2_hit_date": null,
       "tracking_id": "BLUSPRING.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "BODALCHEM.NS_20260824": {
       "created_at": "2026-08-24",
@@ -12055,9 +12261,9 @@
     "BOROLTD.NS_20260825": {
       "created_at": "2026-08-25",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 280.8,
+        "current_price": 276.21,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -12153,7 +12359,7 @@
       "t2_hit_date": null,
       "tracking_id": "BOROLTD.NS_20260825",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "BRIGADE.NS_20260731": {
       "created_at": "2026-07-31",
@@ -12991,9 +13197,9 @@
     "CASTROLIND.NS_20260917": {
       "created_at": "2026-09-17",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 201.04,
+        "current_price": 199.83,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -13089,7 +13295,7 @@
       "t2_hit_date": null,
       "tracking_id": "CASTROLIND.NS_20260917",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "CDSL.NS_20260716": {
       "created_at": "2026-07-16",
@@ -13509,9 +13715,9 @@
     "CENTUM.NS_20260908": {
       "created_at": "2026-09-08",
       "current": {
-        "as_of_date": "2026-09-25",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 4802.3,
+        "current_price": 4920.7,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -13611,7 +13817,7 @@
       "t2_hit_date": null,
       "tracking_id": "CENTUM.NS_20260908",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-25"
+      "updated_at": "2026-09-29"
     },
     "CGCL.NS_20260716": {
       "created_at": "2026-07-16",
@@ -14145,9 +14351,9 @@
     "CLEANMAX.NS_20260805": {
       "created_at": "2026-08-05",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 1373.1,
+        "current_price": 1382.4,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -14243,7 +14449,7 @@
       "t2_hit_date": null,
       "tracking_id": "CLEANMAX.NS_20260805",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "CLSEL.NS_20260824": {
       "created_at": "2026-08-24",
@@ -15398,9 +15604,9 @@
     "CPPLUS.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-09-02",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 3721.4,
+        "current_price": 3817.6,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -15498,7 +15704,7 @@
       "t2_hit_date": null,
       "tracking_id": "CPPLUS.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-02"
+      "updated_at": "2026-09-29"
     },
     "CRAMC.NS_20260722": {
       "created_at": "2026-07-22",
@@ -17284,9 +17490,9 @@
     "DELTACORP.NS_20260928": {
       "created_at": "2026-09-28",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 72.2,
+        "current_price": 78.69,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -17382,7 +17588,7 @@
       "t2_hit_date": null,
       "tracking_id": "DELTACORP.NS_20260928",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "DENTA.NS_20260721": {
       "created_at": "2026-07-21",
@@ -18967,9 +19173,9 @@
     "E2E.NS_20260722": {
       "created_at": "2026-07-22",
       "current": {
-        "as_of_date": "2026-09-24",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 646.7,
+        "current_price": 651.8,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -19069,7 +19275,7 @@
       "t2_hit_date": null,
       "tracking_id": "E2E.NS_20260722",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-24"
+      "updated_at": "2026-09-29"
     },
     "EBGNG.NS_20260820": {
       "created_at": "2026-08-20",
@@ -19814,9 +20020,9 @@
     "ELLEN.NS_20260807": {
       "created_at": "2026-08-07",
       "current": {
-        "as_of_date": "2026-09-17",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 371.0,
+        "current_price": 369.35,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -19915,7 +20121,7 @@
       "t2_hit_date": null,
       "tracking_id": "ELLEN.NS_20260807",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-17"
+      "updated_at": "2026-09-29"
     },
     "EMAMIPAP.NS_20260723": {
       "created_at": "2026-07-23",
@@ -20647,9 +20853,9 @@
     "ENGINERSIN.NS_20260824": {
       "created_at": "2026-08-24",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 313.9,
+        "current_price": 310.2,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -20748,7 +20954,7 @@
       "t2_hit_date": null,
       "tracking_id": "ENGINERSIN.NS_20260824",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "ENTERO.NS_20260810": {
       "created_at": "2026-08-10",
@@ -21067,9 +21273,9 @@
     "ESAFSFB.NS_20260724": {
       "created_at": "2026-07-24",
       "current": {
-        "as_of_date": "2026-08-06",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 43.01,
+        "current_price": 44.54,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -21165,7 +21371,7 @@
       "t2_hit_date": null,
       "tracking_id": "ESAFSFB.NS_20260724",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-08-06"
+      "updated_at": "2026-09-29"
     },
     "ETERNAL.NS_20260716": {
       "created_at": "2026-07-16",
@@ -22218,9 +22424,9 @@
     "FILATEX.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 110.75,
+        "current_price": 112.0,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -22320,7 +22526,7 @@
       "t2_hit_date": null,
       "tracking_id": "FILATEX.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "FINCABLES.NS_20260812": {
       "created_at": "2026-08-12",
@@ -23164,9 +23370,9 @@
     "GANDHAR.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-09-04",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 267.6,
+        "current_price": 273.55,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -23262,7 +23468,7 @@
       "t2_hit_date": null,
       "tracking_id": "GANDHAR.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-04"
+      "updated_at": "2026-09-29"
     },
     "GANECOS.NS_20260716": {
       "created_at": "2026-07-16",
@@ -23370,9 +23576,9 @@
     "GANESHBE.NS_20260723": {
       "created_at": "2026-07-23",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 137.32,
+        "current_price": 137.83,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -23470,7 +23676,7 @@
       "t2_hit_date": null,
       "tracking_id": "GANESHBE.NS_20260723",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "GARUDA.NS_20260810": {
       "created_at": "2026-08-10",
@@ -23790,9 +23996,9 @@
     "GCSL.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 667.35,
+        "current_price": 666.25,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -23888,7 +24094,7 @@
       "t2_hit_date": null,
       "tracking_id": "GCSL.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "GENUSPOWER.NS_20260821": {
       "created_at": "2026-08-21",
@@ -24102,9 +24308,9 @@
     "GESHIP.NS_20260928": {
       "created_at": "2026-09-28",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 1533.4,
+        "current_price": 1537.8,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -24200,7 +24406,7 @@
       "t2_hit_date": null,
       "tracking_id": "GESHIP.NS_20260928",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "GHCLTEXTIL.NS_20260716": {
       "created_at": "2026-07-16",
@@ -25045,9 +25251,9 @@
     "GNA.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 594.7,
+        "current_price": 593.75,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -25143,14 +25349,14 @@
       "t2_hit_date": null,
       "tracking_id": "GNA.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "GNFC.NS_20260814": {
       "created_at": "2026-08-14",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 620.65,
+        "current_price": 611.5,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -25248,7 +25454,7 @@
       "t2_hit_date": null,
       "tracking_id": "GNFC.NS_20260814",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "GOACARBON.NS_20260910": {
       "created_at": "2026-09-10",
@@ -26711,9 +26917,9 @@
     "GREAVESCOT.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 230.4,
+        "current_price": 234.99,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -26809,7 +27015,7 @@
       "t2_hit_date": null,
       "tracking_id": "GREAVESCOT.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "GREENPLY.NS_20260721": {
       "created_at": "2026-07-21",
@@ -30180,9 +30386,9 @@
     "IBULLSLTD.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-09-22",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 29.51,
+        "current_price": 29.93,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -30278,7 +30484,7 @@
       "t2_hit_date": null,
       "tracking_id": "IBULLSLTD.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-22"
+      "updated_at": "2026-09-29"
     },
     "ICICIBANK.NS_20260717": {
       "created_at": "2026-07-17",
@@ -32590,12 +32796,12 @@
     "INDOCO.NS_20260828": {
       "created_at": "2026-08-28",
       "current": {
-        "as_of_date": "2026-09-22",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 254.51,
+        "current_price": 269.15,
         "opportunity_score": null,
         "rr": null,
-        "stage": "NEAR_MISS",
+        "stage": "REJECTED",
         "tq": null
       },
       "days_active": 0,
@@ -32671,16 +32877,17 @@
       "first_seen_date": "2026-08-28",
       "journey_path": [
         "REJECTED",
-        "NEAR_MISS"
+        "NEAR_MISS",
+        "REJECTED"
       ],
-      "last_stage_change_date": "2026-09-22",
+      "last_stage_change_date": "2026-09-29",
       "mae_pct": 0.0,
       "max_price_seen": 248.8,
       "mfe_pct": 0.0,
       "migration_status": "NATIVE",
       "min_price_seen": 248.8,
-      "previous_stage": "REJECTED",
-      "stage_change_count": 1,
+      "previous_stage": "NEAR_MISS",
+      "stage_change_count": 2,
       "stop_hit": false,
       "stop_hit_date": null,
       "strategy_version": "V1_FREEZE_20260711",
@@ -32691,7 +32898,7 @@
       "t2_hit_date": null,
       "tracking_id": "INDOCO.NS_20260828",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-22"
+      "updated_at": "2026-09-29"
     },
     "INDOFARM.NS_20260716": {
       "created_at": "2026-07-16",
@@ -33005,9 +33212,9 @@
     "INDSWFTLAB.NS_20260721": {
       "created_at": "2026-07-21",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 408.1,
+        "current_price": 413.1,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -33103,7 +33310,7 @@
       "t2_hit_date": null,
       "tracking_id": "INDSWFTLAB.NS_20260721",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "INDUSINDBK.NS_20260720": {
       "created_at": "2026-07-20",
@@ -33211,7 +33418,7 @@
     "INNOVACAP.NS_20260902": {
       "created_at": "2026-09-02",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
         "current_price": 1271.2,
         "opportunity_score": null,
@@ -33310,7 +33517,7 @@
       "t2_hit_date": null,
       "tracking_id": "INNOVACAP.NS_20260902",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "INOXINDIA.NS_20260720": {
       "created_at": "2026-07-20",
@@ -34359,9 +34566,9 @@
     "JAMNAAUTO.NS_20260807": {
       "created_at": "2026-08-07",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 139.68,
+        "current_price": 136.27,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -34458,14 +34665,14 @@
       "t2_hit_date": null,
       "tracking_id": "JAMNAAUTO.NS_20260807",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "JASH.NS_20260921": {
       "created_at": "2026-09-21",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 588.75,
+        "current_price": 598.4,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -34565,7 +34772,7 @@
       "t2_hit_date": null,
       "tracking_id": "JASH.NS_20260921",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "JAYBARMARU.NS_20260716": {
       "created_at": "2026-07-16",
@@ -34673,9 +34880,9 @@
     "JAYKAY.NS_20260925": {
       "created_at": "2026-09-25",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 203.81,
+        "current_price": 205.01,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -34771,7 +34978,7 @@
       "t2_hit_date": null,
       "tracking_id": "JAYKAY.NS_20260925",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "JAYNECOIND.NS_20260824": {
       "created_at": "2026-08-24",
@@ -34984,9 +35191,9 @@
     "JGCHEM.NS_20260720": {
       "created_at": "2026-07-20",
       "current": {
-        "as_of_date": "2026-08-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 651.3,
+        "current_price": 658.65,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -35084,7 +35291,7 @@
       "t2_hit_date": null,
       "tracking_id": "JGCHEM.NS_20260720",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-08-28"
+      "updated_at": "2026-09-29"
     },
     "JINDALSAW.NS_20260821": {
       "created_at": "2026-08-21",
@@ -37163,9 +37370,9 @@
     "KABRAEXTRU.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 863.15,
+        "current_price": 829.8,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -37263,7 +37470,7 @@
       "t2_hit_date": null,
       "tracking_id": "KABRAEXTRU.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "KAJARIACER.NS_20260716": {
       "created_at": "2026-07-16",
@@ -39038,9 +39245,9 @@
     "KIRLOSENG.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-07-16",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 2414.2,
+        "current_price": 2402.0,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -39136,14 +39343,14 @@
       "t2_hit_date": null,
       "tracking_id": "KIRLOSENG.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-16"
+      "updated_at": "2026-09-29"
     },
     "KISSHT.NS_20260915": {
       "created_at": "2026-09-15",
       "current": {
-        "as_of_date": "2026-09-21",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 362.5,
+        "current_price": 358.65,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -39239,14 +39446,14 @@
       "t2_hit_date": null,
       "tracking_id": "KISSHT.NS_20260915",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-21"
+      "updated_at": "2026-09-29"
     },
     "KMEW.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-09-22",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 2976.7,
+        "current_price": 3064.8,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -39344,7 +39551,7 @@
       "t2_hit_date": null,
       "tracking_id": "KMEW.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-22"
+      "updated_at": "2026-09-29"
     },
     "KNRCON.NS_20260807": {
       "created_at": "2026-08-07",
@@ -39559,9 +39766,9 @@
     "KOPRAN.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-09-23",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 279.42,
+        "current_price": 290.9,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -39657,7 +39864,7 @@
       "t2_hit_date": null,
       "tracking_id": "KOPRAN.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-23"
+      "updated_at": "2026-09-29"
     },
     "KOTAKBANK.NS_20260826": {
       "created_at": "2026-08-26",
@@ -40301,9 +40508,9 @@
     "KRONOX.NS_20260810": {
       "created_at": "2026-08-10",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 216.9,
+        "current_price": 217.04,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -40402,14 +40609,14 @@
       "t2_hit_date": null,
       "tracking_id": "KRONOX.NS_20260810",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "KROSS.NS_20260724": {
       "created_at": "2026-07-24",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 260.23,
+        "current_price": 261.83,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -40505,7 +40712,7 @@
       "t2_hit_date": null,
       "tracking_id": "KROSS.NS_20260724",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "KSHINTL.NS_20260724": {
       "created_at": "2026-07-24",
@@ -41862,9 +42069,9 @@
     "LLOYDSENGG.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 95.97,
+        "current_price": 102.19,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -41960,14 +42167,14 @@
       "t2_hit_date": null,
       "tracking_id": "LLOYDSENGG.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "LLOYDSENT.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-09-25",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 79.67,
+        "current_price": 79.13,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -42063,7 +42270,7 @@
       "t2_hit_date": null,
       "tracking_id": "LLOYDSENT.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-25"
+      "updated_at": "2026-09-29"
     },
     "LLOYDSME.NS_20260717": {
       "created_at": "2026-07-17",
@@ -42913,9 +43120,9 @@
     "MAHLOG.NS_20260720": {
       "created_at": "2026-07-20",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 421.8,
+        "current_price": 425.7,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -43011,14 +43218,14 @@
       "t2_hit_date": null,
       "tracking_id": "MAHLOG.NS_20260720",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "MAHSEAMLES.NS_20260828": {
       "created_at": "2026-08-28",
       "current": {
-        "as_of_date": "2026-09-17",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 720.2,
+        "current_price": 721.85,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -43116,7 +43323,7 @@
       "t2_hit_date": null,
       "tracking_id": "MAHSEAMLES.NS_20260828",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-17"
+      "updated_at": "2026-09-29"
     },
     "MAITHANALL.NS_20260907": {
       "created_at": "2026-09-07",
@@ -43747,9 +43954,9 @@
     "MANINDS.NS_20260812": {
       "created_at": "2026-08-12",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 953.35,
+        "current_price": 959.6,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -43845,14 +44052,14 @@
       "t2_hit_date": null,
       "tracking_id": "MANINDS.NS_20260812",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "MANINFRA.NS_20260824": {
       "created_at": "2026-08-24",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 127.43,
+        "current_price": 127.9,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -43948,14 +44155,14 @@
       "t2_hit_date": null,
       "tracking_id": "MANINFRA.NS_20260824",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "MANKIND.NS_20260720": {
       "created_at": "2026-07-20",
       "current": {
-        "as_of_date": "2026-07-20",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 2565.8,
+        "current_price": 2545.0,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -44052,14 +44259,14 @@
       "t2_hit_date": null,
       "tracking_id": "MANKIND.NS_20260720",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-20"
+      "updated_at": "2026-09-29"
     },
     "MANOMAY.NS_20260827": {
       "created_at": "2026-08-27",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 228.58,
+        "current_price": 236.46,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -44155,7 +44362,7 @@
       "t2_hit_date": null,
       "tracking_id": "MANOMAY.NS_20260827",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "MANORAMA.NS_20260814": {
       "created_at": "2026-08-14",
@@ -44478,9 +44685,9 @@
     "MARINE.NS_20260804": {
       "created_at": "2026-08-04",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 428.2,
+        "current_price": 438.25,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -44577,14 +44784,14 @@
       "t2_hit_date": null,
       "tracking_id": "MARINE.NS_20260804",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "MARKSANS.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-09-23",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 347.6,
+        "current_price": 342.75,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -44680,7 +44887,7 @@
       "t2_hit_date": null,
       "tracking_id": "MARKSANS.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-23"
+      "updated_at": "2026-09-29"
     },
     "MASTEK.NS_20260728": {
       "created_at": "2026-07-28",
@@ -48349,9 +48556,9 @@
     "MTARTECH.NS_20260818": {
       "created_at": "2026-08-18",
       "current": {
-        "as_of_date": "2026-09-09",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 7501.0,
+        "current_price": 7426.0,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -48450,14 +48657,14 @@
       "t2_hit_date": null,
       "tracking_id": "MTARTECH.NS_20260818",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-09"
+      "updated_at": "2026-09-29"
     },
     "MUKANDLTD.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 171.03,
+        "current_price": 172.49,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -48555,7 +48762,7 @@
       "t2_hit_date": null,
       "tracking_id": "MUKANDLTD.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "MUKKA.NS_20260901": {
       "created_at": "2026-09-01",
@@ -48978,9 +49185,9 @@
     "MWL.NS_20260805": {
       "created_at": "2026-08-05",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 43.46,
+        "current_price": 43.4,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -49076,7 +49283,7 @@
       "t2_hit_date": null,
       "tracking_id": "MWL.NS_20260805",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "NAM-INDIA.NS_20260821": {
       "created_at": "2026-08-21",
@@ -49705,9 +49912,9 @@
     "NAZARA.NS_20260731": {
       "created_at": "2026-07-31",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 379.65,
+        "current_price": 388.4,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -49811,7 +50018,7 @@
       "t2_hit_date": null,
       "tracking_id": "NAZARA.NS_20260731",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "NELCO.NS_20260722": {
       "created_at": "2026-07-22",
@@ -49919,9 +50126,9 @@
     "NEOGEN.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 2396.3,
+        "current_price": 2435.3,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -50017,7 +50224,7 @@
       "t2_hit_date": null,
       "tracking_id": "NEOGEN.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "NEPHROPLUS.NS_20260908": {
       "created_at": "2026-09-08",
@@ -51385,9 +51592,9 @@
     "NRBBEARING.NS_20260807": {
       "created_at": "2026-08-07",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 541.5,
+        "current_price": 541.05,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -51487,7 +51694,7 @@
       "t2_hit_date": null,
       "tracking_id": "NRBBEARING.NS_20260807",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "NUVAMA.NS_20260716": {
       "created_at": "2026-07-16",
@@ -52331,9 +52538,9 @@
     "ONEPOINT.NS_20260807": {
       "created_at": "2026-08-07",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 69.43,
+        "current_price": 71.62,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -52429,7 +52636,7 @@
       "t2_hit_date": null,
       "tracking_id": "ONEPOINT.NS_20260807",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "ONESOURCE.NS_20260728": {
       "created_at": "2026-07-28",
@@ -52645,9 +52852,9 @@
     "OPTIEMUS.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 809.95,
+        "current_price": 796.2,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -52743,7 +52950,7 @@
       "t2_hit_date": null,
       "tracking_id": "OPTIEMUS.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "ORCHPHARMA.NS_20260720": {
       "created_at": "2026-07-20",
@@ -54417,9 +54624,9 @@
     "PENIND.NS_20260907": {
       "created_at": "2026-09-07",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 182.17,
+        "current_price": 180.28,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -54517,7 +54724,7 @@
       "t2_hit_date": null,
       "tracking_id": "PENIND.NS_20260907",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "PERSISTENT.NS_20260730": {
       "created_at": "2026-07-30",
@@ -54831,9 +55038,9 @@
     "PGIL.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 1296.1,
+        "current_price": 1290.4,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -54933,7 +55140,7 @@
       "t2_hit_date": null,
       "tracking_id": "PGIL.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "PHOENIXLTD.NS_20260716": {
       "created_at": "2026-07-16",
@@ -56608,9 +56815,9 @@
     "POWERICA.NS_20260922": {
       "created_at": "2026-09-22",
       "current": {
-        "as_of_date": "2026-09-22",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 559.3,
+        "current_price": 599.75,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -56708,7 +56915,7 @@
       "t2_hit_date": null,
       "tracking_id": "POWERICA.NS_20260922",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-22"
+      "updated_at": "2026-09-29"
     },
     "POWERINDIA.NS_20260812": {
       "created_at": "2026-08-12",
@@ -57238,9 +57445,9 @@
     "PREMIERPOL.NS_20260717": {
       "created_at": "2026-07-17",
       "current": {
-        "as_of_date": "2026-09-24",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 100.51,
+        "current_price": 95.89,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -57340,7 +57547,7 @@
       "t2_hit_date": null,
       "tracking_id": "PREMIERPOL.NS_20260717",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-24"
+      "updated_at": "2026-09-29"
     },
     "PRICOLLTD.NS_20260727": {
       "created_at": "2026-07-27",
@@ -57552,6 +57759,109 @@
       "tracking_status": "ACTIVE",
       "updated_at": "2026-09-01"
     },
+    "PRIVISCL.NS_20260929": {
+      "created_at": "2026-09-29",
+      "current": {
+        "as_of_date": "2026-09-29",
+        "confidence": null,
+        "current_price": 3605.5,
+        "opportunity_score": null,
+        "rr": null,
+        "stage": "REJECTED",
+        "tq": null
+      },
+      "days_active": 0,
+      "days_to_stop": null,
+      "days_to_t1": null,
+      "days_to_t2": null,
+      "entry": {
+        "base_confidence": null,
+        "chop_momentum_penalty": null,
+        "conf_gap": null,
+        "confidence": 39.815,
+        "decision": "REJECTED",
+        "delivery": {
+          "delivery_pct_20d_avg": null,
+          "delivery_pct_today": null,
+          "delivery_ratio": null,
+          "delivery_signal": null,
+          "delivery_source": null
+        },
+        "factors": {
+          "macro_alignment": null,
+          "momentum_quality": null,
+          "mtf_quality": null,
+          "news_risk": null,
+          "options_sentiment": null,
+          "ownership_quality": null,
+          "rs_vs_nifty": null,
+          "sector_composite_score": null,
+          "sector_strength": null,
+          "trend_quality": null,
+          "volume_delivery": null
+        },
+        "fail_reasons": [
+          "REGIME_NO_BUY"
+        ],
+        "opportunity_score": 58.5,
+        "origin": "main_pipeline",
+        "phase_i_skip": null,
+        "reference_entry_price": 3605.5,
+        "regime": "STRONG_BEAR",
+        "research": {
+          "de_ratio": null,
+          "dii_change": null,
+          "distance_from_52w_high": null,
+          "eps": null,
+          "eps_growth": null,
+          "fii_change": null,
+          "fundamentals_source": null,
+          "market_cap_cr": null,
+          "profit_growth": null,
+          "promoter_pledge_pct": null,
+          "research_grade": null,
+          "revenue_growth": null,
+          "roce": null,
+          "roe": null,
+          "sector_relative_strength": null
+        },
+        "rr": 0.0,
+        "sector": "DEFENCE",
+        "setup_conf_bonus": null,
+        "setup_type": "MOMENTUM",
+        "stage": "REJECTED",
+        "stop_price": 3366.18,
+        "t1_price": 3785.775,
+        "t2_price": 3966.05,
+        "tier": null,
+        "tq": 77.0,
+        "trajectory": null,
+        "warnings": []
+      },
+      "first_seen_date": "2026-09-29",
+      "journey_path": [
+        "REJECTED"
+      ],
+      "last_stage_change_date": "2026-09-29",
+      "mae_pct": 0.0,
+      "max_price_seen": 3605.5,
+      "mfe_pct": 0.0,
+      "migration_status": "NATIVE",
+      "min_price_seen": 3605.5,
+      "previous_stage": null,
+      "stage_change_count": 0,
+      "stop_hit": false,
+      "stop_hit_date": null,
+      "strategy_version": "V1_FREEZE_20260711",
+      "symbol": "PRIVISCL.NS",
+      "t1_hit": false,
+      "t1_hit_date": null,
+      "t2_hit": false,
+      "t2_hit_date": null,
+      "tracking_id": "PRIVISCL.NS_20260929",
+      "tracking_status": "ACTIVE",
+      "updated_at": "2026-09-29"
+    },
     "PROTEAN.NS_20260928": {
       "created_at": "2026-09-28",
       "current": {
@@ -57658,9 +57968,9 @@
     "PROZONER.NS_20260928": {
       "created_at": "2026-09-28",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 56.26,
+        "current_price": 56.2,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -57756,7 +58066,7 @@
       "t2_hit_date": null,
       "tracking_id": "PROZONER.NS_20260928",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "PSPPROJECT.NS_20260716": {
       "created_at": "2026-07-16",
@@ -58386,9 +58696,9 @@
     "QPOWER.NS_20260812": {
       "created_at": "2026-08-12",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 1592.7,
+        "current_price": 1614.3,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -58487,14 +58797,14 @@
       "t2_hit_date": null,
       "tracking_id": "QPOWER.NS_20260812",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "QUADFUTURE.NS_20260826": {
       "created_at": "2026-08-26",
       "current": {
-        "as_of_date": "2026-09-25",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 547.5,
+        "current_price": 542.15,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -58594,7 +58904,7 @@
       "t2_hit_date": null,
       "tracking_id": "QUADFUTURE.NS_20260826",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-25"
+      "updated_at": "2026-09-29"
     },
     "QUESS.NS_20260721": {
       "created_at": "2026-07-21",
@@ -59657,9 +59967,9 @@
     "RAYMOND.NS_20260817": {
       "created_at": "2026-08-17",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 1179.95,
+        "current_price": 1185.75,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -59757,14 +60067,14 @@
       "t2_hit_date": null,
       "tracking_id": "RAYMOND.NS_20260817",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "RAYMONDREL.NS_20260925": {
       "created_at": "2026-09-25",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 672.95,
+        "current_price": 672.55,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -59860,7 +60170,7 @@
       "t2_hit_date": null,
       "tracking_id": "RAYMONDREL.NS_20260925",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "RBA.NS_20260805": {
       "created_at": "2026-08-05",
@@ -60076,9 +60386,9 @@
     "RBZJEWEL.NS_20260831": {
       "created_at": "2026-08-31",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 189.91,
+        "current_price": 197.78,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -60179,7 +60489,7 @@
       "t2_hit_date": null,
       "tracking_id": "RBZJEWEL.NS_20260831",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "REDINGTON.NS_20260729": {
       "created_at": "2026-07-29",
@@ -60809,9 +61119,9 @@
     "REMSONSIND.NS_20260924": {
       "created_at": "2026-09-24",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 120.39,
+        "current_price": 111.56,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -60907,14 +61217,14 @@
       "t2_hit_date": null,
       "tracking_id": "REMSONSIND.NS_20260924",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "RGL.NS_20260819": {
       "created_at": "2026-08-19",
       "current": {
-        "as_of_date": "2026-09-25",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 167.47,
+        "current_price": 164.27,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -61010,7 +61320,7 @@
       "t2_hit_date": null,
       "tracking_id": "RGL.NS_20260819",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-25"
+      "updated_at": "2026-09-29"
     },
     "RHETAN.NS_20260727": {
       "created_at": "2026-07-27",
@@ -61539,9 +61849,9 @@
     "RML.NS_20260904": {
       "created_at": "2026-09-04",
       "current": {
-        "as_of_date": "2026-09-24",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 1362.8,
+        "current_price": 1380.9,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -61641,14 +61951,14 @@
       "t2_hit_date": null,
       "tracking_id": "RML.NS_20260904",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-24"
+      "updated_at": "2026-09-29"
     },
     "ROLEXRINGS.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 193.45,
+        "current_price": 190.58,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -61747,7 +62057,7 @@
       "t2_hit_date": null,
       "tracking_id": "ROLEXRINGS.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "ROSSTECH.NS_20260818": {
       "created_at": "2026-08-18",
@@ -62064,9 +62374,9 @@
     "RPTECH.NS_20260803": {
       "created_at": "2026-08-03",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 883.95,
+        "current_price": 925.35,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -62165,7 +62475,7 @@
       "t2_hit_date": null,
       "tracking_id": "RPTECH.NS_20260803",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "RRKABEL.NS_20260716": {
       "created_at": "2026-07-16",
@@ -62376,6 +62686,109 @@
       "tracking_id": "RSL.NS_20260810",
       "tracking_status": "ACTIVE",
       "updated_at": "2026-09-22"
+    },
+    "RSYSTEMS.NS_20260929": {
+      "created_at": "2026-09-29",
+      "current": {
+        "as_of_date": "2026-09-29",
+        "confidence": null,
+        "current_price": 298.69,
+        "opportunity_score": null,
+        "rr": null,
+        "stage": "REJECTED",
+        "tq": null
+      },
+      "days_active": 0,
+      "days_to_stop": null,
+      "days_to_t1": null,
+      "days_to_t2": null,
+      "entry": {
+        "base_confidence": null,
+        "chop_momentum_penalty": null,
+        "conf_gap": null,
+        "confidence": 34.075,
+        "decision": "REJECTED",
+        "delivery": {
+          "delivery_pct_20d_avg": null,
+          "delivery_pct_today": null,
+          "delivery_ratio": null,
+          "delivery_signal": null,
+          "delivery_source": null
+        },
+        "factors": {
+          "macro_alignment": null,
+          "momentum_quality": null,
+          "mtf_quality": null,
+          "news_risk": null,
+          "options_sentiment": null,
+          "ownership_quality": null,
+          "rs_vs_nifty": null,
+          "sector_composite_score": null,
+          "sector_strength": null,
+          "trend_quality": null,
+          "volume_delivery": null
+        },
+        "fail_reasons": [
+          "REGIME_NO_BUY"
+        ],
+        "opportunity_score": 49.2,
+        "origin": "main_pipeline",
+        "phase_i_skip": null,
+        "reference_entry_price": 298.69,
+        "regime": "STRONG_BEAR",
+        "research": {
+          "de_ratio": null,
+          "dii_change": null,
+          "distance_from_52w_high": null,
+          "eps": null,
+          "eps_growth": null,
+          "fii_change": null,
+          "fundamentals_source": null,
+          "market_cap_cr": null,
+          "profit_growth": null,
+          "promoter_pledge_pct": null,
+          "research_grade": null,
+          "revenue_growth": null,
+          "roce": null,
+          "roe": null,
+          "sector_relative_strength": null
+        },
+        "rr": 0.0,
+        "sector": "DIVERSIFIED",
+        "setup_conf_bonus": null,
+        "setup_type": "MOMENTUM",
+        "stage": "REJECTED",
+        "stop_price": 256.03,
+        "t1_price": 313.6245,
+        "t2_price": 328.559,
+        "tier": null,
+        "tq": 66.5,
+        "trajectory": null,
+        "warnings": []
+      },
+      "first_seen_date": "2026-09-29",
+      "journey_path": [
+        "REJECTED"
+      ],
+      "last_stage_change_date": "2026-09-29",
+      "mae_pct": 0.0,
+      "max_price_seen": 298.69,
+      "mfe_pct": 0.0,
+      "migration_status": "NATIVE",
+      "min_price_seen": 298.69,
+      "previous_stage": null,
+      "stage_change_count": 0,
+      "stop_hit": false,
+      "stop_hit_date": null,
+      "strategy_version": "V1_FREEZE_20260711",
+      "symbol": "RSYSTEMS.NS",
+      "t1_hit": false,
+      "t1_hit_date": null,
+      "t2_hit": false,
+      "t2_hit_date": null,
+      "tracking_id": "RSYSTEMS.NS_20260929",
+      "tracking_status": "ACTIVE",
+      "updated_at": "2026-09-29"
     },
     "RUBICON.NS_20260720": {
       "created_at": "2026-07-20",
@@ -63010,9 +63423,9 @@
     "SALSTEEL.NS_20260814": {
       "created_at": "2026-08-14",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 93.03,
+        "current_price": 97.08,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -63108,14 +63521,14 @@
       "t2_hit_date": null,
       "tracking_id": "SALSTEEL.NS_20260814",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "SAMBHV.NS_20260804": {
       "created_at": "2026-08-04",
       "current": {
-        "as_of_date": "2026-09-25",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 159.12,
+        "current_price": 162.24,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -63215,7 +63628,7 @@
       "t2_hit_date": null,
       "tracking_id": "SAMBHV.NS_20260804",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-25"
+      "updated_at": "2026-09-29"
     },
     "SAMHI.NS_20260730": {
       "created_at": "2026-07-30",
@@ -63325,9 +63738,9 @@
     "SANATHAN.NS_20260923": {
       "created_at": "2026-09-23",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 517.55,
+        "current_price": 515.0,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -63425,7 +63838,7 @@
       "t2_hit_date": null,
       "tracking_id": "SANATHAN.NS_20260923",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "SANDHAR.NS_20260824": {
       "created_at": "2026-08-24",
@@ -64161,9 +64574,9 @@
     "SATIN.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-07-27",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 261.51,
+        "current_price": 237.69,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -64259,14 +64672,14 @@
       "t2_hit_date": null,
       "tracking_id": "SATIN.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-07-27"
+      "updated_at": "2026-09-29"
     },
     "SBC.NS_20260904": {
       "created_at": "2026-09-04",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 53.54,
+        "current_price": 54.73,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -64362,7 +64775,7 @@
       "t2_hit_date": null,
       "tracking_id": "SBC.NS_20260904",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "SBCL.NS_20260806": {
       "created_at": "2026-08-06",
@@ -64783,9 +65196,9 @@
     "SEDEMAC.NS_20260811": {
       "created_at": "2026-08-11",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 3547.8,
+        "current_price": 3485.6,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -64883,7 +65296,7 @@
       "t2_hit_date": null,
       "tracking_id": "SEDEMAC.NS_20260811",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "SENORES.NS_20260716": {
       "created_at": "2026-07-16",
@@ -64996,9 +65409,9 @@
     "SETL.NS_20260720": {
       "created_at": "2026-07-20",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 422.65,
+        "current_price": 428.95,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -65096,7 +65509,7 @@
       "t2_hit_date": null,
       "tracking_id": "SETL.NS_20260720",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "SGFIN.NS_20260720": {
       "created_at": "2026-07-20",
@@ -66044,9 +66457,9 @@
     "SHILPAMED.NS_20260805": {
       "created_at": "2026-08-05",
       "current": {
-        "as_of_date": "2026-09-24",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 1007.3,
+        "current_price": 1055.75,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -66142,7 +66555,7 @@
       "t2_hit_date": null,
       "tracking_id": "SHILPAMED.NS_20260805",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-24"
+      "updated_at": "2026-09-29"
     },
     "SHIVALIK.NS_20260917": {
       "created_at": "2026-09-17",
@@ -66353,9 +66766,9 @@
     "SHOPERSTOP.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 421.8,
+        "current_price": 418.95,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -66451,14 +66864,14 @@
       "t2_hit_date": null,
       "tracking_id": "SHOPERSTOP.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "SHREEJISPG.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 752.8,
+        "current_price": 763.3,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -66556,7 +66969,7 @@
       "t2_hit_date": null,
       "tracking_id": "SHREEJISPG.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "SHREEPUSHK.NS_20260903": {
       "created_at": "2026-09-03",
@@ -67186,9 +67599,9 @@
     "SIGMAADV.NS_20260730": {
       "created_at": "2026-07-30",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 930.4,
+        "current_price": 976.9,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -67286,7 +67699,7 @@
       "t2_hit_date": null,
       "tracking_id": "SIGMAADV.NS_20260730",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "SIGNPOST.NS_20260717": {
       "created_at": "2026-07-17",
@@ -68129,9 +68542,9 @@
     "SMCGLOBAL.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 97.23,
+        "current_price": 92.98,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -68229,7 +68642,7 @@
       "t2_hit_date": null,
       "tracking_id": "SMCGLOBAL.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "SMLMAH.NS_20260731": {
       "created_at": "2026-07-31",
@@ -68663,9 +69076,9 @@
     "SOMANYCERA.NS_20260824": {
       "created_at": "2026-08-24",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 620.05,
+        "current_price": 613.85,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -68764,7 +69177,7 @@
       "t2_hit_date": null,
       "tracking_id": "SOMANYCERA.NS_20260824",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "SONACOMS.NS_20260716": {
       "created_at": "2026-07-16",
@@ -69087,9 +69500,9 @@
     "SOUTHBANK.NS_20260924": {
       "created_at": "2026-09-24",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 48.64,
+        "current_price": 48.71,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -69185,7 +69598,7 @@
       "t2_hit_date": null,
       "tracking_id": "SOUTHBANK.NS_20260924",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "SPIC.NS_20260825": {
       "created_at": "2026-08-25",
@@ -69717,9 +70130,9 @@
     "SSWL.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 388.65,
+        "current_price": 400.65,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -69820,7 +70233,7 @@
       "t2_hit_date": null,
       "tracking_id": "SSWL.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "STALLION.NS_20260716": {
       "created_at": "2026-07-16",
@@ -70031,9 +70444,9 @@
     "STEELCAS.NS_20260805": {
       "created_at": "2026-08-05",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 370.75,
+        "current_price": 371.8,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -70131,14 +70544,14 @@
       "t2_hit_date": null,
       "tracking_id": "STEELCAS.NS_20260805",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "STLNETWORK.NS_20260831": {
       "created_at": "2026-08-31",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 52.06,
+        "current_price": 49.46,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -70239,7 +70652,7 @@
       "t2_hit_date": null,
       "tracking_id": "STLNETWORK.NS_20260831",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "STOVEKRAFT.NS_20260903": {
       "created_at": "2026-09-03",
@@ -70564,9 +70977,9 @@
     "STYLEBAAZA.NS_20260819": {
       "created_at": "2026-08-19",
       "current": {
-        "as_of_date": "2026-08-24",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 396.8,
+        "current_price": 405.0,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -70662,7 +71075,7 @@
       "t2_hit_date": null,
       "tracking_id": "STYLEBAAZA.NS_20260819",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-08-24"
+      "updated_at": "2026-09-29"
     },
     "SUDARSCHEM.NS_20260716": {
       "created_at": "2026-07-16",
@@ -71192,9 +71605,9 @@
     "SUNFLAG.NS_20260804": {
       "created_at": "2026-08-04",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 449.2,
+        "current_price": 464.3,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -71290,7 +71703,7 @@
       "t2_hit_date": null,
       "tracking_id": "SUNFLAG.NS_20260804",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "SUPRAJIT.NS_20260805": {
       "created_at": "2026-08-05",
@@ -71502,9 +71915,9 @@
     "SUPRIYA.NS_20260806": {
       "created_at": "2026-08-06",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 984.75,
+        "current_price": 985.05,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -71602,7 +72015,7 @@
       "t2_hit_date": null,
       "tracking_id": "SUPRIYA.NS_20260806",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "SURAKSHA.NS_20260825": {
       "created_at": "2026-08-25",
@@ -73913,9 +74326,9 @@
     "TEXRAIL.NS_20260904": {
       "created_at": "2026-09-04",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 123.14,
+        "current_price": 125.67,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -74013,7 +74426,7 @@
       "t2_hit_date": null,
       "tracking_id": "TEXRAIL.NS_20260904",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "TFCILTD.NS_20260716": {
       "created_at": "2026-07-16",
@@ -75059,9 +75472,9 @@
     "TIMEX.NS_20260723": {
       "created_at": "2026-07-23",
       "current": {
-        "as_of_date": "2026-09-24",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 710.8,
+        "current_price": 729.1,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -75157,7 +75570,7 @@
       "t2_hit_date": null,
       "tracking_id": "TIMEX.NS_20260723",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-24"
+      "updated_at": "2026-09-29"
     },
     "TINNARUBR.NS_20260721": {
       "created_at": "2026-07-21",
@@ -75892,9 +76305,9 @@
     "TNPL.NS_20260723": {
       "created_at": "2026-07-23",
       "current": {
-        "as_of_date": "2026-09-08",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 161.41,
+        "current_price": 151.8,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -75990,7 +76403,7 @@
       "t2_hit_date": null,
       "tracking_id": "TNPL.NS_20260723",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-08"
+      "updated_at": "2026-09-29"
     },
     "TPLPLASTEH.NS_20260720": {
       "created_at": "2026-07-20",
@@ -76720,9 +77133,9 @@
     "UGARSUGAR.NS_20260818": {
       "created_at": "2026-08-18",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 62.29,
+        "current_price": 57.81,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -76818,7 +77231,7 @@
       "t2_hit_date": null,
       "tracking_id": "UGARSUGAR.NS_20260818",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "UJJIVANSFB.NS_20260716": {
       "created_at": "2026-07-16",
@@ -76929,9 +77342,9 @@
     "UNICHEMLAB.NS_20260828": {
       "created_at": "2026-08-28",
       "current": {
-        "as_of_date": "2026-09-23",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 573.2,
+        "current_price": 568.4,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -77027,7 +77440,7 @@
       "t2_hit_date": null,
       "tracking_id": "UNICHEMLAB.NS_20260828",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-23"
+      "updated_at": "2026-09-29"
     },
     "UNIMECH.NS_20260716": {
       "created_at": "2026-07-16",
@@ -80497,9 +80910,9 @@
     "WELCORP.NS_20260716": {
       "created_at": "2026-07-16",
       "current": {
-        "as_of_date": "2026-09-25",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 2832.4,
+        "current_price": 2842.0,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -80599,7 +81012,7 @@
       "t2_hit_date": null,
       "tracking_id": "WELCORP.NS_20260716",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-25"
+      "updated_at": "2026-09-29"
     },
     "WELENT.NS_20260717": {
       "created_at": "2026-07-17",
@@ -80810,9 +81223,9 @@
     "WESTLIFE.NS_20260722": {
       "created_at": "2026-07-22",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 579.85,
+        "current_price": 596.6,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -80908,7 +81321,7 @@
       "t2_hit_date": null,
       "tracking_id": "WESTLIFE.NS_20260722",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "WHEELS.NS_20260903": {
       "created_at": "2026-09-03",
@@ -82162,9 +82575,9 @@
     "ZYDUSLIFE.NS_20260812": {
       "created_at": "2026-08-12",
       "current": {
-        "as_of_date": "2026-09-28",
+        "as_of_date": "2026-09-29",
         "confidence": null,
-        "current_price": 1215.0,
+        "current_price": 1200.5,
         "opportunity_score": null,
         "rr": null,
         "stage": "REJECTED",
@@ -82262,7 +82675,7 @@
       "t2_hit_date": null,
       "tracking_id": "ZYDUSLIFE.NS_20260812",
       "tracking_status": "ACTIVE",
-      "updated_at": "2026-09-28"
+      "updated_at": "2026-09-29"
     },
     "ZYDUSWELL.NS_20260716": {
       "created_at": "2026-07-16",
