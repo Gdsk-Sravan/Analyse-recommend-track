@@ -1264,14 +1264,6 @@
   "KRISHANA.NS": {
     "history": [
       {
-        "date": "2026-08-05",
-        "fails": [
-          "TQ_FAIL(got 59.0, need 68)",
-          "RR_FAIL(got 1.56, need 1.7)"
-        ],
-        "conf": 90.595
-      },
-      {
         "date": "2026-08-06",
         "fails": [
           "TQ_FAIL(got 63.6, need 68)",
@@ -1302,6 +1294,13 @@
           "RR_FAIL(got 1.41, need 1.7)"
         ],
         "conf": 66.67
+      },
+      {
+        "date": "2026-11-04",
+        "fails": [
+          "RR_FAIL(got 1.43, need 1.7)"
+        ],
+        "conf": 88.495
       }
     ]
   },
@@ -1432,6 +1431,13 @@
           "RR_FAIL(got 1.41, need 2.0)"
         ],
         "conf": 65.88499999999999
+      },
+      {
+        "date": "2026-11-04",
+        "fails": [
+          "RR_FAIL(got 1.42, need 1.7)"
+        ],
+        "conf": 80.62
       }
     ]
   },
@@ -1523,6 +1529,13 @@
           "TQ_FAIL(got 70.1, need 73)"
         ],
         "conf": 75.62
+      },
+      {
+        "date": "2026-11-04",
+        "fails": [
+          "RR_FAIL(got 1.42, need 1.7)"
+        ],
+        "conf": 76.77
       }
     ]
   },
@@ -2436,6 +2449,13 @@
           "TQ_FAIL(got 48.5, need 68)"
         ],
         "conf": 68.75
+      },
+      {
+        "date": "2026-11-04",
+        "fails": [
+          "RR_FAIL(got 1.45, need 1.7)"
+        ],
+        "conf": 82.965
       }
     ]
   },
@@ -2614,6 +2634,73 @@
           "TQ_FAIL(got 58.1, need 68)"
         ],
         "conf": 66.87
+      }
+    ]
+  },
+  "BSOFT.NS": {
+    "history": [
+      {
+        "date": "2026-11-04",
+        "fails": [
+          "SECTOR_RANK_TOO_LOW(rank=23>top6)"
+        ],
+        "conf": 87.205
+      }
+    ]
+  },
+  "APOLLO.NS": {
+    "history": [
+      {
+        "date": "2026-11-04",
+        "fails": [
+          "SECTOR_RANK_TOO_LOW(rank=17>top6)"
+        ],
+        "conf": 83.34
+      }
+    ]
+  },
+  "GAIL.NS": {
+    "history": [
+      {
+        "date": "2026-11-04",
+        "fails": [
+          "RR_FAIL(got 1.42, need 1.7)"
+        ],
+        "conf": 92.31
+      }
+    ]
+  },
+  "KOLTEPATIL.NS": {
+    "history": [
+      {
+        "date": "2026-11-04",
+        "fails": [
+          "RR_FAIL(got 1.59, need 1.7)"
+        ],
+        "conf": 76.48
+      }
+    ]
+  },
+  "SHRINGARMS.NS": {
+    "history": [
+      {
+        "date": "2026-11-04",
+        "fails": [
+          "SECTOR_RANK_TOO_LOW(rank=17>top6)"
+        ],
+        "conf": 87.11
+      }
+    ]
+  },
+  "PHOENIXLTD.NS": {
+    "history": [
+      {
+        "date": "2026-11-04",
+        "fails": [
+          "TQ_FAIL(got 56.6, need 68)",
+          "RR_FAIL(got 1.43, need 1.7)"
+        ],
+        "conf": 88.465
       }
     ]
   }
