@@ -795,6 +795,14 @@
           "RR_FAIL(got 1.42, need 1.7)"
         ],
         "conf": 94.0
+      },
+      {
+        "date": "2026-11-06",
+        "fails": [
+          "TQ_FAIL(got 62.1, need 68)",
+          "RR_FAIL(got 1.43, need 1.7)"
+        ],
+        "conf": 84.31
       }
     ]
   },
@@ -2701,6 +2709,61 @@
           "RR_FAIL(got 1.43, need 1.7)"
         ],
         "conf": 88.465
+      },
+      {
+        "date": "2026-11-06",
+        "fails": [
+          "TQ_FAIL(got 58.1, need 68)",
+          "RR_FAIL(got 1.43, need 1.7)"
+        ],
+        "conf": 86.49
+      }
+    ]
+  },
+  "DLF.NS": {
+    "history": [
+      {
+        "date": "2026-11-06",
+        "fails": [
+          "TQ_FAIL(got 64.4, need 68)",
+          "RR_FAIL(got 1.42, need 1.7)"
+        ],
+        "conf": 79.715
+      }
+    ]
+  },
+  "VRLLOG.NS": {
+    "history": [
+      {
+        "date": "2026-11-06",
+        "fails": [
+          "SECTOR_RANK_TOO_LOW(rank=16>top6)"
+        ],
+        "conf": 79.105
+      }
+    ]
+  },
+  "ULTRACEMCO.NS": {
+    "history": [
+      {
+        "date": "2026-11-06",
+        "fails": [
+          "CONF_FAIL(got 59.3, need 74)",
+          "RR_FAIL(got 1.42, need 1.7)"
+        ],
+        "conf": 59.33
+      }
+    ]
+  },
+  "HILINFRA.NS": {
+    "history": [
+      {
+        "date": "2026-11-06",
+        "fails": [
+          "CONF_FAIL(got 69.4, need 74)",
+          "TQ_FAIL(got 47.6, need 68)"
+        ],
+        "conf": 69.41
       }
     ]
   }
