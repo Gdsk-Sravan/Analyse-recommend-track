@@ -366,6 +366,13 @@
           "RR_FAIL(got 1.39, need 1.7)"
         ],
         "conf": 69.22
+      },
+      {
+        "date": "2026-11-09",
+        "fails": [
+          "RR_FAIL(got 1.41, need 1.8)"
+        ],
+        "conf": 85.445
       }
     ]
   },
@@ -2717,6 +2724,14 @@
           "RR_FAIL(got 1.43, need 1.7)"
         ],
         "conf": 86.49
+      },
+      {
+        "date": "2026-11-09",
+        "fails": [
+          "TQ_FAIL(got 61.0, need 71)",
+          "RR_FAIL(got 1.43, need 1.8)"
+        ],
+        "conf": 86.47
       }
     ]
   },
@@ -2764,6 +2779,53 @@
           "TQ_FAIL(got 47.6, need 68)"
         ],
         "conf": 69.41
+      }
+    ]
+  },
+  "UNIONBANK.NS": {
+    "history": [
+      {
+        "date": "2026-11-09",
+        "fails": [
+          "RR_FAIL(got 1.42, need 1.8)"
+        ],
+        "conf": 81.39
+      }
+    ]
+  },
+  "PNB.NS": {
+    "history": [
+      {
+        "date": "2026-11-09",
+        "fails": [
+          "CONF_FAIL(got 74.7, need 79)",
+          "RR_FAIL(got 1.41, need 1.8)"
+        ],
+        "conf": 74.73
+      }
+    ]
+  },
+  "HDFCBANK.NS": {
+    "history": [
+      {
+        "date": "2026-11-09",
+        "fails": [
+          "CONF_FAIL(got 74.0, need 79)",
+          "RR_FAIL(got 1.41, need 1.8)"
+        ],
+        "conf": 73.96
+      }
+    ]
+  },
+  "SOUTHBANK.NS": {
+    "history": [
+      {
+        "date": "2026-11-09",
+        "fails": [
+          "TQ_FAIL(got 54.8, need 71)",
+          "RR_FAIL(got 1.45, need 1.8)"
+        ],
+        "conf": 79.84
       }
     ]
   }

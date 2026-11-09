@@ -1290,3 +1290,17 @@
 {"ts": "2026-11-06T21:42:50", "tracking_id": "BALKRISIND.NS_20261106", "kind": "created", "stage": "REJECTED", "origin": "main_pipeline"}
 {"ts": "2026-11-06T21:42:50", "tracking_id": "HDFCBANK.NS_20261106", "kind": "created", "stage": "REJECTED", "origin": "main_pipeline"}
 {"ts": "2026-11-06T21:42:50", "tracking_id": "FAZE3Q.NS_20261106", "kind": "created", "stage": "REJECTED", "origin": "main_pipeline"}
+{"ts": "2026-11-09T19:18:49", "tracking_id": "ICICIBANK.NS_20260717", "kind": "stage_change", "from_stage": "REJECTED", "to_stage": "MONITOR"}
+{"ts": "2026-11-09T19:18:49", "tracking_id": "UNIONBANK.NS_20260807", "kind": "stage_change", "from_stage": "REJECTED", "to_stage": "NEAR_MISS"}
+{"ts": "2026-11-09T19:18:49", "tracking_id": "PNB.NS_20260812", "kind": "stage_change", "from_stage": "REJECTED", "to_stage": "NEAR_MISS"}
+{"ts": "2026-11-09T19:18:49", "tracking_id": "HDFCBANK.NS_20261106", "kind": "stage_change", "from_stage": "REJECTED", "to_stage": "NEAR_MISS"}
+{"ts": "2026-11-09T19:18:49", "tracking_id": "PHOENIXLTD.NS_20260716", "kind": "stage_change", "from_stage": "MONITOR", "to_stage": "DEVELOPING"}
+{"ts": "2026-11-09T19:18:49", "tracking_id": "SOUTHBANK.NS_20260924", "kind": "stage_change", "from_stage": "REJECTED", "to_stage": "MONITOR"}
+{"ts": "2026-11-09T19:18:49", "tracking_id": "DLF.NS_20261015", "kind": "stage_change", "from_stage": "MONITOR", "to_stage": "REJECTED"}
+{"ts": "2026-11-09T19:18:49", "tracking_id": "TVSMOTOR.NS_20260723", "kind": "stage_change", "from_stage": "DEVELOPING", "to_stage": "REJECTED"}
+{"ts": "2026-11-09T19:18:49", "tracking_id": "VRLLOG.NS_20260810", "kind": "stage_change", "from_stage": "NEAR_MISS", "to_stage": "REJECTED"}
+{"ts": "2026-11-09T19:18:49", "tracking_id": "HILINFRA.NS_20261026", "kind": "stage_change", "from_stage": "MONITOR", "to_stage": "REJECTED"}
+{"ts": "2026-11-09T19:18:49", "tracking_id": "PATANJALI.NS_20261109", "kind": "created", "stage": "REJECTED", "origin": "main_pipeline"}
+{"ts": "2026-11-09T19:18:49", "tracking_id": "CHEMPLASTS.NS_20261109", "kind": "created", "stage": "REJECTED", "origin": "main_pipeline"}
+{"ts": "2026-11-09T19:18:49", "tracking_id": "GUFICBIO.NS_20260902", "kind": "stage_change", "from_stage": "MONITOR", "to_stage": "REJECTED"}
+{"ts": "2026-11-09T19:18:49", "tracking_id": "GHCL.NS_20261109", "kind": "created", "stage": "REJECTED", "origin": "main_pipeline"}
