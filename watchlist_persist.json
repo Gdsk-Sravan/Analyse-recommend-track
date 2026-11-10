@@ -1,11 +1,57 @@
 {
-  "ICICIBANK.NS": {
+  "PNB.NS": {
     "first_seen": "2026-11-09",
     "tier": "NEAR_MISS_RISING",
-    "tier_since": "2026-11-09",
+    "tier_since": "2026-11-10",
+    "entry_ref": 132.17,
+    "last_seen": "2026-11-10",
+    "conf": 75.39,
+    "conf_gap": 3.6,
+    "tq": 77.0,
+    "rr_ratio": 1.41,
+    "regime": "BULL",
+    "warnings": [
+      "FUND_DATA_MISSING: ROE/D/E/pledge unavailable (src=SCREENER+YF_RL) \u2014 ownership_quality weight redistributed to present factors",
+      "WIDE_STOP_WARN(got 8.3%, soft cap 7.5% \u2014 R/R gate handles this)",
+      "NEAR_52W_HIGH_RESISTANCE"
+    ],
+    "fail_reasons": [
+      "CONF_FAIL(got 75.4, need 79)",
+      "RR_FAIL(got 1.41, need 1.8)"
+    ],
+    "blocker_reason": null,
+    "monitor_reason": null,
+    "trajectory": "RISING"
+  },
+  "HDFCBANK.NS": {
+    "first_seen": "2026-11-09",
+    "tier": "NEAR_MISS_RISING",
+    "tier_since": "2026-11-10",
+    "entry_ref": 798.15,
+    "last_seen": "2026-11-10",
+    "conf": 74.62,
+    "conf_gap": 4.4,
+    "tq": 74.9,
+    "rr_ratio": 1.41,
+    "regime": "BULL",
+    "warnings": [
+      "WIDE_STOP_WARN(got 8.0%, soft cap 7.5% \u2014 R/R gate handles this)"
+    ],
+    "fail_reasons": [
+      "CONF_FAIL(got 74.6, need 79)",
+      "RR_FAIL(got 1.41, need 1.8)"
+    ],
+    "blocker_reason": null,
+    "monitor_reason": null,
+    "trajectory": "RISING"
+  },
+  "ICICIBANK.NS": {
+    "first_seen": "2026-11-09",
+    "tier": "NEAR_MISS",
+    "tier_since": "2026-11-10",
     "entry_ref": 1589.0,
-    "last_seen": "2026-11-09",
-    "conf": 85.445,
+    "last_seen": "2026-11-10",
+    "conf": 87.25,
     "conf_gap": 0.0,
     "tq": 75.5,
     "rr_ratio": 1.41,
@@ -20,17 +66,17 @@
     ],
     "blocker_reason": null,
     "monitor_reason": null,
-    "trajectory": "RISING"
+    "trajectory": "FLAT"
   },
   "UNIONBANK.NS": {
     "first_seen": "2026-11-09",
     "tier": "NEAR_MISS",
     "tier_since": "2026-11-09",
     "entry_ref": 197.0,
-    "last_seen": "2026-11-09",
-    "conf": 81.39,
+    "last_seen": "2026-11-10",
+    "conf": 81.05,
     "conf_gap": 0.0,
-    "tq": 73.0,
+    "tq": 73.1,
     "rr_ratio": 1.42,
     "regime": "BULL",
     "warnings": [
@@ -44,65 +90,18 @@
     "monitor_reason": null,
     "trajectory": ""
   },
-  "PNB.NS": {
-    "first_seen": "2026-11-09",
-    "tier": "NEAR_MISS",
-    "tier_since": "2026-11-09",
-    "entry_ref": 132.17,
-    "last_seen": "2026-11-09",
-    "conf": 74.73,
-    "conf_gap": 4.3,
-    "tq": 76.9,
-    "rr_ratio": 1.41,
-    "regime": "BULL",
-    "warnings": [
-      "FUND_DATA_MISSING: ROE/D/E/pledge unavailable (src=SCREENER+YF_RL) \u2014 ownership_quality weight redistributed to present factors",
-      "WIDE_STOP_WARN(got 8.3%, soft cap 7.5% \u2014 R/R gate handles this)",
-      "NEAR_52W_HIGH_RESISTANCE"
-    ],
-    "fail_reasons": [
-      "CONF_FAIL(got 74.7, need 79)",
-      "RR_FAIL(got 1.41, need 1.8)"
-    ],
-    "blocker_reason": null,
-    "monitor_reason": null,
-    "trajectory": ""
-  },
-  "HDFCBANK.NS": {
-    "first_seen": "2026-11-09",
-    "tier": "NEAR_MISS",
-    "tier_since": "2026-11-09",
-    "entry_ref": 798.15,
-    "last_seen": "2026-11-09",
-    "conf": 73.96,
-    "conf_gap": 5.0,
-    "tq": 74.9,
-    "rr_ratio": 1.41,
-    "regime": "BULL",
-    "warnings": [
-      "WIDE_STOP_WARN(got 8.0%, soft cap 7.5% \u2014 R/R gate handles this)"
-    ],
-    "fail_reasons": [
-      "CONF_FAIL(got 74.0, need 79)",
-      "RR_FAIL(got 1.41, need 1.8)"
-    ],
-    "blocker_reason": null,
-    "monitor_reason": null,
-    "trajectory": ""
-  },
   "PHOENIXLTD.NS": {
     "first_seen": "2026-11-04",
     "tier": "DEVELOPING",
     "tier_since": "2026-11-09",
     "entry_ref": 2147.0,
-    "last_seen": "2026-11-09",
-    "conf": 86.47,
+    "last_seen": "2026-11-10",
+    "conf": 86.065,
     "conf_gap": 0.0,
     "tq": 61.0,
     "rr_ratio": 1.43,
     "regime": "BULL",
     "warnings": [
-      "FUND_DATA_MISSING: ROE/D/E/pledge unavailable (src=SCREENER+YF_RL) \u2014 ownership_quality weight redistributed to present factors",
       "WIDE_STOP_WARN(got 10.1%, soft cap 7.5% \u2014 R/R gate handles this)",
       "NEAR_52W_HIGH_RESISTANCE"
     ],
@@ -112,15 +111,15 @@
     ],
     "blocker_reason": null,
     "monitor_reason": null,
-    "trajectory": "RISING"
+    "trajectory": "FLAT"
   },
   "SOUTHBANK.NS": {
     "first_seen": "2026-11-09",
     "tier": "MONITOR",
     "tier_since": "2026-11-09",
     "entry_ref": 58.68,
-    "last_seen": "2026-11-09",
-    "conf": 79.84,
+    "last_seen": "2026-11-10",
+    "conf": 81.25,
     "conf_gap": 0.0,
     "tq": 54.8,
     "rr_ratio": 1.45,
@@ -136,6 +135,6 @@
     ],
     "blocker_reason": null,
     "monitor_reason": "TQ_LOW",
-    "trajectory": ""
+    "trajectory": "FLAT"
   }
 }

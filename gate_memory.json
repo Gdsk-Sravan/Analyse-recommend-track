@@ -373,6 +373,13 @@
           "RR_FAIL(got 1.41, need 1.8)"
         ],
         "conf": 85.445
+      },
+      {
+        "date": "2026-11-10",
+        "fails": [
+          "RR_FAIL(got 1.41, need 1.8)"
+        ],
+        "conf": 87.25
       }
     ]
   },
@@ -2732,6 +2739,14 @@
           "RR_FAIL(got 1.43, need 1.8)"
         ],
         "conf": 86.47
+      },
+      {
+        "date": "2026-11-10",
+        "fails": [
+          "TQ_FAIL(got 61.0, need 71)",
+          "RR_FAIL(got 1.43, need 1.8)"
+        ],
+        "conf": 86.065
       }
     ]
   },
@@ -2790,6 +2805,13 @@
           "RR_FAIL(got 1.42, need 1.8)"
         ],
         "conf": 81.39
+      },
+      {
+        "date": "2026-11-10",
+        "fails": [
+          "RR_FAIL(got 1.42, need 1.8)"
+        ],
+        "conf": 81.05
       }
     ]
   },
@@ -2802,6 +2824,14 @@
           "RR_FAIL(got 1.41, need 1.8)"
         ],
         "conf": 74.73
+      },
+      {
+        "date": "2026-11-10",
+        "fails": [
+          "CONF_FAIL(got 75.4, need 79)",
+          "RR_FAIL(got 1.41, need 1.8)"
+        ],
+        "conf": 75.39
       }
     ]
   },
@@ -2814,6 +2844,14 @@
           "RR_FAIL(got 1.41, need 1.8)"
         ],
         "conf": 73.96
+      },
+      {
+        "date": "2026-11-10",
+        "fails": [
+          "CONF_FAIL(got 74.6, need 79)",
+          "RR_FAIL(got 1.41, need 1.8)"
+        ],
+        "conf": 74.62
       }
     ]
   },
@@ -2826,6 +2864,14 @@
           "RR_FAIL(got 1.45, need 1.8)"
         ],
         "conf": 79.84
+      },
+      {
+        "date": "2026-11-10",
+        "fails": [
+          "TQ_FAIL(got 54.8, need 71)",
+          "RR_FAIL(got 1.45, need 1.8)"
+        ],
+        "conf": 81.25
       }
     ]
   }

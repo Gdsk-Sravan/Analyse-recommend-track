@@ -1304,3 +1304,6 @@
 {"ts": "2026-11-09T19:18:49", "tracking_id": "CHEMPLASTS.NS_20261109", "kind": "created", "stage": "REJECTED", "origin": "main_pipeline"}
 {"ts": "2026-11-09T19:18:49", "tracking_id": "GUFICBIO.NS_20260902", "kind": "stage_change", "from_stage": "MONITOR", "to_stage": "REJECTED"}
 {"ts": "2026-11-09T19:18:49", "tracking_id": "GHCL.NS_20261109", "kind": "created", "stage": "REJECTED", "origin": "main_pipeline"}
+{"ts": "2026-11-10T19:21:36", "tracking_id": "PNB.NS_20260812", "kind": "stage_change", "from_stage": "NEAR_MISS", "to_stage": "MONITOR"}
+{"ts": "2026-11-10T19:21:36", "tracking_id": "HDFCBANK.NS_20261106", "kind": "stage_change", "from_stage": "NEAR_MISS", "to_stage": "MONITOR"}
+{"ts": "2026-11-10T19:21:36", "tracking_id": "ICICIBANK.NS_20260717", "kind": "stage_change", "from_stage": "MONITOR", "to_stage": "NEAR_MISS"}
