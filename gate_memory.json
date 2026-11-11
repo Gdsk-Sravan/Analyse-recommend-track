@@ -380,6 +380,14 @@
           "RR_FAIL(got 1.41, need 1.8)"
         ],
         "conf": 87.25
+      },
+      {
+        "date": "2026-11-11",
+        "fails": [
+          "TQ_FAIL(got 65.3, need 68)",
+          "RR_FAIL(got 1.41, need 1.7)"
+        ],
+        "conf": 85.37
       }
     ]
   },
@@ -399,6 +407,13 @@
           "RR_FAIL(got 1.41, need 1.7)"
         ],
         "conf": 83.64
+      },
+      {
+        "date": "2026-11-11",
+        "fails": [
+          "RR_FAIL(got 1.42, need 1.7)"
+        ],
+        "conf": 82.68
       }
     ]
   },
@@ -2678,6 +2693,13 @@
           "SECTOR_RANK_TOO_LOW(rank=17>top6)"
         ],
         "conf": 83.34
+      },
+      {
+        "date": "2026-11-11",
+        "fails": [
+          "SECTOR_RANK_TOO_LOW(rank=8>top6)"
+        ],
+        "conf": 85.47
       }
     ]
   },
@@ -2782,6 +2804,14 @@
           "RR_FAIL(got 1.42, need 1.7)"
         ],
         "conf": 59.33
+      },
+      {
+        "date": "2026-11-11",
+        "fails": [
+          "TQ_FAIL(got 62.3, need 68)",
+          "RR_FAIL(got 1.41, need 1.7)"
+        ],
+        "conf": 87.59
       }
     ]
   },
@@ -2794,6 +2824,13 @@
           "TQ_FAIL(got 47.6, need 68)"
         ],
         "conf": 69.41
+      },
+      {
+        "date": "2026-11-11",
+        "fails": [
+          "TQ_FAIL(got 59.2, need 68)"
+        ],
+        "conf": 76.49
       }
     ]
   },
@@ -2812,6 +2849,13 @@
           "RR_FAIL(got 1.42, need 1.8)"
         ],
         "conf": 81.05
+      },
+      {
+        "date": "2026-11-11",
+        "fails": [
+          "RR_FAIL(got 1.41, need 1.7)"
+        ],
+        "conf": 88.34
       }
     ]
   },
@@ -2832,6 +2876,13 @@
           "RR_FAIL(got 1.41, need 1.8)"
         ],
         "conf": 75.39
+      },
+      {
+        "date": "2026-11-11",
+        "fails": [
+          "RR_FAIL(got 1.42, need 1.7)"
+        ],
+        "conf": 84.01
       }
     ]
   },
@@ -2872,6 +2923,36 @@
           "RR_FAIL(got 1.45, need 1.8)"
         ],
         "conf": 81.25
+      },
+      {
+        "date": "2026-11-11",
+        "fails": [
+          "TQ_FAIL(got 67.5, need 68)",
+          "RR_FAIL(got 1.44, need 1.7)"
+        ],
+        "conf": 85.61
+      }
+    ]
+  },
+  "BANKBARODA.NS": {
+    "history": [
+      {
+        "date": "2026-11-11",
+        "fails": [
+          "RR_FAIL(got 1.42, need 1.7)"
+        ],
+        "conf": 76.11
+      }
+    ]
+  },
+  "KOTAKBANK.NS": {
+    "history": [
+      {
+        "date": "2026-11-11",
+        "fails": [
+          "RR_FAIL(got 1.41, need 1.7)"
+        ],
+        "conf": 76.18
       }
     ]
   }
