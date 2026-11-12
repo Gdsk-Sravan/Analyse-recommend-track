@@ -1,37 +1,106 @@
 {
-  "ICICIBANK.NS": {
-    "first_seen": "2026-11-09",
+  "KOTAKBANK.NS": {
+    "first_seen": "2026-11-11",
     "tier": "NEAR_MISS_RISING",
-    "tier_since": "2026-11-11",
-    "entry_ref": 1571.6,
-    "last_seen": "2026-11-11",
-    "conf": 85.37,
+    "tier_since": "2026-11-12",
+    "entry_ref": 490.4,
+    "last_seen": "2026-11-12",
+    "conf": 78.08,
     "conf_gap": 0.0,
-    "tq": 65.3,
+    "tq": 70.0,
     "rr_ratio": 1.41,
     "regime": "STRONG_BULL",
     "warnings": [
-      "FUND_DATA_MISSING: ROE/D/E/pledge unavailable (src=SCREENER+YF_RL) \u2014 ownership_quality weight redistributed to present factors",
-      "WIDE_STOP_WARN(got 8.0%, soft cap 8.0% \u2014 R/R gate handles this)",
       "NEAR_52W_HIGH_RESISTANCE"
     ],
     "fail_reasons": [
-      "TQ_FAIL(got 65.3, need 68)",
       "RR_FAIL(got 1.41, need 1.7)"
     ],
     "blocker_reason": null,
     "monitor_reason": null,
     "trajectory": "RISING"
   },
-  "PNB.NS": {
-    "first_seen": "2026-11-09",
+  "PHOENIXLTD.NS": {
+    "first_seen": "2026-11-12",
     "tier": "NEAR_MISS_RISING",
-    "tier_since": "2026-11-10",
-    "entry_ref": 138.48,
-    "last_seen": "2026-11-11",
-    "conf": 84.01,
+    "tier_since": "2026-11-12",
+    "entry_ref": 2292.0,
+    "last_seen": "2026-11-12",
+    "conf": 94.0,
     "conf_gap": 0.0,
-    "tq": 70.7,
+    "tq": 69.5,
+    "rr_ratio": 1.43,
+    "regime": "STRONG_BULL",
+    "warnings": [
+      "FUND_DATA_MISSING: ROE/D/E/pledge unavailable (src=SCREENER+YF_RL) \u2014 ownership_quality weight redistributed to present factors",
+      "WIDE_STOP_WARN(got 10.7%, soft cap 8.0% \u2014 R/R gate handles this)",
+      "NEAR_52W_HIGH_RESISTANCE"
+    ],
+    "fail_reasons": [
+      "RR_FAIL(got 1.43, need 1.7)"
+    ],
+    "blocker_reason": null,
+    "monitor_reason": null,
+    "trajectory": "RISING"
+  },
+  "PPLPHARMA.NS": {
+    "first_seen": "2026-11-12",
+    "tier": "NEAR_MISS_RISING",
+    "tier_since": "2026-11-12",
+    "entry_ref": 245.07,
+    "last_seen": "2026-11-12",
+    "conf": 87.91,
+    "conf_gap": 0.0,
+    "tq": 71.2,
+    "rr_ratio": 2.24,
+    "regime": "STRONG_BULL",
+    "warnings": [
+      "FUND_DATA_MISSING: ROE/D/E/pledge unavailable (src=SCREENER+YF_RL) \u2014 ownership_quality weight redistributed to present factors",
+      "WIDE_STOP_WARN(got 8.4%, soft cap 8.0% \u2014 R/R gate handles this)",
+      "SECTOR_RANK_WEAK: sector ranked #12 \u2014 needs top-6 unless conf\u226588",
+      "NEAR_52W_HIGH_RESISTANCE",
+      "STRONG_ACCUMULATION: delivery 53% (20d avg 40%)"
+    ],
+    "fail_reasons": [
+      "SECTOR_RANK_TOO_LOW(rank=12>top6)"
+    ],
+    "blocker_reason": null,
+    "monitor_reason": null,
+    "trajectory": "RISING"
+  },
+  "AAREYDRUGS.NS": {
+    "first_seen": "2026-11-12",
+    "tier": "NEAR_MISS",
+    "tier_since": "2026-11-12",
+    "entry_ref": 114.11,
+    "last_seen": "2026-11-12",
+    "conf": 78.38,
+    "conf_gap": 0.0,
+    "tq": 72.7,
+    "rr_ratio": 1.78,
+    "regime": "STRONG_BULL",
+    "warnings": [
+      "MCAP_MISSING (proxy ~\u20b9568Cr)",
+      "WIDE_STOP_WARN(got 10.2%, soft cap 8.0% \u2014 R/R gate handles this)",
+      "SECTOR_RANK_WEAK: sector ranked #12 \u2014 needs top-6 unless conf\u226588",
+      "NEAR_52W_HIGH_RESISTANCE"
+    ],
+    "fail_reasons": [
+      "SECTOR_RANK_TOO_LOW(rank=12>top6)"
+    ],
+    "blocker_reason": null,
+    "monitor_reason": null,
+    "trajectory": ""
+  },
+  "DLF.NS": {
+    "first_seen": "2026-11-12",
+    "tier": "NEAR_MISS",
+    "tier_since": "2026-11-12",
+    "entry_ref": 769.3,
+    "last_seen": "2026-11-12",
+    "conf": 94.0,
+    "conf_gap": 0.0,
+    "tq": 65.9,
     "rr_ratio": 1.42,
     "regime": "STRONG_BULL",
     "warnings": [
@@ -40,139 +109,25 @@
       "NEAR_52W_HIGH_RESISTANCE"
     ],
     "fail_reasons": [
+      "TQ_FAIL(got 65.9, need 68)",
       "RR_FAIL(got 1.42, need 1.7)"
-    ],
-    "blocker_reason": null,
-    "monitor_reason": null,
-    "trajectory": "RISING"
-  },
-  "SOUTHBANK.NS": {
-    "first_seen": "2026-11-09",
-    "tier": "NEAR_MISS_RISING",
-    "tier_since": "2026-11-11",
-    "entry_ref": 60.46,
-    "last_seen": "2026-11-11",
-    "conf": 85.61,
-    "conf_gap": 0.0,
-    "tq": 67.5,
-    "rr_ratio": 1.44,
-    "regime": "STRONG_BULL",
-    "warnings": [
-      "FUND_DATA_MISSING: ROE/D/E/pledge unavailable (src=SCREENER+YF_RL) \u2014 ownership_quality weight redistributed to present factors",
-      "WIDE_STOP_WARN(got 12.1%, soft cap 8.0% \u2014 R/R gate handles this)",
-      "NEAR_52W_HIGH_RESISTANCE"
-    ],
-    "fail_reasons": [
-      "TQ_FAIL(got 67.5, need 68)",
-      "RR_FAIL(got 1.44, need 1.7)"
-    ],
-    "blocker_reason": null,
-    "monitor_reason": null,
-    "trajectory": "RISING"
-  },
-  "APOLLO.NS": {
-    "first_seen": "2026-11-11",
-    "tier": "NEAR_MISS",
-    "tier_since": "2026-11-11",
-    "entry_ref": 454.15,
-    "last_seen": "2026-11-11",
-    "conf": 85.47,
-    "conf_gap": 0.0,
-    "tq": 72.9,
-    "rr_ratio": 1.77,
-    "regime": "STRONG_BULL",
-    "warnings": [
-      "FUND_DATA_MISSING: ROE/D/E/pledge unavailable (src=SCREENER+YF_RL) \u2014 ownership_quality weight redistributed to present factors",
-      "WIDE_STOP_WARN(got 14.6%, soft cap 8.0% \u2014 R/R gate handles this)",
-      "SECTOR_RANK_WEAK: sector ranked #8 \u2014 needs top-6 unless conf\u226588",
-      "NEAR_52W_HIGH_RESISTANCE",
-      "HIGH_GAP_RISK: p90 gap 9.3% \u00b7 effective stop 23.9%"
-    ],
-    "fail_reasons": [
-      "SECTOR_RANK_TOO_LOW(rank=8>top6)"
-    ],
-    "blocker_reason": null,
-    "monitor_reason": null,
-    "trajectory": ""
-  },
-  "BANKBARODA.NS": {
-    "first_seen": "2026-11-11",
-    "tier": "NEAR_MISS",
-    "tier_since": "2026-11-11",
-    "entry_ref": 275.0,
-    "last_seen": "2026-11-11",
-    "conf": 76.11,
-    "conf_gap": 0.0,
-    "tq": 72.4,
-    "rr_ratio": 1.42,
-    "regime": "STRONG_BULL",
-    "warnings": [
-      "WIDE_STOP_WARN(got 8.9%, soft cap 8.0% \u2014 R/R gate handles this)"
-    ],
-    "fail_reasons": [
-      "RR_FAIL(got 1.42, need 1.7)"
-    ],
-    "blocker_reason": null,
-    "monitor_reason": null,
-    "trajectory": ""
-  },
-  "FEDERALBNK.NS": {
-    "first_seen": "2026-11-11",
-    "tier": "NEAR_MISS",
-    "tier_since": "2026-11-11",
-    "entry_ref": 361.6,
-    "last_seen": "2026-11-11",
-    "conf": 82.68,
-    "conf_gap": 0.0,
-    "tq": 71.5,
-    "rr_ratio": 1.42,
-    "regime": "STRONG_BULL",
-    "warnings": [
-      "WIDE_STOP_WARN(got 8.5%, soft cap 8.0% \u2014 R/R gate handles this)",
-      "NEAR_52W_HIGH_RESISTANCE"
-    ],
-    "fail_reasons": [
-      "RR_FAIL(got 1.42, need 1.7)"
-    ],
-    "blocker_reason": null,
-    "monitor_reason": null,
-    "trajectory": ""
-  },
-  "KOTAKBANK.NS": {
-    "first_seen": "2026-11-11",
-    "tier": "NEAR_MISS",
-    "tier_since": "2026-11-11",
-    "entry_ref": 487.7,
-    "last_seen": "2026-11-11",
-    "conf": 76.18,
-    "conf_gap": 0.0,
-    "tq": 70.2,
-    "rr_ratio": 1.41,
-    "regime": "STRONG_BULL",
-    "warnings": [
-      "WIDE_STOP_WARN(got 8.0%, soft cap 8.0% \u2014 R/R gate handles this)",
-      "NEAR_52W_HIGH_RESISTANCE"
-    ],
-    "fail_reasons": [
-      "RR_FAIL(got 1.41, need 1.7)"
     ],
     "blocker_reason": null,
     "monitor_reason": null,
     "trajectory": "FLAT"
   },
-  "UNIONBANK.NS": {
-    "first_seen": "2026-11-09",
+  "FEDERALBNK.NS": {
+    "first_seen": "2026-11-11",
     "tier": "NEAR_MISS",
-    "tier_since": "2026-11-09",
-    "entry_ref": 202.19,
-    "last_seen": "2026-11-11",
-    "conf": 88.34,
+    "tier_since": "2026-11-11",
+    "entry_ref": 362.5,
+    "last_seen": "2026-11-12",
+    "conf": 76.87,
     "conf_gap": 0.0,
-    "tq": 72.6,
+    "tq": 70.3,
     "rr_ratio": 1.41,
     "regime": "STRONG_BULL",
     "warnings": [
-      "FUND_DATA_MISSING: ROE/D/E/pledge unavailable (src=SCREENER+YF_RL) \u2014 ownership_quality weight redistributed to present factors",
       "WIDE_STOP_WARN(got 8.3%, soft cap 8.0% \u2014 R/R gate handles this)",
       "NEAR_52W_HIGH_RESISTANCE"
     ],
@@ -183,46 +138,204 @@
     "monitor_reason": null,
     "trajectory": ""
   },
-  "ULTRACEMCO.NS": {
-    "first_seen": "2026-11-11",
-    "tier": "DEVELOPING",
-    "tier_since": "2026-11-11",
-    "entry_ref": 12362.0,
-    "last_seen": "2026-11-11",
-    "conf": 87.59,
+  "GNA.NS": {
+    "first_seen": "2026-11-12",
+    "tier": "NEAR_MISS",
+    "tier_since": "2026-11-12",
+    "entry_ref": 588.65,
+    "last_seen": "2026-11-12",
+    "conf": 78.01,
     "conf_gap": 0.0,
-    "tq": 62.3,
-    "rr_ratio": 1.41,
+    "tq": 70.0,
+    "rr_ratio": 1.93,
     "regime": "STRONG_BULL",
     "warnings": [
-      "WIDE_STOP_WARN(got 8.0%, soft cap 8.0% \u2014 R/R gate handles this)",
-      "NEAR_52W_HIGH_RESISTANCE"
+      "WIDE_STOP_WARN(got 11.4%, soft cap 8.0% \u2014 R/R gate handles this)",
+      "SECTOR_RANK_WEAK: sector ranked #9 \u2014 needs top-6 unless conf\u226588"
     ],
     "fail_reasons": [
-      "TQ_FAIL(got 62.3, need 68)",
-      "RR_FAIL(got 1.41, need 1.7)"
+      "SECTOR_RANK_TOO_LOW(rank=9>top6)"
     ],
     "blocker_reason": null,
     "monitor_reason": null,
     "trajectory": ""
   },
-  "HILINFRA.NS": {
-    "first_seen": "2026-11-11",
-    "tier": "MONITOR",
-    "tier_since": "2026-11-11",
-    "entry_ref": 72.88,
-    "last_seen": "2026-11-11",
-    "conf": 76.49,
+  "HLEGLAS.NS": {
+    "first_seen": "2026-11-12",
+    "tier": "NEAR_MISS",
+    "tier_since": "2026-11-12",
+    "entry_ref": 454.05,
+    "last_seen": "2026-11-12",
+    "conf": 87.855,
     "conf_gap": 0.0,
-    "tq": 59.2,
-    "rr_ratio": 2.51,
+    "tq": 73.2,
+    "rr_ratio": 1.71,
     "regime": "STRONG_BULL",
     "warnings": [
-      "WIDE_STOP_WARN(got 12.8%, soft cap 8.0% \u2014 R/R gate handles this)",
-      "HIGH_GAP_RISK: p90 gap 10.6% \u00b7 effective stop 23.3%"
+      "FUND_DATA_MISSING: ROE/D/E/pledge unavailable (src=SCREENER+YF_RL) \u2014 ownership_quality weight redistributed to present factors",
+      "WIDE_STOP_WARN(got 11.8%, soft cap 8.0% \u2014 R/R gate handles this)",
+      "SECTOR_RANK_WEAK: sector ranked #9 \u2014 needs top-6 unless conf\u226588"
     ],
     "fail_reasons": [
-      "TQ_FAIL(got 59.2, need 68)"
+      "SECTOR_RANK_TOO_LOW(rank=9>top6)"
+    ],
+    "blocker_reason": null,
+    "monitor_reason": null,
+    "trajectory": ""
+  },
+  "ICICIBANK.NS": {
+    "first_seen": "2026-11-09",
+    "tier": "NEAR_MISS",
+    "tier_since": "2026-11-12",
+    "entry_ref": 1590.0,
+    "last_seen": "2026-11-12",
+    "conf": 83.84,
+    "conf_gap": 0.0,
+    "tq": 64.0,
+    "rr_ratio": 1.41,
+    "regime": "STRONG_BULL",
+    "warnings": [
+      "FUND_DATA_MISSING: ROE/D/E/pledge unavailable (src=SCREENER+YF_RL) \u2014 ownership_quality weight redistributed to present factors",
+      "WIDE_STOP_WARN(got 8.0%, soft cap 8.0% \u2014 R/R gate handles this)",
+      "NEAR_52W_HIGH_RESISTANCE"
+    ],
+    "fail_reasons": [
+      "TQ_FAIL(got 64.0, need 68)",
+      "RR_FAIL(got 1.41, need 1.7)"
+    ],
+    "blocker_reason": null,
+    "monitor_reason": null,
+    "trajectory": "FLAT"
+  },
+  "KTKBANK.NS": {
+    "first_seen": "2026-11-12",
+    "tier": "NEAR_MISS",
+    "tier_since": "2026-11-12",
+    "entry_ref": 366.0,
+    "last_seen": "2026-11-12",
+    "conf": 81.36,
+    "conf_gap": 0.0,
+    "tq": 70.3,
+    "rr_ratio": 1.45,
+    "regime": "STRONG_BULL",
+    "warnings": [
+      "WIDE_STOP_WARN(got 13.0%, soft cap 8.0% \u2014 R/R gate handles this)",
+      "NEAR_52W_HIGH_RESISTANCE"
+    ],
+    "fail_reasons": [
+      "RR_FAIL(got 1.45, need 1.7)"
+    ],
+    "blocker_reason": null,
+    "monitor_reason": null,
+    "trajectory": ""
+  },
+  "MAHABANK.NS": {
+    "first_seen": "2026-11-12",
+    "tier": "NEAR_MISS",
+    "tier_since": "2026-11-12",
+    "entry_ref": 91.79,
+    "last_seen": "2026-11-12",
+    "conf": 82.0,
+    "conf_gap": 0.0,
+    "tq": 70.2,
+    "rr_ratio": 1.44,
+    "regime": "STRONG_BULL",
+    "warnings": [
+      "WIDE_STOP_WARN(got 11.1%, soft cap 8.0% \u2014 R/R gate handles this)",
+      "NEAR_52W_HIGH_RESISTANCE"
+    ],
+    "fail_reasons": [
+      "RR_FAIL(got 1.44, need 1.7)"
+    ],
+    "blocker_reason": null,
+    "monitor_reason": null,
+    "trajectory": ""
+  },
+  "PAYTM.NS": {
+    "first_seen": "2026-11-12",
+    "tier": "NEAR_MISS",
+    "tier_since": "2026-11-12",
+    "entry_ref": 1925.0,
+    "last_seen": "2026-11-12",
+    "conf": 89.255,
+    "conf_gap": 0.0,
+    "tq": 73.2,
+    "rr_ratio": 1.44,
+    "regime": "STRONG_BULL",
+    "warnings": [
+      "FUND_DATA_MISSING: ROE/D/E/pledge unavailable (src=SCREENER+YF_RL) \u2014 ownership_quality weight redistributed to present factors",
+      "WIDE_STOP_WARN(got 12.4%, soft cap 8.0% \u2014 R/R gate handles this)",
+      "NEAR_52W_HIGH_RESISTANCE"
+    ],
+    "fail_reasons": [
+      "RR_FAIL(got 1.44, need 1.7)"
+    ],
+    "blocker_reason": null,
+    "monitor_reason": null,
+    "trajectory": ""
+  },
+  "BANKBARODA.NS": {
+    "first_seen": "2026-11-11",
+    "tier": "NEAR_MISS",
+    "tier_since": "2026-11-11",
+    "entry_ref": 276.15,
+    "last_seen": "2026-11-12",
+    "conf": 75.74,
+    "conf_gap": 0.3,
+    "tq": 70.7,
+    "rr_ratio": 1.42,
+    "regime": "STRONG_BULL",
+    "warnings": [
+      "WIDE_STOP_WARN(got 8.9%, soft cap 8.0% \u2014 R/R gate handles this)"
+    ],
+    "fail_reasons": [
+      "CONF_FAIL(got 75.7, need 76)",
+      "RR_FAIL(got 1.42, need 1.7)"
+    ],
+    "blocker_reason": null,
+    "monitor_reason": null,
+    "trajectory": ""
+  },
+  "SONACOMS.NS": {
+    "first_seen": "2026-11-12",
+    "tier": "MONITOR",
+    "tier_since": "2026-11-12",
+    "entry_ref": 926.0,
+    "last_seen": "2026-11-12",
+    "conf": 87.97,
+    "conf_gap": 0.0,
+    "tq": 58.7,
+    "rr_ratio": 1.94,
+    "regime": "STRONG_BULL",
+    "warnings": [
+      "NEAR_52W_HIGH_RESISTANCE"
+    ],
+    "fail_reasons": [
+      "TQ_FAIL(got 58.7, need 68)"
+    ],
+    "blocker_reason": null,
+    "monitor_reason": "TQ_LOW",
+    "trajectory": ""
+  },
+  "SOUTHBANK.NS": {
+    "first_seen": "2026-11-09",
+    "tier": "MONITOR",
+    "tier_since": "2026-11-12",
+    "entry_ref": 61.32,
+    "last_seen": "2026-11-12",
+    "conf": 86.33,
+    "conf_gap": 0.0,
+    "tq": 54.4,
+    "rr_ratio": 1.44,
+    "regime": "STRONG_BULL",
+    "warnings": [
+      "FUND_DATA_MISSING: ROE/D/E/pledge unavailable (src=SCREENER+YF_RL) \u2014 ownership_quality weight redistributed to present factors",
+      "WIDE_STOP_WARN(got 12.0%, soft cap 8.0% \u2014 R/R gate handles this)",
+      "NEAR_52W_HIGH_RESISTANCE"
+    ],
+    "fail_reasons": [
+      "TQ_FAIL(got 54.4, need 68)",
+      "RR_FAIL(got 1.44, need 1.7)"
     ],
     "blocker_reason": null,
     "monitor_reason": "TQ_LOW",

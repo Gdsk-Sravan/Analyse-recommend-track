@@ -352,14 +352,6 @@
   "ICICIBANK.NS": {
     "history": [
       {
-        "date": "2026-07-20",
-        "fails": [
-          "CONF_FAIL(got 69.2, need 70)",
-          "RR_FAIL(got 1.39, need 1.7)"
-        ],
-        "conf": 69.21000000000001
-      },
-      {
         "date": "2026-07-21",
         "fails": [
           "CONF_FAIL(got 69.2, need 70)",
@@ -388,6 +380,14 @@
           "RR_FAIL(got 1.41, need 1.7)"
         ],
         "conf": 85.37
+      },
+      {
+        "date": "2026-11-12",
+        "fails": [
+          "TQ_FAIL(got 64.0, need 68)",
+          "RR_FAIL(got 1.41, need 1.7)"
+        ],
+        "conf": 83.84
       }
     ]
   },
@@ -414,6 +414,13 @@
           "RR_FAIL(got 1.42, need 1.7)"
         ],
         "conf": 82.68
+      },
+      {
+        "date": "2026-11-12",
+        "fails": [
+          "RR_FAIL(got 1.41, need 1.7)"
+        ],
+        "conf": 76.87
       }
     ]
   },
@@ -448,13 +455,6 @@
   "PPLPHARMA.NS": {
     "history": [
       {
-        "date": "2026-07-20",
-        "fails": [
-          "CONF_FAIL(got 66.3, need 70)"
-        ],
-        "conf": 66.32
-      },
-      {
         "date": "2026-07-30",
         "fails": [
           "CONF_FAIL(got 30.7, need 70)",
@@ -485,6 +485,13 @@
           "RR_FAIL(got 1.44, need 2.0)"
         ],
         "conf": 63.3
+      },
+      {
+        "date": "2026-11-12",
+        "fails": [
+          "SECTOR_RANK_TOO_LOW(rank=12>top6)"
+        ],
+        "conf": 87.91
       }
     ]
   },
@@ -1084,14 +1091,6 @@
   "SONACOMS.NS": {
     "history": [
       {
-        "date": "2026-08-04",
-        "fails": [
-          "TQ_FAIL(got 62.3, need 68)",
-          "RR_FAIL(got 1.43, need 1.7)"
-        ],
-        "conf": 93.30000000000001
-      },
-      {
         "date": "2026-08-05",
         "fails": [
           "TQ_FAIL(got 60.7, need 68)",
@@ -1122,6 +1121,13 @@
           "RR_FAIL(got 1.44, need 1.8)"
         ],
         "conf": 85.51
+      },
+      {
+        "date": "2026-11-12",
+        "fails": [
+          "TQ_FAIL(got 58.7, need 68)"
+        ],
+        "conf": 87.97
       }
     ]
   },
@@ -2600,6 +2606,13 @@
           "CONF_FAIL(got 65.7, need 72)"
         ],
         "conf": 65.73
+      },
+      {
+        "date": "2026-11-12",
+        "fails": [
+          "SECTOR_RANK_TOO_LOW(rank=12>top6)"
+        ],
+        "conf": 78.38
       }
     ]
   },
@@ -2611,6 +2624,13 @@
           "TQ_FAIL(got 60.5, need 68)"
         ],
         "conf": 76.39
+      },
+      {
+        "date": "2026-11-12",
+        "fails": [
+          "SECTOR_RANK_TOO_LOW(rank=9>top6)"
+        ],
+        "conf": 87.855
       }
     ]
   },
@@ -2769,6 +2789,13 @@
           "RR_FAIL(got 1.43, need 1.8)"
         ],
         "conf": 86.065
+      },
+      {
+        "date": "2026-11-12",
+        "fails": [
+          "RR_FAIL(got 1.43, need 1.7)"
+        ],
+        "conf": 94.0
       }
     ]
   },
@@ -2781,6 +2808,14 @@
           "RR_FAIL(got 1.42, need 1.7)"
         ],
         "conf": 79.715
+      },
+      {
+        "date": "2026-11-12",
+        "fails": [
+          "TQ_FAIL(got 65.9, need 68)",
+          "RR_FAIL(got 1.42, need 1.7)"
+        ],
+        "conf": 94.0
       }
     ]
   },
@@ -2856,6 +2891,14 @@
           "RR_FAIL(got 1.41, need 1.7)"
         ],
         "conf": 88.34
+      },
+      {
+        "date": "2026-11-12",
+        "fails": [
+          "TQ_FAIL(got 63.5, need 68)",
+          "RR_FAIL(got 1.41, need 1.7)"
+        ],
+        "conf": 87.8
       }
     ]
   },
@@ -2883,6 +2926,13 @@
           "RR_FAIL(got 1.42, need 1.7)"
         ],
         "conf": 84.01
+      },
+      {
+        "date": "2026-11-12",
+        "fails": [
+          "RR_FAIL(got 1.42, need 1.7)"
+        ],
+        "conf": 87.52
       }
     ]
   },
@@ -2931,6 +2981,14 @@
           "RR_FAIL(got 1.44, need 1.7)"
         ],
         "conf": 85.61
+      },
+      {
+        "date": "2026-11-12",
+        "fails": [
+          "TQ_FAIL(got 54.4, need 68)",
+          "RR_FAIL(got 1.44, need 1.7)"
+        ],
+        "conf": 86.33
       }
     ]
   },
@@ -2942,6 +3000,14 @@
           "RR_FAIL(got 1.42, need 1.7)"
         ],
         "conf": 76.11
+      },
+      {
+        "date": "2026-11-12",
+        "fails": [
+          "CONF_FAIL(got 75.7, need 76)",
+          "RR_FAIL(got 1.42, need 1.7)"
+        ],
+        "conf": 75.74
       }
     ]
   },
@@ -2953,6 +3019,57 @@
           "RR_FAIL(got 1.41, need 1.7)"
         ],
         "conf": 76.18
+      },
+      {
+        "date": "2026-11-12",
+        "fails": [
+          "RR_FAIL(got 1.41, need 1.7)"
+        ],
+        "conf": 78.08
+      }
+    ]
+  },
+  "GNA.NS": {
+    "history": [
+      {
+        "date": "2026-11-12",
+        "fails": [
+          "SECTOR_RANK_TOO_LOW(rank=9>top6)"
+        ],
+        "conf": 78.01
+      }
+    ]
+  },
+  "KTKBANK.NS": {
+    "history": [
+      {
+        "date": "2026-11-12",
+        "fails": [
+          "RR_FAIL(got 1.45, need 1.7)"
+        ],
+        "conf": 81.36
+      }
+    ]
+  },
+  "MAHABANK.NS": {
+    "history": [
+      {
+        "date": "2026-11-12",
+        "fails": [
+          "RR_FAIL(got 1.44, need 1.7)"
+        ],
+        "conf": 82.0
+      }
+    ]
+  },
+  "PAYTM.NS": {
+    "history": [
+      {
+        "date": "2026-11-12",
+        "fails": [
+          "RR_FAIL(got 1.44, need 1.7)"
+        ],
+        "conf": 89.255
       }
     ]
   }
